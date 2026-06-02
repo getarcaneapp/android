@@ -1,0 +1,65 @@
+package app.getarcane.android.nav
+
+import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+
+private val Context.navTabsDataStore: DataStore<Preferences> by preferencesDataStore(name = "arcane_tabs")
+
+/** Persists the 4 swappable bottom-nav tabs (Settings is always the 5th). Port of iOS `NavTabsStore`. */
+class NavTabsStore(context: Context) {
+    private val store = context.applicationContext.navTabsDataStore
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val key = stringPreferencesKey("pinned")
+
+    var pinned by mutableStateOf(AppTab.defaults); private set
+
+    init {
+        scope.launch {
+            val saved = store.data.map { it[key] }.first()
+            val tabs = saved?.split(",")?.mapNotNull { AppTab.byId(it) }
+            if (tabs != null && tabs.size == SLOTS) pinned = tabs
+        }
+    }
+
+    /** The (up to [SLOTS]) tabs to show, filtered by permissions/server version and padded with defaults. */
+    fun visibleTabs(isAdmin: Boolean, supportsV2: Boolean): List<AppTab> {
+        fun allowed(tab: AppTab) = (!tab.requiresAdmin || isAdmin) && (!tab.requiresV2 || supportsV2)
+        val result = pinned.filter(::allowed).toMutableList()
+        for (fallback in AppTab.defaults) {
+            if (result.size >= SLOTS) break
+            if (fallback !in result && allowed(fallback)) result.add(fallback)
+        }
+        return result.take(SLOTS)
+    }
+
+    fun swap(slot: Int, replacement: AppTab) {
+        val updated = pinned.toMutableList()
+        if (slot in updated.indices) {
+            updated[slot] = replacement
+            pinned = updated
+            scope.launch { store.edit { it[key] = updated.joinToString(",") { t -> t.id } } }
+        }
+    }
+
+    fun resetToDefaults() {
+        pinned = AppTab.defaults
+        scope.launch { store.edit { it.remove(key) } }
+    }
+
+    companion object {
+        const val SLOTS = 4
+    }
+}

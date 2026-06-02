@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Insets the full-bleed iOS app art so the logo lands inside the adaptive-icon
+  safe zone (center ~66dp of the 108dp canvas) instead of being clipped by the
+  launcher's circular mask. The surrounding background color matches the art's
+  near-black edges so the inset reads as a seamless icon.
+-->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@mipmap/ic_launcher_foreground"
+    android:insetLeft="16dp"
+    android:insetTop="16dp"
+    android:insetRight="16dp"
+    android:insetBottom="16dp" />

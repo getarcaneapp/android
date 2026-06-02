@@ -1,0 +1,117 @@
+# ============================================================
+#  Android / Kotlin / Gradle project — .gitignore
+# ============================================================
+
+# ----------------------------
+# Gradle build outputs & caches
+# ----------------------------
+.gradle/
+build/
+**/build/
+out/
+.kotlin/
+
+# Gradle wrapper dist (keep gradlew + gradlew.bat, ignore downloaded binary)
+gradle/wrapper/gradle-wrapper.jar
+
+# ----------------------------
+# Android Studio / IntelliJ IDEA
+# ----------------------------
+*.iml
+.idea/
+# Un-comment to share code-style/inspection configs across the team:
+# !.idea/codeStyles/
+# !.idea/inspectionProfiles/
+
+# ----------------------------
+# Local / machine-specific config
+# ----------------------------
+local.properties
+keystore.properties
+
+# ----------------------------
+# Signing keystores & secrets (never commit)
+# ----------------------------
+*.keystore
+*.jks
+*.pfx
+*release*.keystore
+*release*.jks
+google-services.json
+GoogleService-Info.plist
+secrets.xml
+secrets*.properties
+
+# ----------------------------
+# Compiled / packaged artefacts
+# ----------------------------
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.jar
+# Don't re-ignore the wrapper jar if it's already tracked
+!gradle/wrapper/gradle-wrapper.jar
+
+# ----------------------------
+# NDK / CMake
+# ----------------------------
+.externalNativeBuild/
+.cxx/
+*.so
+*.o
+*.a
+
+# ----------------------------
+# Captures / profiling
+# ----------------------------
+captures/
+*.hprof
+lint-results*
+lint-baseline.xml
+
+# ----------------------------
+# Test & coverage artefacts
+# ----------------------------
+**/test-results/
+**/jacoco/
+*.exec
+coverage/
+
+# ----------------------------
+# Kotlin Multiplatform (future-proof)
+# ----------------------------
+commonizer/
+
+# ----------------------------
+# macOS
+# ----------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ----------------------------
+# Windows
+# ----------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ----------------------------
+# Linux
+# ----------------------------
+*~
+
+# ----------------------------
+# Editor temporaries
+# ----------------------------
+*.swp
+*.swo
+*.tmp
+*.bak
+\#*\#
+.#*
