@@ -12,7 +12,6 @@ datastore = "1.1.1"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 espressoCore = "3.6.1"
-arcane = "0.1.0-SNAPSHOT"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -34,9 +33,10 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 coil-svg = { group = "io.coil-kt", name = "coil-svg", version.ref = "coil" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
-# SDK (composite build substitution -> ../libarcane-kotlin)
-arcane-core = { group = "app.getarcane", name = "arcane-core", version.ref = "arcane" }
-arcane-android = { group = "app.getarcane", name = "arcane-android", version.ref = "arcane" }
+# Arcane SDK — resolved from Git (or the local checkout via -Parcane.localSdk). No version is
+# declared here; the git source dependency's branch is pinned at the use-site in app/build.gradle.kts.
+arcane-core = { group = "app.getarcane", name = "arcane-core" }
+arcane-android = { group = "app.getarcane", name = "arcane-android" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

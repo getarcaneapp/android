@@ -3,6 +3,7 @@ package app.getarcane.android.nav
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Dns
@@ -72,6 +73,7 @@ enum class AppTab(
     Ports("ports", "Ports", "Ports", Icons.Filled.SettingsEthernet, ArcaneCyan, TabSection.Resources, isEnvironmentScoped = true),
     Volumes("volumes", "Volumes", "Volumes", Icons.Filled.Storage, ArcaneOrange, TabSection.Resources, isEnvironmentScoped = true),
     Jobs("jobs", "Jobs", "Jobs", Icons.Filled.Schedule, ArcanePink, TabSection.Resources, isEnvironmentScoped = true),
+    Activities("activities", "Activities", "Activities", Icons.Filled.Bolt, ArcaneYellow, TabSection.Resources, requiresV2 = true),
 
     Swarm("swarm", "Swarm", "Swarm", Icons.Filled.Hub, ArcaneMint, TabSection.Swarm, isEnvironmentScoped = true),
 

@@ -62,7 +62,9 @@ import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.LocalPinnedStore
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.PinnedItemsStore
+import app.getarcane.android.core.ResourceUpdateFilter
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.hasAvailableUpdate
 import app.getarcane.android.ui.components.CachedAsyncImage
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
@@ -102,6 +104,7 @@ fun ProjectListScreen(
     var search by remember { mutableStateOf("") }
     var sortAsc by remember { mutableStateOf(true) }
     var filter by remember { mutableStateOf(ProjectStatusFilter.All) }
+    var updateFilter by remember { mutableStateOf(ResourceUpdateFilter.ALL) }
     var refreshKey by remember { mutableIntStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -197,6 +200,16 @@ fun ProjectListScreen(
                                 )
                             }
                             HorizontalDivider()
+                            Text("Updates", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
+                            ResourceUpdateFilter.entries.forEach { f ->
+                                DropdownMenuItem(
+                                    text = { Text(f.title) },
+                                    onClick = { updateFilter = f; menuOpen = false },
+                                    leadingIcon = { Icon(Icons.Filled.FilterList, null) },
+                                    trailingIcon = { if (updateFilter == f) Icon(Icons.Filled.Sort, null) },
+                                )
+                            }
+                            HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text("Archived Projects") },
                                 onClick = { menuOpen = false; onArchived() },
@@ -235,7 +248,8 @@ fun ProjectListScreen(
                                 ProjectStatusFilter.Stopped -> status == "stopped" || status == "exited"
                                 ProjectStatusFilter.Partial -> status == "partial" || status == "partially running"
                             }
-                            matchesStatus && (search.isBlank() || p.displayName.contains(search, true))
+                            matchesStatus && updateFilter.matches(p.hasAvailableUpdate) &&
+                                (search.isBlank() || p.displayName.contains(search, true))
                         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
                             .let { if (sortAsc) it else it.reversed() }
 

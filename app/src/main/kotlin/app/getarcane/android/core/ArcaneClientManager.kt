@@ -244,6 +244,16 @@ class ArcaneClientManager(context: Context) {
         oidc = runCatching { client?.auth?.oidcStatus() }.getOrNull()
     }
 
+    /**
+     * Public re-fetch of the OIDC provider status, used by the login screen so the provider button
+     * shows correctly whenever login is (re-)entered or the server changes. No-op while in setup
+     * mode or before a client/server URL exists. Port of iOS `refreshOIDCStatus()`.
+     */
+    fun refreshOidcStatus() {
+        if (authStatus == AuthStatus.SETUP || serverUrl.isBlank() || client == null) return
+        scope.launch { refreshOidc() }
+    }
+
     private fun normalizeUrl(raw: String): String? {
         val trimmed = raw.trim()
         if (trimmed.isEmpty()) return null

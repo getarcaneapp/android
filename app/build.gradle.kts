@@ -47,10 +47,20 @@ kotlin {
     }
 }
 
+// Arcane SDK source: the public Git repo's `main` branch by default, or the sibling checkout when
+// built with -Parcane.localSdk (kept in sync with settings.gradle.kts). The composite build ignores
+// the version constraint and substitutes the local modules, so the branch is only used for git.
+val arcaneFromGit = !providers.gradleProperty("arcane.localSdk").isPresent
+
 dependencies {
-    // Arcane SDK (composite build -> ../libarcane-kotlin)
-    implementation(libs.arcane.core)
-    implementation(libs.arcane.android)
+    // Arcane SDK — resolved from git (default) or the sibling checkout (-Parcane.localSdk).
+    if (arcaneFromGit) {
+        implementation(libs.arcane.core) { version { branch = "main" } }
+        implementation(libs.arcane.android) { version { branch = "main" } }
+    } else {
+        implementation(libs.arcane.core)
+        implementation(libs.arcane.android)
+    }
 
     // OkHttp HTTP engine for Ktor: robust TLS/HTTP-2 on Android (the pure-Kotlin CIO engine
     // fails the TLS handshake against some Cloudflare-fronted hosts, e.g. demo.getarcane.app).

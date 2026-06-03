@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.ui.screens.DashboardScreen
 import app.getarcane.android.ui.screens.PlaceholderScreen
+import app.getarcane.android.ui.screens.activities.ActivitiesTab
 import app.getarcane.android.ui.screens.containers.ContainersScreen
 import app.getarcane.android.ui.screens.events.EventsScreen
 import app.getarcane.android.ui.screens.gitops.GitOpsScreen
@@ -176,6 +177,7 @@ private fun TabContent(tabId: String) {
         AppTab.Ports.id -> PortsScreen()
         AppTab.Events.id -> EventsScreen()
         AppTab.Jobs.id -> JobsScreen()
+        AppTab.Activities.id -> ActivitiesTab()
         AppTab.Updates.id -> UpdatesScreen()
         AppTab.Swarm.id -> SwarmScreen()
         AppTab.GitOps.id -> GitOpsScreen()

@@ -54,8 +54,10 @@ import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.LocalPinnedStore
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.PinnedItemsStore
+import app.getarcane.android.core.ResourceUpdateFilter
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.hasAvailableUpdate
 import app.getarcane.android.core.iconUrl
 import app.getarcane.android.core.isRunning
 import app.getarcane.android.ui.components.CachedAsyncImage
@@ -82,6 +84,7 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
     var search by remember { mutableStateOf("") }
     var sortAsc by remember { mutableStateOf(true) }
     var filter by remember { mutableStateOf(StateFilter.All) }
+    var updateFilter by remember { mutableStateOf(ResourceUpdateFilter.ALL) }
     var refreshKey by remember { mutableStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
@@ -118,6 +121,11 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
                             StateFilter.entries.forEach { f ->
                                 DropdownMenuItem(text = { Text(f.label) }, onClick = { filter = f; menuOpen = false }, trailingIcon = { if (filter == f) Icon(Icons.Filled.Sort, null) })
                             }
+                            HorizontalDivider()
+                            Text("Updates", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
+                            ResourceUpdateFilter.entries.forEach { f ->
+                                DropdownMenuItem(text = { Text(f.title) }, onClick = { updateFilter = f; menuOpen = false }, trailingIcon = { if (updateFilter == f) Icon(Icons.Filled.Sort, null) })
+                            }
                         }
                     }
                 },
@@ -147,6 +155,7 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
                             (filter == StateFilter.All ||
                                 (filter == StateFilter.Running && c.isRunning) ||
                                 (filter == StateFilter.Stopped && !c.isRunning)) &&
+                                updateFilter.matches(c.hasAvailableUpdate) &&
                                 (search.isBlank() ||
                                     c.names.any { it.contains(search, true) } ||
                                     c.image.contains(search, true))
@@ -157,7 +166,7 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
                         val running = filtered.filter { it.id !in pinnedIds && it.isRunning }
                         val stopped = filtered.filter { it.id !in pinnedIds && !it.isRunning }
 
-                        if (filtered.isEmpty() && search.isBlank() && filter == StateFilter.All) {
+                        if (filtered.isEmpty() && search.isBlank() && filter == StateFilter.All && updateFilter == ResourceUpdateFilter.ALL) {
                             ContentUnavailable("No Containers", Icons.Outlined.Inventory2, "No containers found in this environment.", "Refresh") { refreshKey++ }
                         } else {
                             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp)) {

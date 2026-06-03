@@ -45,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -101,6 +102,13 @@ fun LoginScreen() {
     // When OIDC is available the password form is hidden behind a disclosure so the provider button
     // is the primary action; the user can still reveal local sign-in (admin fallback).
     val shouldShowPassword = !manager.isOidcAvailable || showPasswordForm
+
+    // Re-fetch OIDC status whenever we enter login (or the server changes) so the provider button
+    // shows correctly. Keyed on auth status + server URL; the manager no-ops in setup mode.
+    // Mirrors iOS `LoginView`'s `.task(id:)` OIDC refresh.
+    LaunchedEffect(manager.authStatus, manager.serverUrl) {
+        manager.refreshOidcStatus()
+    }
 
     Box(
         modifier = Modifier
