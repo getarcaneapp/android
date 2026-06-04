@@ -16,8 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PermIdentity
 import androidx.compose.material3.CircularProgressIndicator
@@ -152,7 +152,7 @@ fun UserRoleAssignmentsScreen(userId: String, onBack: () -> Unit) {
                     if (s.value.assignments.isEmpty()) {
                         ContentUnavailable(
                             "No Role Assignments",
-                            Icons.Filled.HelpOutline,
+                            Icons.AutoMirrored.Filled.HelpOutline,
                             "This user has no roles assigned and cannot perform actions.",
                         )
                     } else {

@@ -29,7 +29,7 @@ This is a [Jetpack Compose](https://developer.android.com/compose) app written i
 
 | Toolchain | Version |
 | --- | --- |
-| Android Gradle Plugin | 9.1.1 |
+| Android Gradle Plugin | 9.2.1 |
 | Gradle | 9.3.1 |
 | Kotlin | 2.2.10 |
 | JDK | 17+ |
@@ -40,7 +40,13 @@ Open the project in **Android Studio** (Otter Feature Drop or later) and let it 
 ./gradlew :app:installDebug
 ```
 
-The app depends on [`libarcane-kotlin`](https://github.com/getarcaneapp/libarcane-kotlin) — the Kotlin SDK that talks to the Arcane API — consumed as a [Gradle composite build](https://docs.gradle.org/current/userguide/composite_builds.html) from the sibling `../libarcane-kotlin` directory. It resolves automatically on first build; no separate publish step is needed.
+The app depends on [`libarcane-kotlin`](https://github.com/getarcaneapp/libarcane-kotlin) — the Kotlin SDK that talks to the Arcane API. By default, Gradle resolves the SDK from the sibling `../libarcane-kotlin` Git checkout when it exists; otherwise it resolves the SDK from the public Git repository on the `main` branch and builds it on demand. No separate publish step is needed.
+
+To force the public Git source dependency even when the sibling checkout exists, pass `-Parcane.remoteSdk`:
+
+```sh
+./gradlew :app:installDebug -Parcane.remoteSdk
+```
 
 ### Running on an emulator
 

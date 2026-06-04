@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,14 +35,20 @@ fun JobsScreen() {
     NavHost(navController = nav, startDestination = "menu") {
         composable("menu") {
             Scaffold(topBar = { TopAppBar(title = { Text("Jobs") }) }) { padding ->
-                Column(Modifier.fillMaxSize().padding(padding)) {
+                Column(Modifier
+                    .fillMaxSize()
+                    .padding(padding)) {
                     ListItem(
                         leadingContent = {
-                            Icon(Icons.Filled.PlaylistPlay, null, tint = ArcaneIndigo)
+                            Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, tint = ArcaneIndigo)
                         },
                         headlineContent = { Text("Jobs") },
                         trailingContent = {
-                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, modifier = Modifier.padding(end = 4.dp))
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                null,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
                         },
                         modifier = Modifier.clickable { nav.navigate("list") },
                     )
@@ -53,7 +59,11 @@ fun JobsScreen() {
                         },
                         headlineContent = { Text("Schedules") },
                         trailingContent = {
-                            Icon(Icons.AutoMirrored.Filled.ArrowForwardIos, null, modifier = Modifier.padding(end = 4.dp))
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForwardIos,
+                                null,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
                         },
                         modifier = Modifier.clickable { nav.navigate("schedules") },
                     )

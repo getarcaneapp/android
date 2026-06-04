@@ -1,6 +1,7 @@
 package app.getarcane.android.core
 
 import android.content.Context
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -10,8 +11,10 @@ import app.getarcane.sdk.ArcaneConfiguration
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.android.AndroidSecureTokenStore
+import app.getarcane.sdk.android.oidc.OidcAuthenticator
 import app.getarcane.sdk.models.auth.OidcStatusInfo
 import app.getarcane.sdk.models.user.User
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +23,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
 
 enum class AuthStatus { SETUP, AUTHENTICATING, LOGIN, AUTHENTICATED }
 
@@ -32,6 +38,7 @@ class ArcaneClientManager(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = Prefs(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val cookieJar = ArcaneCookieJar()
 
     var authStatus by mutableStateOf(AuthStatus.SETUP); private set
     var serverUrl by mutableStateOf(""); private set
@@ -52,7 +59,20 @@ class ArcaneClientManager(context: Context) {
 
     var client: ArcaneClient? = null; private set
 
-    val isOidcAvailable: Boolean get() = oidc?.let { it.envConfigured || it.envForced } ?: false
+    private val oidcRedirectUri = OIDC_REDIRECT_URI
+
+    companion object {
+        const val OIDC_REDIRECT_URI = "arcane-mobile://oidc-callback"
+        const val OIDC_REDIRECT_SCHEME = "arcane-mobile"
+        const val OIDC_REDIRECT_HOST = "oidc-callback"
+
+        const val OIDC_REDIRECT_SCHEME_LEGACY = "app.getarcane.android"
+        const val OIDC_REDIRECT_HOST_LEGACY = "oidc"
+        const val OIDC_REDIRECT_PATH_LEGACY = "callback"
+    }
+
+    val isOidcAvailable: Boolean get() =
+        oidc?.let { it.envConfigured || it.envForced || it.providerName?.isNotBlank() == true } ?: false
     val isDemoActive: Boolean get() = demoEndsAt != null
 
     init {
@@ -80,9 +100,16 @@ class ArcaneClientManager(context: Context) {
                 tokenStore = AndroidSecureTokenStore(appContext),
                 defaultEnvironmentId = activeEnvironmentId,
                 defaultHeaders = defaultHeaders,
-                engine = OkHttp.create(),
+                engine = makeHttpEngine(),
             ),
         )
+
+    private fun makeHttpEngine(): HttpClientEngine =
+        OkHttp.create {
+            config {
+                cookieJar(this@ArcaneClientManager.cookieJar)
+            }
+        }
 
     /** Setup mode: validate + persist the server URL and create the client, then go to login. */
     fun configure(rawUrl: String) {
@@ -95,6 +122,8 @@ class ArcaneClientManager(context: Context) {
             }
             serverUrl = normalized
             prefs.setServerUrl(normalized)
+            oidc = null
+            cookieJar.clear()
             client?.close()
             client = makeClient(normalized)
             authStatus = AuthStatus.LOGIN
@@ -124,10 +153,58 @@ class ArcaneClientManager(context: Context) {
         val c = client ?: return
         scope.launch {
             runCatching { c.auth.logout() }
+            cookieJar.clear()
             currentUser = null
             capabilities = ServerCapabilities.UNKNOWN
             authStatus = AuthStatus.LOGIN
+            oidc = null
             refreshOidc()
+        }
+    }
+
+    fun startOidcSignIn(context: Context) {
+        val c = client ?: return
+        scope.launch {
+            isLoading = true
+            errorMessage = null
+            try {
+                OidcAuthenticator(c).startSignIn(context = context, redirectUri = oidcRedirectUri)
+            } catch (e: Throwable) {
+                errorMessage = friendlyErrorMessage(e)
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    fun handleOidcRedirect(uri: Uri?) {
+        val callback = uri?.takeIf(::isExpectedOidcCallback) ?: return
+        val c = client ?: return
+        scope.launch {
+            isLoading = true
+            errorMessage = null
+            try {
+                val (code, state) = extractOidcCallbackParams(callback)
+                    ?: throw IllegalArgumentException("Missing OAuth callback parameters")
+                val response = if (
+                    callback.getQueryParameter("code") != null &&
+                    callback.getQueryParameter("state") != null
+                ) {
+                    OidcAuthenticator(c).completeSignIn(
+                        callbackUri = callback,
+                        redirectUri = oidcRedirectUri,
+                    )
+                } else {
+                    c.auth.oidcCallback(code = code, state = state, mobileRedirectUri = oidcRedirectUri)
+                }
+                currentUser = response.user
+                capabilities = c.serverCapabilities()
+                authStatus = AuthStatus.AUTHENTICATED
+            } catch (e: Throwable) {
+                errorMessage = friendlyErrorMessage(e)
+            } finally {
+                isLoading = false
+            }
         }
     }
 
@@ -241,8 +318,71 @@ class ArcaneClientManager(context: Context) {
     }
 
     private suspend fun refreshOidc() {
-        oidc = runCatching { client?.auth?.oidcStatus() }.getOrNull()
+        val c = client ?: return
+        val settings = runCatching { c.settings.getPublicSettings() }.getOrNull()
+        val status = runCatching { c.auth.oidcStatus() }.getOrNull()
+        if (settings == null) {
+            oidc = status
+            return
+        }
+
+        val public = settings.associate { it.key to it.value }
+        val oidcEnabled = public["oidcEnabled"]?.equals("true", ignoreCase = true) == true
+        val providerName = public["oidcProviderName"]
+        val providerLogoUrl = public["oidcProviderLogoUrl"]
+        val mergeAccounts = public["oidcMergeAccounts"]?.equals("true", ignoreCase = true) == true
+
+        oidc = OidcStatusInfo(
+            envConfigured = status?.envConfigured ?: oidcEnabled,
+            envForced = status?.envForced ?: false,
+            mergeAccounts = status?.mergeAccounts ?: mergeAccounts,
+            providerName = status?.providerName ?: providerName,
+            providerLogoUrl = status?.providerLogoUrl ?: providerLogoUrl,
+        )
     }
+
+    private fun isExpectedOidcCallback(uri: Uri): Boolean {
+        if (uri.scheme.equals(OIDC_REDIRECT_SCHEME, ignoreCase = true)) {
+            return uri.host == OIDC_REDIRECT_HOST ||
+                uri.path == "/$OIDC_REDIRECT_HOST" ||
+                uri.path == "/$OIDC_REDIRECT_HOST/"
+        }
+        return if (uri.scheme.equals(OIDC_REDIRECT_SCHEME_LEGACY, ignoreCase = true)) {
+            uri.host == OIDC_REDIRECT_HOST_LEGACY &&
+                (uri.path == "/$OIDC_REDIRECT_PATH_LEGACY" || uri.path == "/$OIDC_REDIRECT_PATH_LEGACY/")
+        } else {
+            false
+        }
+    }
+
+    private fun extractOidcCallbackParams(uri: Uri): Pair<String, String>? {
+        val code = uri.getQueryParameter("code")
+        val state = uri.getQueryParameter("state")
+        if (code != null && state != null) {
+            return code to state
+        }
+
+        val fragment = uri.fragment ?: return null
+        var fragmentCode: String? = null
+        var fragmentState: String? = null
+        for (pair in fragment.split("&")) {
+            if (!pair.contains("=")) continue
+            val keyAndValue = pair.split("=", limit = 2)
+            if (keyAndValue.size != 2) continue
+            val key = keyAndValue[0]
+            val value = Uri.decode(keyAndValue[1])
+            when (key) {
+                "code" -> fragmentCode = value
+                "state" -> fragmentState = value
+            }
+        }
+
+        return if (fragmentCode != null && fragmentState != null) {
+            fragmentCode to fragmentState
+        } else {
+            null
+        }
+        }
 
     /**
      * Public re-fetch of the OIDC provider status, used by the login screen so the provider button
@@ -262,6 +402,35 @@ class ArcaneClientManager(context: Context) {
         val host = withScheme.substringAfter("://").substringBefore("/")
         if (host.isBlank()) return null
         return withScheme.trimEnd('/')
+    }
+}
+
+private class ArcaneCookieJar : CookieJar {
+    private val cookies = mutableListOf<Cookie>()
+
+    @Synchronized
+    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+        val now = System.currentTimeMillis()
+        this.cookies.removeAll { existing ->
+            existing.expiresAt <= now || cookies.any { incoming ->
+                incoming.name == existing.name &&
+                    incoming.domain == existing.domain &&
+                    incoming.path == existing.path
+            }
+        }
+        this.cookies.addAll(cookies.filter { it.expiresAt > now })
+    }
+
+    @Synchronized
+    override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        val now = System.currentTimeMillis()
+        cookies.removeAll { it.expiresAt <= now }
+        return cookies.filter { it.matches(url) }
+    }
+
+    @Synchronized
+    fun clear() {
+        cookies.clear()
     }
 }
 

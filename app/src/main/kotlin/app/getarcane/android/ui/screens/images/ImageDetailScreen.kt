@@ -45,13 +45,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
+import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ContentUnavailable
@@ -99,8 +98,14 @@ fun ImageDetailScreen(
             Loadable.Error(friendlyErrorMessage(e))
         }
         // Vulnerability summary + scanner status (best-effort).
-        scannerStatus = runCatching { client.vulnerabilities.scannerStatus(envId = envId) }.getOrNull()
-        vulnSummary = runCatching { client.vulnerabilities.scanSummary(envId = envId, imageId = id) }.getOrNull()
+        scannerStatus =
+            runCatching { client.vulnerabilities.scannerStatus(envId = envId) }.getOrNull()
+        vulnSummary = runCatching {
+            client.vulnerabilities.scanSummary(
+                envId = envId,
+                imageId = id
+            )
+        }.getOrNull()
     }
 
     fun checkForUpdate() {
@@ -133,18 +138,36 @@ fun ImageDetailScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Image Details", maxLines = 1) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
-                actions = { IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Filled.Delete, "Delete", tint = ArcaneRed) } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            "Back"
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = {
+                        confirmDelete = true
+                    }) { Icon(Icons.Filled.Delete, "Delete", tint = ArcaneRed) }
+                },
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             when (val s = state) {
                 is Loadable.Loading -> SkeletonListLoadingView()
                 is Loadable.Error -> ContentUnavailable("Error", Icons.Filled.Warning, s.message)
                 is Loadable.Success -> {
                     val d = s.value
-                    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LazyColumn(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
                         item { ImageHeader(d) }
 
                         item {
@@ -198,7 +221,13 @@ fun ImageDetailScreen(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Remove Image") },
             text = { Text("This will remove the image from the host.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; removeImage() }) { Text("Remove") } },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; removeImage() }) {
+                    Text(
+                        "Remove"
+                    )
+                }
+            },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
@@ -215,13 +244,24 @@ fun ImageDetailScreen(
 
 @Composable
 private fun ImageHeader(d: ImageDetailSummary) {
-    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Box(
-            Modifier.size(56.dp).background(ArcanePurple.copy(alpha = 0.2f), CircleShape),
+            Modifier
+                .size(56.dp)
+                .background(ArcanePurple.copy(alpha = 0.2f), CircleShape),
             contentAlignment = Alignment.Center,
         ) { Icon(Icons.Filled.Layers, null, tint = ArcanePurple, modifier = Modifier.size(28.dp)) }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(d.displayName(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                d.displayName(),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
             Text(
                 d.id,
                 style = MaterialTheme.typography.labelSmall,
@@ -230,7 +270,11 @@ private fun ImageHeader(d: ImageDetailSummary) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(formatBytes(d.size), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                formatBytes(d.size),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -239,40 +283,103 @@ private fun ImageHeader(d: ImageDetailSummary) {
 private fun UpdateCheckRow(info: ImageUpdateResponse?, isChecking: Boolean, onCheck: () -> Unit) {
     when {
         isChecking -> {
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Checking for updates…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Checking for updates…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Spacer(Modifier.weight(1f))
                 CircularProgressIndicator(Modifier.size(18.dp))
             }
         }
+
         info != null && !info.error.isNullOrEmpty() ->
-            Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                Modifier.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Icon(Icons.Filled.Warning, null, tint = ArcaneRed, modifier = Modifier.size(16.dp))
                 Text(info.error!!, style = MaterialTheme.typography.labelMedium, color = ArcaneRed)
             }
+
         info != null && info.hasUpdate ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.ArrowCircleUp, null, tint = ArcaneOrange, modifier = Modifier.size(18.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Filled.ArrowCircleUp,
+                    null,
+                    tint = ArcaneOrange,
+                    modifier = Modifier.size(18.dp)
+                )
                 Column(Modifier.weight(1f)) {
-                    Text("Update available", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Update available",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
                     val latest = info.latestVersion
                     if (!latest.isNullOrEmpty() && info.currentVersion.isNotEmpty() && latest != info.currentVersion) {
-                        Text("${info.currentVersion} → $latest", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "${info.currentVersion} → $latest",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
                 TextButton(onClick = onCheck) { Text("Recheck") }
             }
+
         info != null ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.CheckCircle, null, tint = ArcaneGreen, modifier = Modifier.size(18.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    null,
+                    tint = ArcaneGreen,
+                    modifier = Modifier.size(18.dp)
+                )
                 Text("Up to date", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = onCheck) { Text("Recheck") }
             }
+
         else ->
-            Row(Modifier.fillMaxWidth().clickable(onClick = onCheck).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Filled.SystemUpdateAlt, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                Text("Check for updates", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onCheck)
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Filled.SystemUpdateAlt,
+                    null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    "Check for updates",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
     }
 }
@@ -281,7 +388,8 @@ private fun UpdateCheckRow(info: ImageUpdateResponse?, isChecking: Boolean, onCh
 private fun ImageConfigSection(config: ImageDetailConfig) {
     DetailSection("Image Config") {
         config.cmd?.takeIf { it.isNotEmpty() }?.let { LabeledRow("CMD", it.joinToString(" ")) }
-        config.entrypoint?.takeIf { it.isNotEmpty() }?.let { LabeledRow("Entrypoint", it.joinToString(" ")) }
+        config.entrypoint?.takeIf { it.isNotEmpty() }
+            ?.let { LabeledRow("Entrypoint", it.joinToString(" ")) }
         config.workingDir?.takeIf { it.isNotEmpty() }?.let { LabeledRow("Working Dir", it) }
         config.user?.takeIf { it.isNotEmpty() }?.let { LabeledRow("User", it) }
         config.env?.takeIf { it.isNotEmpty() }?.let { env ->
@@ -302,14 +410,24 @@ private fun ExpandableRow(title: String, content: @Composable () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Column {
         Row(
-            Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 8.dp),
+            Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Icon(if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         AnimatedVisibility(visible = expanded) {
-            Column(Modifier.padding(start = 8.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) { content() }
+            Column(
+                Modifier.padding(start = 8.dp, bottom = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) { content() }
         }
     }
 }
@@ -324,7 +442,10 @@ private fun VulnerabilitiesSection(
         when {
             summary != null ->
                 Row(
-                    Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 4.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpen)
+                        .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(Modifier.weight(1f)) {
@@ -335,22 +456,57 @@ private fun VulnerabilitiesSection(
                             error = summary.error,
                         )
                     }
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
+
             scannerStatus?.available == false ->
-                Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Filled.Security, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                    Text("Scanner unavailable on host", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    Modifier.padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Security,
+                        null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        "Scanner unavailable on host",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
+
             else ->
                 Row(
-                    Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 8.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpen)
+                        .padding(vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(Icons.Filled.Security, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                    Text("Not scanned yet — open to scan", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Icon(
+                        Icons.Filled.Security,
+                        null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        "Not scanned yet — open to scan",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
         }
     }

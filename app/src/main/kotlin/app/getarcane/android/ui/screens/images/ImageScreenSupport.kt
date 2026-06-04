@@ -68,7 +68,9 @@ val CVSSInfo.preferredScore: Double?
 @Composable
 fun SeverityBadge(severity: VulnerabilitySeverity) {
     Box(
-        Modifier.size(22.dp).background(severityColor(severity), CircleShape),
+        Modifier
+            .size(22.dp)
+            .background(severityColor(severity), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -88,9 +90,17 @@ fun SeveritySummaryRow(
     status: String,
     error: String?,
 ) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
         if (!error.isNullOrEmpty()) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Icon(Icons.Filled.Warning, null, tint = ArcaneRed, modifier = Modifier.size(16.dp))
                 Text(error, style = MaterialTheme.typography.labelMedium, color = ArcaneRed)
             }
@@ -104,14 +114,21 @@ fun SeveritySummaryRow(
                 SeverityPill("?", summary.unknown, ArcaneGray, Modifier.weight(1f))
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Text(
                 "Status: ${status.replaceFirstChar { it.uppercase() }}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (!scanTime.isNullOrEmpty()) {
-                Text("·", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "·",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Text(
                     scanTime,
                     style = MaterialTheme.typography.labelSmall,
@@ -126,9 +143,22 @@ fun SeveritySummaryRow(
 
 @Composable
 fun SeverityPill(label: String, count: Int, color: Color, modifier: Modifier = Modifier) {
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        Text("$count", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(
+        modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(1.dp)
+    ) {
+        Text(
+            "$count",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -138,7 +168,11 @@ fun SeverityPill(label: String, count: Int, color: Color, modifier: Modifier = M
 fun DetailSection(title: String? = null, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (title != null) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
         }
         content()
@@ -147,8 +181,17 @@ fun DetailSection(title: String? = null, content: @Composable () -> Unit) {
 
 @Composable
 fun LabeledRow(label: String, value: String, mono: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Text(
             value,
             style = MaterialTheme.typography.bodyMedium,
@@ -172,7 +215,8 @@ fun MonoRow(value: String, maxLines: Int = 1) {
 
 // MARK: - Date formatting (kotlinx.datetime; safe for minSdk 24 without desugaring)
 
-private val monthNames = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+private val monthNames =
+    listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 /** Abbreviated date + short time (e.g. "May 31, 2026 at 3:04 PM"). Mirrors iOS `.abbreviated`/`.shortened`. */
 fun formatImageDate(instant: Instant): String {

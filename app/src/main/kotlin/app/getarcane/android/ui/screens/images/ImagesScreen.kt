@@ -41,7 +41,14 @@ fun ImagesScreen() {
                 id = entry.arguments?.getString("id").orEmpty(),
                 onBack = { nav.popBackStack() },
                 onOpenVulnerabilities = { imageId, displayName ->
-                    nav.navigate("imageVulns/${java.net.URLEncoder.encode(imageId, "UTF-8")}/${java.net.URLEncoder.encode(displayName, "UTF-8")}")
+                    nav.navigate(
+                        "imageVulns/${
+                            java.net.URLEncoder.encode(
+                                imageId,
+                                "UTF-8"
+                            )
+                        }/${java.net.URLEncoder.encode(displayName, "UTF-8")}"
+                    )
                 },
             )
         }
@@ -52,8 +59,12 @@ fun ImagesScreen() {
                 navArgument("displayName") { type = NavType.StringType },
             ),
         ) { entry ->
-            val imageId = java.net.URLDecoder.decode(entry.arguments?.getString("imageId").orEmpty(), "UTF-8")
-            val displayName = java.net.URLDecoder.decode(entry.arguments?.getString("displayName").orEmpty(), "UTF-8")
+            val imageId =
+                java.net.URLDecoder.decode(entry.arguments?.getString("imageId").orEmpty(), "UTF-8")
+            val displayName = java.net.URLDecoder.decode(
+                entry.arguments?.getString("displayName").orEmpty(),
+                "UTF-8"
+            )
             ImageVulnerabilitiesScreen(
                 imageId = imageId,
                 imageDisplayName = displayName,

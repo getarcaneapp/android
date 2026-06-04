@@ -16,11 +16,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ManageSearch
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.ManageSearch
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -110,7 +110,7 @@ fun TemplateRegistriesScreen(onBack: (() -> Unit)? = null) {
         actions = {
             if (isAdmin) {
                 IconButton(onClick = { showBrowser = true }) {
-                    Icon(Icons.Filled.ManageSearch, contentDescription = "Browse templates")
+                    Icon(Icons.AutoMirrored.Filled.ManageSearch, contentDescription = "Browse templates")
                 }
             }
         },

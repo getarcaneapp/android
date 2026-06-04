@@ -105,37 +105,79 @@ fun GitRepositoriesScreen() {
             TopAppBar(
                 title = { Text("Git Repositories") },
                 actions = {
-                    IconButton(onClick = { showCreate = true }) { Icon(Icons.Filled.Add, "Add Git Repository") }
+                    IconButton(onClick = { showCreate = true }) {
+                        Icon(
+                            Icons.Filled.Add,
+                            "Add Git Repository"
+                        )
+                    }
                 },
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
                 placeholder = { Text("Search git repositories") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             )
             when (val s = state) {
-                is Loadable.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-                is Loadable.Error -> ContentUnavailable("Error", Icons.AutoMirrored.Filled.CallSplit, s.message, "Refresh") { refreshKey++ }
+                is Loadable.Loading -> Box(
+                    Modifier.fillMaxSize(),
+                    Alignment.Center
+                ) { CircularProgressIndicator() }
+
+                is Loadable.Error -> ContentUnavailable(
+                    "Error",
+                    Icons.AutoMirrored.Filled.CallSplit,
+                    s.message,
+                    "Refresh"
+                ) { refreshKey++ }
+
                 is Loadable.Success -> {
                     val q = search.trim()
                     val filtered = s.value
-                        .filter { q.isEmpty() || it.name.contains(q, true) || it.url.contains(q, true) }
+                        .filter {
+                            q.isEmpty() || it.name.contains(q, true) || it.url.contains(
+                                q,
+                                true
+                            )
+                        }
                         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                     if (s.value.isEmpty()) {
-                        ContentUnavailable("No Git Repositories", Icons.AutoMirrored.Filled.CallSplit)
+                        ContentUnavailable(
+                            "No Git Repositories",
+                            Icons.AutoMirrored.Filled.CallSplit
+                        )
                     } else {
                         LazyColumn(Modifier.fillMaxSize()) {
                             actionMessage?.let { msg ->
                                 item(key = "action-msg") {
-                                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Icon(Icons.Filled.CheckCircle, null, tint = ArcaneGreen, modifier = Modifier.padding(0.dp))
-                                        Text(msg, color = ArcaneGreen, style = MaterialTheme.typography.bodyMedium)
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.CheckCircle,
+                                            null,
+                                            tint = ArcaneGreen,
+                                            modifier = Modifier.padding(0.dp)
+                                        )
+                                        Text(
+                                            msg,
+                                            color = ArcaneGreen,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
                                     }
                                 }
                             }
@@ -144,7 +186,13 @@ fun GitRepositoriesScreen() {
                                     repo = repo,
                                     onClick = { details = repo },
                                     onEdit = { editing = repo },
-                                    onTest = { act("Test Connection") { client!!.gitops.testRepository(repo.id) } },
+                                    onTest = {
+                                        act("Test Connection") {
+                                            client!!.gitops.testRepository(
+                                                repo.id
+                                            )
+                                        }
+                                    },
                                     onDelete = { confirmDelete = repo },
                                 )
                                 HorizontalDivider(Modifier.padding(start = 16.dp))
@@ -229,7 +277,13 @@ fun GitRepositoriesScreen() {
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun RepoRow(repo: GitRepository, onClick: () -> Unit, onEdit: () -> Unit, onTest: () -> Unit, onDelete: () -> Unit) {
+private fun RepoRow(
+    repo: GitRepository,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onTest: () -> Unit,
+    onDelete: () -> Unit
+) {
     var menu by remember { mutableStateOf(false) }
     Box {
         ListItem(
@@ -237,14 +291,27 @@ private fun RepoRow(repo: GitRepository, onClick: () -> Unit, onEdit: () -> Unit
             headlineContent = { Text(repo.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             supportingContent = { Text(repo.url, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             trailingContent = {
-                Text(if (repo.enabled) "ENABLED" else "DISABLED", style = MaterialTheme.typography.labelSmall, color = if (repo.enabled) ArcaneGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    if (repo.enabled) "ENABLED" else "DISABLED",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (repo.enabled) ArcaneGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             },
             modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = { menu = true }),
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() }, leadingIcon = { Icon(Icons.Filled.Edit, null) })
-            DropdownMenuItem(text = { Text("Test Connection") }, onClick = { menu = false; onTest() }, leadingIcon = { Icon(Icons.Filled.VerifiedUser, null) })
-            DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Filled.Delete, null) })
+            DropdownMenuItem(
+                text = { Text("Edit") },
+                onClick = { menu = false; onEdit() },
+                leadingIcon = { Icon(Icons.Filled.Edit, null) })
+            DropdownMenuItem(
+                text = { Text("Test Connection") },
+                onClick = { menu = false; onTest() },
+                leadingIcon = { Icon(Icons.Filled.VerifiedUser, null) })
+            DropdownMenuItem(
+                text = { Text("Delete") },
+                onClick = { menu = false; onDelete() },
+                leadingIcon = { Icon(Icons.Filled.Delete, null) })
         }
     }
 }
@@ -272,7 +339,11 @@ private fun GitRepositoryDetailsDialog(repo: GitRepository, onDismiss: () -> Uni
 @Composable
 private fun DetailLine(label: String, value: String) {
     Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }

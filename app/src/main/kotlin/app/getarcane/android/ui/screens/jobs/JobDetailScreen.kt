@@ -83,11 +83,23 @@ fun JobDetailScreen(jobId: String, onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text(job?.name ?: "Job", maxLines = 1) },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            "Back"
+                        )
+                    }
+                },
                 actions = {
                     if (job?.canRunManually == true) {
                         if (isRunning) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(end = 8.dp), strokeWidth = 2.dp)
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .padding(end = 8.dp),
+                                strokeWidth = 2.dp
+                            )
                         } else {
                             IconButton(onClick = { run() }, enabled = job.enabled) {
                                 Icon(Icons.Filled.PlayArrow, "Run Now")
@@ -98,18 +110,36 @@ fun JobDetailScreen(jobId: String, onBack: () -> Unit) {
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             when (val s = state) {
-                is Loadable.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                is Loadable.Loading -> Box(
+                    Modifier.fillMaxSize(),
+                    Alignment.Center
+                ) { CircularProgressIndicator() }
+
                 is Loadable.Error -> ContentUnavailable("Error", Icons.Filled.Cancel, s.message)
                 is Loadable.Success -> {
                     val j = s.value
-                    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LazyColumn(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
                         item {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
                                 JobIcon(job = j, isRunning = isRunning, size = 44)
                                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                    Text(j.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text(
+                                        j.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                     if (j.category.isNotEmpty()) {
                                         Text(
                                             j.category.replaceFirstChar { it.uppercase() },
@@ -121,7 +151,11 @@ fun JobDetailScreen(jobId: String, onBack: () -> Unit) {
                                 }
                             }
                             if (j.description.isNotEmpty()) {
-                                Text(j.description, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+                                Text(
+                                    j.description,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
                             }
                         }
 
@@ -129,7 +163,12 @@ fun JobDetailScreen(jobId: String, onBack: () -> Unit) {
                             DetailSection("Schedule") {
                                 LabeledRow("Cron", j.schedule, mono = true)
                                 CronExpression.readable(j.schedule)?.let { LabeledRow("Runs", it) }
-                                j.nextRun?.let { LabeledRow("Next Run", absoluteDateTime(it.toEpochMilliseconds())) }
+                                j.nextRun?.let {
+                                    LabeledRow(
+                                        "Next Run",
+                                        absoluteDateTime(it.toEpochMilliseconds())
+                                    )
+                                }
                             }
                         }
 
@@ -138,7 +177,10 @@ fun JobDetailScreen(jobId: String, onBack: () -> Unit) {
                                 LabeledRow("Enabled", if (j.enabled) "Yes" else "No")
                                 LabeledRow("Continuous", if (j.isContinuous) "Yes" else "No")
                                 LabeledRow("Manager Only", if (j.managerOnly) "Yes" else "No")
-                                LabeledRow("Runnable Manually", if (j.canRunManually) "Yes" else "No")
+                                LabeledRow(
+                                    "Runnable Manually",
+                                    if (j.canRunManually) "Yes" else "No"
+                                )
                             }
                         }
 
@@ -147,7 +189,9 @@ fun JobDetailScreen(jobId: String, onBack: () -> Unit) {
                                 DetailSection("Prerequisites") {
                                     j.prerequisites.forEach { prereq ->
                                         Row(
-                                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                                         ) {
@@ -157,8 +201,18 @@ fun JobDetailScreen(jobId: String, onBack: () -> Unit) {
                                                 tint = if (prereq.isMet) ArcaneGreen else ArcaneRed,
                                             )
                                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                                Text(prereq.label, style = MaterialTheme.typography.bodyMedium)
-                                                Text(prereq.settingKey, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                                                Text(
+                                                    prereq.label,
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                                Text(
+                                                    prereq.settingKey,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                                                        alpha = 0.7f
+                                                    )
+                                                )
                                             }
                                         }
                                     }
@@ -169,7 +223,8 @@ fun JobDetailScreen(jobId: String, onBack: () -> Unit) {
                         item {
                             DetailSection("Identifier") {
                                 LabeledRow("Job ID", j.id, mono = true)
-                                j.settingsKey?.takeIf { it.isNotEmpty() }?.let { LabeledRow("Settings Key", it, mono = true) }
+                                j.settingsKey?.takeIf { it.isNotEmpty() }
+                                    ?.let { LabeledRow("Settings Key", it, mono = true) }
                             }
                         }
                     }
@@ -190,8 +245,17 @@ private fun DetailSection(title: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun LabeledRow(label: String, value: String, mono: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Text(
             value,
             style = MaterialTheme.typography.bodyMedium,

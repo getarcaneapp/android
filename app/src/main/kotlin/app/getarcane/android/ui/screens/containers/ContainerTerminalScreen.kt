@@ -16,8 +16,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -270,13 +270,13 @@ private fun InputBar(
                     placeholder = { Text("command", fontFamily = FontFamily.Monospace) },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                    keyboardOptions = KeyboardOptions(autoCorrect = false, imeAction = ImeAction.Send),
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSend() }),
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = onSend, enabled = isConnected && input.isNotEmpty()) {
                     Icon(
-                        Icons.Filled.Send,
+                        Icons.AutoMirrored.Filled.Send,
                         "Send",
                         tint = if (isConnected && input.isNotEmpty()) ArcaneBlue else MaterialTheme.colorScheme.onSurfaceVariant,
                     )

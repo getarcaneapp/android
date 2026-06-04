@@ -5,18 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.AdminPanelSettings
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.VpnKey
-import androidx.compose.material.icons.filled.Webhook
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,11 +18,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.nav.AppTab
+import app.getarcane.android.nav.NavTabsStore
+import app.getarcane.android.nav.TabSection
+import app.getarcane.android.ui.screens.DashboardScreen
+import app.getarcane.android.ui.screens.activities.ActivitiesTab
+import app.getarcane.android.ui.screens.containers.ContainersScreen
+import app.getarcane.android.ui.screens.events.EventsScreen
+import app.getarcane.android.ui.screens.gitops.GitOpsScreen
+import app.getarcane.android.ui.screens.gitops.GitRepositoriesScreen
+import app.getarcane.android.ui.screens.images.ImagesScreen
+import app.getarcane.android.ui.screens.jobs.JobsScreen
+import app.getarcane.android.ui.screens.networks.NetworksScreen
+import app.getarcane.android.ui.screens.ports.PortsScreen
+import app.getarcane.android.ui.screens.projects.ProjectsScreen
 import app.getarcane.android.ui.screens.settings.notifications.NotificationProviderFormScreen
 import app.getarcane.android.ui.screens.settings.notifications.NotificationSettingsScreen
 import app.getarcane.android.ui.screens.settings.rbac.OidcRoleMappingsScreen
@@ -49,14 +53,11 @@ import app.getarcane.android.ui.screens.settings.system.SettingsCategoryScreen
 import app.getarcane.android.ui.screens.settings.system.SystemSettingsScreen
 import app.getarcane.android.ui.screens.settings.system.SystemUpgradeScreen
 import app.getarcane.android.ui.screens.settings.webhooks.WebhooksScreen
+import app.getarcane.android.ui.screens.swarm.SwarmScreen
+import app.getarcane.android.ui.screens.updates.UpdatesScreen
+import app.getarcane.android.ui.screens.volumes.VolumesScreen
 import app.getarcane.android.ui.screens.whatsnew.WhatsNewScreen
-import app.getarcane.android.ui.theme.ArcaneBlue
-import app.getarcane.android.ui.theme.ArcaneGray
-import app.getarcane.android.ui.theme.ArcaneGreen
-import app.getarcane.android.ui.theme.ArcaneIndigo
-import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
-import app.getarcane.android.ui.theme.ArcaneYellow
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.models.notification.NotificationProvider
 import app.getarcane.sdk.models.user.isAdmin
@@ -95,6 +96,9 @@ fun SettingsScreen() {
     val nav = rememberNavController()
     NavHost(navController = nav, startDestination = SettingsRoutes.ROOT) {
         composable(SettingsRoutes.ROOT) { SettingsRoot(nav) }
+        AppTab.entries.forEach { tab ->
+            composable(tab.id) { SettingsTabDestination(tab = tab, nav = nav) }
+        }
 
         composable(SettingsRoutes.APP_SETTINGS) {
             AppSettingsScreen(
@@ -106,9 +110,6 @@ fun SettingsScreen() {
         composable(SettingsRoutes.APPEARANCE) { AppearanceSettingsScreen(onBack = { nav.popBackStack() }) }
         composable(SettingsRoutes.WHATS_NEW) { WhatsNewScreen(onBack = { nav.popBackStack() }) }
 
-        composable(SettingsRoutes.USERS) {
-            UsersScreen(onOpenUser = { id -> nav.navigate("user/$id") })
-        }
         composable(SettingsRoutes.USER_DETAIL) { entry ->
             UserDetailScreen(
                 userId = entry.arguments?.getString("userId").orEmpty(),
@@ -123,14 +124,6 @@ fun SettingsScreen() {
             )
         }
 
-        composable(SettingsRoutes.API_KEYS) { ApiKeysScreen() }
-
-        composable(SettingsRoutes.ROLES) {
-            RolesScreen(
-                onOpenRole = { id -> nav.navigate("role/$id") },
-                onCreateRole = { nav.navigate(SettingsRoutes.ROLE_CREATE) },
-            )
-        }
         composable(SettingsRoutes.ROLE_CREATE) {
             RoleDetailScreen(roleId = null, mode = RoleDetailMode.Create, onClose = { nav.popBackStack() })
         }
@@ -143,27 +136,12 @@ fun SettingsScreen() {
             )
         }
 
-        composable(SettingsRoutes.OIDC_MAPPINGS) { OidcRoleMappingsScreen() }
-
-        composable(SettingsRoutes.NOTIFICATIONS) {
-            NotificationSettingsScreen(onOpenProvider = { provider -> nav.navigate("notifications/${provider.wire}") })
-        }
         composable(SettingsRoutes.NOTIFICATION_PROVIDER) { entry ->
             val wire = entry.arguments?.getString("provider").orEmpty()
             val provider = NotificationProvider.entries.firstOrNull { it.wire == wire } ?: NotificationProvider.DISCORD
             NotificationProviderFormScreen(provider = provider, onBack = { nav.popBackStack() })
         }
 
-        composable(SettingsRoutes.WEBHOOKS) { WebhooksScreen() }
-        composable(SettingsRoutes.AUTHENTICATION) { AuthenticationSettingsScreen(onBack = { nav.popBackStack() }) }
-        composable(SettingsRoutes.BUILDS) { BuildSettingsScreen(onBack = { nav.popBackStack() }) }
-
-        composable(SettingsRoutes.SYSTEM) {
-            SystemSettingsScreen(
-                onOpenCategory = { id -> nav.navigate("system/$id") },
-                onUpgrade = { nav.navigate(SettingsRoutes.UPGRADE) },
-            )
-        }
         composable(SettingsRoutes.SYSTEM_CATEGORY) { entry ->
             SettingsCategoryScreen(
                 categoryId = entry.arguments?.getString("categoryId").orEmpty(),
@@ -171,9 +149,6 @@ fun SettingsScreen() {
             )
         }
         composable(SettingsRoutes.UPGRADE) { SystemUpgradeScreen(onBack = { nav.popBackStack() }) }
-
-        composable(SettingsRoutes.CONTAINER_REGISTRIES) { ContainerRegistriesScreen() }
-        composable(SettingsRoutes.TEMPLATE_REGISTRIES) { TemplateRegistriesScreen(onBack = { nav.popBackStack() }) }
     }
 }
 
@@ -181,11 +156,21 @@ fun SettingsScreen() {
 @Composable
 private fun SettingsRoot(nav: NavHostController) {
     val manager = LocalArcaneManager.current
+    val context = LocalContext.current
+    val tabsStore = remember { NavTabsStore(context) }
     val isAdmin = manager.currentUser?.isAdmin ?: false
     val supportsV2 = manager.capabilities.mode == ServerCapabilities.Mode.RBAC
+    val pinnedTabs = tabsStore.pinned.toSet()
+
+    fun visibleTabs(section: TabSection): List<AppTab> =
+        AppTab.entries.filter { tab ->
+            tab.section == section &&
+                tab !in pinnedTabs &&
+                (isAdmin || !tab.requiresAdmin) &&
+                (supportsV2 || !tab.requiresV2)
+        }
 
     var showLogoutConfirm by remember { mutableStateOf(false) }
-    var showChangeServerConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -203,75 +188,22 @@ private fun SettingsRoot(nav: NavHostController) {
         },
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-            // Server / Account
-            item(key = "server-header") { SettingsSectionHeader("Server") }
-            item(key = "active-env") {
-                SettingsRow(
-                    title = "Active Environment",
-                    subtitle = manager.activeEnvironmentName,
-                    icon = Icons.Filled.Storage,
-                    iconColor = ArcaneBlue,
-                )
-            }
-            item(key = "server-url") {
-                SettingsRow(
-                    title = "Server",
-                    subtitle = manager.serverUrl.ifEmpty { "Not configured" },
-                    icon = Icons.Filled.Link,
-                    iconColor = ArcaneBlue,
-                    onClick = { showChangeServerConfirm = true },
-                    trailing = { ChevronTrailing() },
-                )
-            }
-            item(key = "server-footer") {
-                val user = manager.currentUser
-                SettingsSectionFooter(
-                    if (user != null) "Signed in as ${user.displayUsername}. Tap the server row to switch."
-                    else "Tap the server row to switch.",
-                )
-            }
-
-            // Management
-            if (isAdmin) {
-                item(key = "mgmt-header") { SettingsSectionHeader("Management") }
-                item(key = "container-registries") {
-                    SettingsRow("Container Registries", Icons.Filled.Cloud, ArcanePurple, onClick = { nav.navigate(SettingsRoutes.CONTAINER_REGISTRIES) }, trailing = { ChevronTrailing() })
-                }
-                item(key = "template-registries") {
-                    SettingsRow("Template Registries", Icons.Filled.Description, ArcaneIndigo, onClick = { nav.navigate(SettingsRoutes.TEMPLATE_REGISTRIES) }, trailing = { ChevronTrailing() })
-                }
-            }
-
-            // Administration
-            item(key = "admin-header") { SettingsSectionHeader("Administration") }
-            item(key = "notifications") {
-                SettingsRow("Notifications", Icons.Filled.Notifications, ArcaneRed, onClick = { nav.navigate(SettingsRoutes.NOTIFICATIONS) }, trailing = { ChevronTrailing() })
-            }
-            if (isAdmin) {
-                item(key = "users") {
-                    SettingsRow("Users", Icons.Filled.Group, ArcaneBlue, onClick = { nav.navigate(SettingsRoutes.USERS) }, trailing = { ChevronTrailing() })
-                }
-                item(key = "api-keys") {
-                    SettingsRow("API Keys", Icons.Filled.VpnKey, ArcaneYellow, onClick = { nav.navigate(SettingsRoutes.API_KEYS) }, trailing = { ChevronTrailing() })
-                }
-                item(key = "webhooks") {
-                    SettingsRow("Webhooks", Icons.Filled.Webhook, ArcaneGreen, onClick = { nav.navigate(SettingsRoutes.WEBHOOKS) }, trailing = { ChevronTrailing() })
-                }
-                item(key = "authentication") {
-                    SettingsRow("Authentication", Icons.Filled.Lock, ArcaneBlue, onClick = { nav.navigate(SettingsRoutes.AUTHENTICATION) }, trailing = { ChevronTrailing() })
-                }
-                item(key = "builds") {
-                    SettingsRow("Builds", Icons.Filled.Settings, ArcaneGray, onClick = { nav.navigate(SettingsRoutes.BUILDS) }, trailing = { ChevronTrailing() })
-                }
-                item(key = "system") {
-                    SettingsRow("System Settings", Icons.Filled.Dns, ArcaneGray, onClick = { nav.navigate(SettingsRoutes.SYSTEM) }, trailing = { ChevronTrailing() })
-                }
-                if (supportsV2) {
-                    item(key = "roles") {
-                        SettingsRow("Roles", Icons.Filled.AdminPanelSettings, ArcanePurple, onClick = { nav.navigate(SettingsRoutes.ROLES) }, trailing = { ChevronTrailing() })
+            TabSection.entries.forEach { section ->
+                val tabs = visibleTabs(section)
+                if (tabs.isNotEmpty()) {
+                    item(key = "${section.name}-header") {
+                        SettingsSectionHeader(section.title)
                     }
-                    item(key = "oidc-mappings") {
-                        SettingsRow("OIDC Role Mappings", Icons.Filled.Group, ArcaneIndigo, onClick = { nav.navigate(SettingsRoutes.OIDC_MAPPINGS) }, trailing = { ChevronTrailing() })
+                    tabs.forEach { tab ->
+                        item(key = tab.id) {
+                            SettingsRow(
+                                title = tab.title,
+                                icon = tab.icon,
+                                iconColor = tab.color,
+                                onClick = { nav.navigate(tab.id) },
+                                trailing = { ChevronTrailing() },
+                            )
+                        }
                     }
                 }
             }
@@ -287,13 +219,41 @@ private fun SettingsRoot(nav: NavHostController) {
             onDismiss = { showLogoutConfirm = false },
         )
     }
-    if (showChangeServerConfirm) {
-        ConfirmDialog(
-            title = "Change Server?",
-            message = "You'll be signed out and asked for a new server URL.",
-            confirmLabel = "Change Server",
-            onConfirm = { manager.logout() },
-            onDismiss = { showChangeServerConfirm = false },
+}
+
+@Composable
+private fun SettingsTabDestination(tab: AppTab, nav: NavHostController) {
+    when (tab) {
+        AppTab.Dashboard -> DashboardScreen()
+        AppTab.Containers -> ContainersScreen()
+        AppTab.Images -> ImagesScreen()
+        AppTab.Projects -> ProjectsScreen()
+        AppTab.Volumes -> VolumesScreen()
+        AppTab.Networks -> NetworksScreen()
+        AppTab.Ports -> PortsScreen()
+        AppTab.Updates -> UpdatesScreen()
+        AppTab.Activities -> ActivitiesTab()
+        AppTab.Events -> EventsScreen()
+        AppTab.GitRepositories -> GitRepositoriesScreen()
+        AppTab.GitOps -> GitOpsScreen()
+        AppTab.Swarm -> SwarmScreen()
+        AppTab.Users -> UsersScreen(onOpenUser = { id -> nav.navigate("user/$id") })
+        AppTab.ApiKeys -> ApiKeysScreen()
+        AppTab.ContainerRegistries -> ContainerRegistriesScreen()
+        AppTab.TemplateRegistries -> TemplateRegistriesScreen(onBack = { nav.popBackStack() })
+        AppTab.Notifications -> NotificationSettingsScreen(onOpenProvider = { provider -> nav.navigate("notifications/${provider.wire}") })
+        AppTab.Webhooks -> WebhooksScreen()
+        AppTab.SystemSettings -> SystemSettingsScreen(
+            onOpenCategory = { id -> nav.navigate("system/$id") },
+            onUpgrade = { nav.navigate(SettingsRoutes.UPGRADE) },
         )
+        AppTab.Authentication -> AuthenticationSettingsScreen(onBack = { nav.popBackStack() })
+        AppTab.Builds -> BuildSettingsScreen(onBack = { nav.popBackStack() })
+        AppTab.Jobs -> JobsScreen()
+        AppTab.Roles -> RolesScreen(
+            onOpenRole = { id -> nav.navigate("role/$id") },
+            onCreateRole = { nav.navigate(SettingsRoutes.ROLE_CREATE) },
+        )
+        AppTab.OidcRoleMappings -> OidcRoleMappingsScreen()
     }
 }

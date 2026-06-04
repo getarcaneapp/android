@@ -16,13 +16,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material3.DropdownMenu
@@ -114,17 +114,17 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "Options") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             Text("Sort", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
-                            DropdownMenuItem(text = { Text("A–Z") }, onClick = { sortAsc = true; menuOpen = false }, leadingIcon = { if (sortAsc) Icon(Icons.Filled.Sort, null) })
-                            DropdownMenuItem(text = { Text("Z–A") }, onClick = { sortAsc = false; menuOpen = false }, leadingIcon = { if (!sortAsc) Icon(Icons.Filled.Sort, null) })
+                            DropdownMenuItem(text = { Text("A–Z") }, onClick = { sortAsc = true; menuOpen = false }, leadingIcon = { if (sortAsc) Icon(Icons.AutoMirrored.Filled.Sort, null) })
+                            DropdownMenuItem(text = { Text("Z–A") }, onClick = { sortAsc = false; menuOpen = false }, leadingIcon = { if (!sortAsc) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             HorizontalDivider()
                             Text("Filter", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
                             StateFilter.entries.forEach { f ->
-                                DropdownMenuItem(text = { Text(f.label) }, onClick = { filter = f; menuOpen = false }, trailingIcon = { if (filter == f) Icon(Icons.Filled.Sort, null) })
+                                DropdownMenuItem(text = { Text(f.label) }, onClick = { filter = f; menuOpen = false }, trailingIcon = { if (filter == f) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             }
                             HorizontalDivider()
                             Text("Updates", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
                             ResourceUpdateFilter.entries.forEach { f ->
-                                DropdownMenuItem(text = { Text(f.title) }, onClick = { updateFilter = f; menuOpen = false }, trailingIcon = { if (updateFilter == f) Icon(Icons.Filled.Sort, null) })
+                                DropdownMenuItem(text = { Text(f.title) }, onClick = { updateFilter = f; menuOpen = false }, trailingIcon = { if (updateFilter == f) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             }
                         }
                     }

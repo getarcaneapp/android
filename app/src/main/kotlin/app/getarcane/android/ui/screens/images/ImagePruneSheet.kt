@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -19,8 +21,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,7 +40,11 @@ import kotlinx.coroutines.launch
 private enum class PruneMode(val label: String, val apiValue: String, val description: String) {
     Dangling("Dangling Only", "dangling", "Removes only untagged images with no children."),
     All("All Unused", "all", "Removes every image not used by a container."),
-    OlderThan("Older Than...", "olderThan", "Removes unused images older than the given age (e.g. 24h, 7d)."),
+    OlderThan(
+        "Older Than...",
+        "olderThan",
+        "Removes unused images older than the given age (e.g. 24h, 7d)."
+    ),
 }
 
 /** Prune options sheet (dangling / all / olderThan) with a result summary. Mirrors iOS `ImagePruneView`. */
@@ -61,7 +65,8 @@ internal fun ImagePruneSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
 
     fun formatResult(report: ImagePruneReport): String {
         val count = report.imagesDeleted.size
-        var msg = if (count == 0) "Nothing to remove." else "Removed $count image${if (count == 1) "" else "s"}."
+        var msg =
+            if (count == 0) "Nothing to remove." else "Removed $count image${if (count == 1) "" else "s"}."
         if (report.spaceReclaimed > 0) msg += " Freed ${formatBytes(report.spaceReclaimed)}."
         return msg
     }
@@ -87,12 +92,28 @@ internal fun ImagePruneSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Prune Images", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("PRUNE MODE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                "Prune Images",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                "PRUNE MODE",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             PruneMode.entries.forEach { m ->
                 Row(
-                    Modifier.fillMaxWidth().selectable(selected = mode == m, onClick = { mode = m }).padding(vertical = 6.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .selectable(selected = mode == m, onClick = { mode = m })
+                        .padding(vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -100,7 +121,11 @@ internal fun ImagePruneSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
                     Text(m.label, style = MaterialTheme.typography.bodyLarge)
                 }
             }
-            Text(mode.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                mode.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             if (mode == PruneMode.OlderThan) {
                 OutlinedTextField(
@@ -109,17 +134,24 @@ internal fun ImagePruneSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
                     label = { Text("Older than") },
                     placeholder = { Text("e.g. 24h, 7d") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
                 )
             }
 
             Button(
                 onClick = { runPrune() },
                 enabled = !isPruning,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
             ) {
                 if (isPruning) {
-                    CircularProgressIndicator(Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                    CircularProgressIndicator(
+                        Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
                 } else {
                     Icon(Icons.Filled.Delete, null, modifier = Modifier.size(18.dp))
                     Text("  Prune")
@@ -133,7 +165,11 @@ internal fun ImagePruneSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
             onDismissRequest = { resultMessage = null; onDismiss() },
             title = { Text("Prune complete") },
             text = { Text(msg) },
-            confirmButton = { TextButton(onClick = { resultMessage = null; onDismiss() }) { Text("OK") } },
+            confirmButton = {
+                TextButton(onClick = {
+                    resultMessage = null; onDismiss()
+                }) { Text("OK") }
+            },
         )
     }
 

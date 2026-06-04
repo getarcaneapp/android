@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.ArrowCircleUp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -27,7 +28,6 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
@@ -58,13 +58,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
+import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
-import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
@@ -188,19 +187,34 @@ fun ImageListScreen(
                 actions = {
                     // Options menu (sort / filter / updates / vulnerabilities / upload).
                     Box {
-                        IconButton(onClick = { optionsMenu = true }) { Icon(Icons.Filled.MoreVert, "More options") }
-                        DropdownMenu(expanded = optionsMenu, onDismissRequest = { optionsMenu = false }) {
-                            Text("Sort", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp))
+                        IconButton(onClick = { optionsMenu = true }) {
+                            Icon(
+                                Icons.Filled.MoreVert,
+                                "More options"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = optionsMenu,
+                            onDismissRequest = { optionsMenu = false }) {
+                            Text(
+                                "Sort",
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(
+                                    start = 12.dp,
+                                    top = 8.dp,
+                                    bottom = 4.dp
+                                )
+                            )
                             DropdownMenuItem(
                                 text = { Text("Name (A–Z)") },
                                 onClick = { sortAsc = true; optionsMenu = false },
-                                leadingIcon = { Icon(Icons.Filled.Sort, null) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, null) },
                                 trailingIcon = { if (sortAsc) Icon(Icons.Filled.Check, null) },
                             )
                             DropdownMenuItem(
                                 text = { Text("Name (Z–A)") },
                                 onClick = { sortAsc = false; optionsMenu = false },
-                                leadingIcon = { Icon(Icons.Filled.Sort, null) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.Sort, null) },
                                 trailingIcon = { if (!sortAsc) Icon(Icons.Filled.Check, null) },
                             )
                             DropdownMenuItem(
@@ -227,11 +241,23 @@ fun ImageListScreen(
                         }
                     }
                     // Pull image.
-                    IconButton(onClick = { showPullSheet = true }) { Icon(Icons.Filled.Download, "Pull image") }
+                    IconButton(onClick = { showPullSheet = true }) {
+                        Icon(
+                            Icons.Filled.Download,
+                            "Pull image"
+                        )
+                    }
                     // Prune menu.
                     Box {
-                        IconButton(onClick = { pruneMenu = true }) { Icon(Icons.Filled.Delete, "Prune images") }
-                        DropdownMenu(expanded = pruneMenu, onDismissRequest = { pruneMenu = false }) {
+                        IconButton(onClick = { pruneMenu = true }) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                "Prune images"
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = pruneMenu,
+                            onDismissRequest = { pruneMenu = false }) {
                             DropdownMenuItem(
                                 text = { Text("Quick Prune (Dangling)") },
                                 onClick = { pruneMenu = false; confirmDanglingPrune = true },
@@ -248,14 +274,18 @@ fun ImageListScreen(
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
                 placeholder = { Text("Search images") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             )
             PullToRefreshBox(
                 isRefreshing = refreshing,
@@ -264,7 +294,13 @@ fun ImageListScreen(
             ) {
                 when (val s = state) {
                     is Loadable.Loading -> SkeletonListLoadingView()
-                    is Loadable.Error -> ContentUnavailable("Error", Icons.Filled.Warning, s.message, "Retry") { refreshKey++ }
+                    is Loadable.Error -> ContentUnavailable(
+                        "Error",
+                        Icons.Filled.Warning,
+                        s.message,
+                        "Retry"
+                    ) { refreshKey++ }
+
                     is Loadable.Success -> {
                         if (s.value.isEmpty()) {
                             ContentUnavailable(
@@ -277,8 +313,8 @@ fun ImageListScreen(
                             val query = search.trim()
                             val filtered = s.value.filter { image ->
                                 val matchesSearch = query.isEmpty() ||
-                                    image.displayName.contains(query, true) ||
-                                    image.id.contains(query, true)
+                                        image.displayName.contains(query, true) ||
+                                        image.id.contains(query, true)
                                 val isTagged = image.repoTags.any { it != "<none>:<none>" }
                                 val matchesTags = when (tagsFilter) {
                                     TagsFilter.All -> true
@@ -286,15 +322,25 @@ fun ImageListScreen(
                                     TagsFilter.Untagged -> !isTagged
                                 }
                                 matchesSearch && matchesTags
-                            }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
+                            }
+                                .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
                                 .let { if (sortAsc) it else it.reversed() }
 
                             val used = filtered.filter { it.inUse }
                             val unused = filtered.filterNot { it.inUse }
 
-                            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+                            LazyColumn(
+                                Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(bottom = 16.dp)
+                            ) {
                                 imageSection("Used", used, ::updateStateFor, onOpen, ::removeImage)
-                                imageSection("Unused", unused, ::updateStateFor, onOpen, ::removeImage)
+                                imageSection(
+                                    "Unused",
+                                    unused,
+                                    ::updateStateFor,
+                                    onOpen,
+                                    ::removeImage
+                                )
                             }
                         }
                     }
@@ -309,10 +355,14 @@ fun ImageListScreen(
             title = { Text("Prune Dangling Images") },
             text = { Text("Remove all dangling images. This cannot be undone.") },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { confirmDanglingPrune = false; quickPrune() }) { Text("Prune") }
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmDanglingPrune = false; quickPrune()
+                }) { Text("Prune") }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { confirmDanglingPrune = false }) { Text("Cancel") }
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmDanglingPrune = false
+                }) { Text("Cancel") }
             },
         )
     }
@@ -383,11 +433,24 @@ private fun ImageRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
-                Modifier.size(36.dp).background(ArcanePurple, CircleShape),
+                Modifier
+                    .size(36.dp)
+                    .background(ArcanePurple, CircleShape),
                 contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.Layers, null, tint = Color.White, modifier = Modifier.size(20.dp)) }
+            ) {
+                Icon(
+                    Icons.Filled.Layers,
+                    null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
 
-            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text(
                     image.displayName,
                     style = MaterialTheme.typography.titleMedium,
@@ -417,10 +480,27 @@ private fun UpdateStateBadge(state: ImageUpdateState) {
     when (state) {
         is ImageUpdateState.Unknown -> Unit
         is ImageUpdateState.UpToDate ->
-            Icon(Icons.Filled.CheckCircle, "Up to date", tint = ArcaneGreen, modifier = Modifier.size(16.dp))
+            Icon(
+                Icons.Filled.CheckCircle,
+                "Up to date",
+                tint = ArcaneGreen,
+                modifier = Modifier.size(16.dp)
+            )
+
         is ImageUpdateState.HasUpdate ->
-            Icon(Icons.Filled.ArrowCircleUp, "Update available", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+            Icon(
+                Icons.Filled.ArrowCircleUp,
+                "Update available",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+
         is ImageUpdateState.Error ->
-            Icon(Icons.Filled.Warning, "Update check failed", tint = ArcaneRed, modifier = Modifier.size(16.dp))
+            Icon(
+                Icons.Filled.Warning,
+                "Update check failed",
+                tint = ArcaneRed,
+                modifier = Modifier.size(16.dp)
+            )
     }
 }

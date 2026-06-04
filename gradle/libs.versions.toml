@@ -1,5 +1,5 @@
 [versions]
-agp = "9.1.1"
+agp = "9.2.1"
 kotlin = "2.2.10"
 coreKtx = "1.13.1"
 lifecycle = "2.8.7"
@@ -33,8 +33,8 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 coil-svg = { group = "io.coil-kt", name = "coil-svg", version.ref = "coil" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
-# Arcane SDK — resolved from Git (or the local checkout via -Parcane.localSdk). No version is
-# declared here; the git source dependency's branch is pinned at the use-site in app/build.gradle.kts.
+# Arcane SDK — resolved from the sibling checkout when present, otherwise from Git. No version is
+# declared here; the Git source dependency's branch is pinned at the use-site in app/build.gradle.kts.
 arcane-core = { group = "app.getarcane", name = "arcane-core" }
 arcane-android = { group = "app.getarcane", name = "arcane-android" }
 

@@ -17,12 +17,12 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lan
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.Lan
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -116,12 +116,12 @@ fun NetworkListScreen(onOpen: (String) -> Unit) {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More options") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             Text("Sort", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
-                            DropdownMenuItem(text = { Text("A–Z") }, onClick = { sortAsc = true; menuOpen = false }, trailingIcon = { if (sortAsc) Icon(Icons.Filled.Sort, null) })
-                            DropdownMenuItem(text = { Text("Z–A") }, onClick = { sortAsc = false; menuOpen = false }, trailingIcon = { if (!sortAsc) Icon(Icons.Filled.Sort, null) })
+                            DropdownMenuItem(text = { Text("A–Z") }, onClick = { sortAsc = true; menuOpen = false }, trailingIcon = { if (sortAsc) Icon(Icons.AutoMirrored.Filled.Sort, null) })
+                            DropdownMenuItem(text = { Text("Z–A") }, onClick = { sortAsc = false; menuOpen = false }, trailingIcon = { if (!sortAsc) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             HorizontalDivider()
                             Text("Type", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
                             TypeFilter.entries.forEach { f ->
-                                DropdownMenuItem(text = { Text(f.label) }, onClick = { typeFilter = f; menuOpen = false }, trailingIcon = { if (typeFilter == f) Icon(Icons.Filled.Sort, null) })
+                                DropdownMenuItem(text = { Text(f.label) }, onClick = { typeFilter = f; menuOpen = false }, trailingIcon = { if (typeFilter == f) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             }
                         }
                     }
@@ -312,7 +312,7 @@ private fun CreateNetworkDialog(onDismiss: () -> Unit, onCreate: (name: String, 
                         readOnly = true,
                         label = { Text("Driver") },
                         modifier = Modifier.fillMaxWidth(),
-                        trailingIcon = { IconButton(onClick = { driverMenu = true }) { Icon(Icons.Filled.Sort, null) } },
+                        trailingIcon = { IconButton(onClick = { driverMenu = true }) { Icon(Icons.AutoMirrored.Filled.Sort, null) } },
                     )
                     DropdownMenu(expanded = driverMenu, onDismissRequest = { driverMenu = false }) {
                         drivers.forEach { d ->

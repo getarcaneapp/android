@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -93,6 +94,7 @@ fun LoginScreen() {
     val bg = MaterialTheme.colorScheme.background
     val isSetup = manager.authStatus == AuthStatus.SETUP
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
 
     var url by rememberSaveable { mutableStateOf(manager.serverUrl) }
     var username by rememberSaveable { mutableStateOf("") }
@@ -175,6 +177,7 @@ fun LoginScreen() {
                         focusManager.clearFocus()
                         manager.configure(url)
                     },
+                    onOidcSignIn = { manager.startOidcSignIn(context) },
                     signInEnabled = username.isNotBlank() && password.isNotBlank(),
                     onSignIn = {
                         focusManager.clearFocus()
@@ -338,6 +341,7 @@ private fun Actions(
     brand: Color,
     connectEnabled: Boolean,
     onConnect: () -> Unit,
+    onOidcSignIn: () -> Unit,
     signInEnabled: Boolean,
     onSignIn: () -> Unit,
     showPassword: Boolean,
@@ -361,7 +365,7 @@ private fun Actions(
                     icon = Icons.Filled.VpnKey,
                     enabled = !manager.isLoading,
                     loading = false,
-                    onClick = { /* OIDC browser flow wired via OidcAuthenticator */ },
+                    onClick = onOidcSignIn,
                 )
             }
             if (manager.isOidcAvailable) {
@@ -498,7 +502,7 @@ private fun FieldRow(
                 keyboardType = keyboardType,
                 imeAction = imeAction,
                 capitalization = KeyboardCapitalization.None,
-                autoCorrect = false,
+                autoCorrectEnabled = false,
             ),
             keyboardActions = keyboardActions,
             visualTransformation = visualTransformation,

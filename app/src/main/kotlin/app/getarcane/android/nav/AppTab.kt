@@ -3,7 +3,6 @@ package app.getarcane.android.nav
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Autorenew
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Dns
@@ -58,24 +57,24 @@ enum class AppTab(
     val requiresV2: Boolean = false,
     val isEnvironmentScoped: Boolean = false,
 ) {
-    Dashboard("dashboard", "Dashboard", "Dashboard", Icons.Filled.SpaceDashboard, ArcaneBlue, TabSection.Management),
+    Dashboard("dashboard", "Dashboard", "Dashboard", Icons.Filled.SpaceDashboard, ArcaneBlue, TabSection.Management, isEnvironmentScoped = true),
     Projects("projects", "Projects", "Projects", Icons.Filled.FolderSpecial, ArcaneBlue, TabSection.Management, isEnvironmentScoped = true),
-    ContainerRegistries("containerRegistries", "Container Registries", "Registries", Icons.Filled.Cloud, ArcanePurple, TabSection.Management),
-    TemplateRegistries("templateRegistries", "Template Registries", "Templates", Icons.Filled.Layers, ArcaneIndigo, TabSection.Management),
-    GitRepositories("gitRepositories", "Git Repositories", "Git Repos", Icons.Filled.Source, ArcaneIndigo, TabSection.Management),
-    GitOps("gitOps", "GitOps", "GitOps", Icons.Filled.Sync, ArcaneIndigo, TabSection.Management, isEnvironmentScoped = true),
+    ContainerRegistries("containerRegistries", "Container Registries", "Registries", Icons.Filled.Cloud, ArcanePurple, TabSection.Management, requiresAdmin = true),
+    TemplateRegistries("templateRegistries", "Template Registries", "Templates", Icons.Filled.Layers, ArcaneIndigo, TabSection.Management, requiresAdmin = true),
+    GitRepositories("gitRepositories", "Git Repositories", "Git Repos", Icons.Filled.Source, ArcaneIndigo, TabSection.Management, requiresAdmin = true),
+    GitOps("gitOps", "GitOps", "GitOps", Icons.Filled.Sync, ArcaneIndigo, TabSection.Management, requiresAdmin = true, isEnvironmentScoped = true),
 
     Containers("containers", "Containers", "Containers", Icons.Filled.Inventory2, ArcaneBlue, TabSection.Resources, isEnvironmentScoped = true),
-    Images("images", "Images", "Images", Icons.Filled.Layers, ArcanePurple, TabSection.Resources, isEnvironmentScoped = true),
-    Builds("builds", "Builds", "Builds", Icons.Filled.Build, ArcaneOrange, TabSection.Resources, isEnvironmentScoped = true),
-    Updates("updates", "Updates", "Updates", Icons.Filled.Autorenew, ArcaneGreen, TabSection.Resources, isEnvironmentScoped = true),
+    Images("images", "Images", "Images", Icons.Filled.Layers, ArcaneBlue, TabSection.Resources, isEnvironmentScoped = true),
+    Builds("builds", "Builds", "Builds", Icons.Filled.Build, ArcaneOrange, TabSection.Resources, requiresAdmin = true),
+    Updates("updates", "Updates", "Updates", Icons.Filled.Autorenew, ArcaneGreen, TabSection.Resources),
     Networks("networks", "Networks", "Networks", Icons.Filled.Lan, ArcaneTeal, TabSection.Resources, isEnvironmentScoped = true),
     Ports("ports", "Ports", "Ports", Icons.Filled.SettingsEthernet, ArcaneCyan, TabSection.Resources, isEnvironmentScoped = true),
     Volumes("volumes", "Volumes", "Volumes", Icons.Filled.Storage, ArcaneOrange, TabSection.Resources, isEnvironmentScoped = true),
-    Jobs("jobs", "Jobs", "Jobs", Icons.Filled.Schedule, ArcanePink, TabSection.Resources, isEnvironmentScoped = true),
-    Activities("activities", "Activities", "Activities", Icons.Filled.Bolt, ArcaneYellow, TabSection.Resources, requiresV2 = true),
+    Jobs("jobs", "Jobs", "Jobs", Icons.Filled.Schedule, ArcanePink, TabSection.Resources, requiresAdmin = true, isEnvironmentScoped = true),
+    Activities("activities", "Activities", "Activity", Icons.Filled.History, ArcaneOrange, TabSection.Resources, requiresV2 = true),
 
-    Swarm("swarm", "Swarm", "Swarm", Icons.Filled.Hub, ArcaneMint, TabSection.Swarm, isEnvironmentScoped = true),
+    Swarm("swarm", "Swarm", "Swarm", Icons.Filled.Hub, ArcaneMint, TabSection.Swarm, requiresAdmin = true),
 
     Events("events", "Events", "Events", Icons.Filled.History, ArcaneRed, TabSection.Administration),
     Users("users", "Users", "Users", Icons.Filled.Groups, ArcaneBlue, TabSection.Administration, requiresAdmin = true),

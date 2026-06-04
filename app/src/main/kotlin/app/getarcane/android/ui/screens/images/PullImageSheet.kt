@@ -110,7 +110,10 @@ internal fun PullImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
         errorMessage = null
         pullJob = scope.launch {
             try {
-                client.images.pullStream(envId = envId, options = ImagePullOptions(imageName = image, tag = tag))
+                client.images.pullStream(
+                    envId = envId,
+                    options = ImagePullOptions(imageName = image, tag = tag)
+                )
                     .collect { apply(it) }
                 if (errorMessage == null) {
                     didComplete = true
@@ -130,8 +133,17 @@ internal fun PullImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
     }
 
     ModalBottomSheet(onDismissRequest = { if (!isPulling) onDismiss() }, sheetState = sheetState) {
-        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Pull Image", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "Pull Image",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
             OutlinedTextField(
                 value = imageName,
                 onValueChange = { imageName = it },
@@ -143,27 +155,44 @@ internal fun PullImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
             )
 
             if (statusLine.isNotEmpty()) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Icon(
                         if (didComplete) Icons.Filled.CheckCircle else Icons.Filled.Download,
                         null,
                         tint = if (didComplete) ArcaneGreen else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.size(18.dp),
                     )
-                    Text(statusLine, style = MaterialTheme.typography.bodyMedium, color = if (didComplete) ArcaneGreen else MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        statusLine,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (didComplete) ArcaneGreen else MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
 
             errorMessage?.let {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Filled.Warning, null, tint = ArcaneRed, modifier = Modifier.size(18.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Warning,
+                        null,
+                        tint = ArcaneRed,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = ArcaneRed)
                 }
             }
 
             if (layerOrder.isNotEmpty()) {
                 LazyColumn(
-                    Modifier.fillMaxWidth().heightIn(max = 260.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 260.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     items(layerOrder.toList(), key = { it }) { id ->
@@ -183,7 +212,10 @@ internal fun PullImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
                         enabled = imageName.isNotEmpty() && !isPulling,
                         modifier = Modifier.weight(1f),
                     ) {
-                        if (isPulling) CircularProgressIndicator(Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                        if (isPulling) CircularProgressIndicator(
+                            Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
                         else Text("Pull")
                     }
                 } else {
@@ -224,8 +256,13 @@ private fun LayerRow(event: PullProgressEvent) {
                     modifier = Modifier.fillMaxWidth(),
                     color = progressTint(event.status),
                 )
+
             statusLower.contains("complete") || statusLower.contains("exists") ->
-                LinearProgressIndicator(progress = { 1f }, modifier = Modifier.fillMaxWidth(), color = ArcaneGreen)
+                LinearProgressIndicator(
+                    progress = { 1f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = ArcaneGreen
+                )
         }
     }
 }

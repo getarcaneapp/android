@@ -16,8 +16,8 @@ android {
         applicationId = "app.getarcane.android"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 260602
+        versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -47,13 +47,15 @@ kotlin {
     }
 }
 
-// Arcane SDK source: the public Git repo's `main` branch by default, or the sibling checkout when
-// built with -Parcane.localSdk (kept in sync with settings.gradle.kts). The composite build ignores
-// the version constraint and substitutes the local modules, so the branch is only used for git.
-val arcaneFromGit = !providers.gradleProperty("arcane.localSdk").isPresent
+// Arcane SDK source: the sibling checkout when present, or the public Git repo's `main` branch
+// when built with -Parcane.remoteSdk or without the sibling checkout (kept in sync with
+// settings.gradle.kts). The composite build ignores the version constraint and substitutes the
+// local modules, so the branch is only used for git.
+val localArcaneSdk = rootProject.layout.projectDirectory.dir("../libarcane-kotlin").asFile
+val arcaneFromGit = providers.gradleProperty("arcane.remoteSdk").isPresent || !localArcaneSdk.isDirectory
 
 dependencies {
-    // Arcane SDK — resolved from git (default) or the sibling checkout (-Parcane.localSdk).
+    // Arcane SDK — resolved from the sibling checkout when present, otherwise from Git.
     if (arcaneFromGit) {
         implementation(libs.arcane.core) { version { branch = "main" } }
         implementation(libs.arcane.android) { version { branch = "main" } }

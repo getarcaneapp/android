@@ -25,7 +25,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.formatBytes
@@ -108,16 +106,18 @@ internal fun UploadImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
                     context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 } ?: throw IllegalStateException("Couldn't read the selected file.")
 
-                client.images.uploadStream(envId = envId, content = bytes, filename = pickedName).collect { event ->
-                    event.error?.takeIf { it.isNotEmpty() }?.let { errorMessage = it; return@collect }
-                    val detail = event.progressDetail
-                    val total = detail?.total ?: 0L
-                    val current = detail?.current
-                    if (total > 0L && current != null) {
-                        progress = minOf(current, total).toFloat() / total.toFloat()
+                client.images.uploadStream(envId = envId, content = bytes, filename = pickedName)
+                    .collect { event ->
+                        event.error?.takeIf { it.isNotEmpty() }
+                            ?.let { errorMessage = it; return@collect }
+                        val detail = event.progressDetail
+                        val total = detail?.total ?: 0L
+                        val current = detail?.current
+                        if (total > 0L && current != null) {
+                            progress = minOf(current, total).toFloat() / total.toFloat()
+                        }
+                        event.status?.takeIf { it.isNotEmpty() }?.let { aggregated.appendLine(it) }
                     }
-                    event.status?.takeIf { it.isNotEmpty() }?.let { aggregated.appendLine(it) }
-                }
                 progress = 1f
                 output = aggregated.toString().trim().ifEmpty { "Upload complete." }
                 onComplete()
@@ -132,18 +132,40 @@ internal fun UploadImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
         }
     }
 
-    ModalBottomSheet(onDismissRequest = { if (!isUploading) onDismiss() }, sheetState = sheetState) {
-        Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Upload Image", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+    ModalBottomSheet(
+        onDismissRequest = { if (!isUploading) onDismiss() },
+        sheetState = sheetState
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                "Upload Image",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
 
             if (pickedUri != null) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(pickedName, style = MaterialTheme.typography.bodyMedium)
-                    Text(formatBytes(pickedSize), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        formatBytes(pickedSize),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                OutlinedButton(onClick = { picker.launch("*/*") }, enabled = !isUploading) { Text("Change file…") }
+                OutlinedButton(
+                    onClick = { picker.launch("*/*") },
+                    enabled = !isUploading
+                ) { Text("Change file…") }
             } else {
-                OutlinedButton(onClick = { picker.launch("*/*") }, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(
+                    onClick = { picker.launch("*/*") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Icon(Icons.Filled.FolderZip, null, modifier = Modifier.size(18.dp))
                     Text("  Choose tarball…")
                 }
@@ -156,24 +178,47 @@ internal fun UploadImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
 
             if (isUploading) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                    Text("${(progress * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "${(progress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
             output?.takeIf { it.isNotEmpty() }?.let {
-                Text("RESULT", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "RESULT",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp).verticalScroll(rememberScrollState()),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 200.dp)
+                        .verticalScroll(rememberScrollState()),
                 )
             }
 
             errorMessage?.let {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Filled.Warning, null, tint = ArcaneRed, modifier = Modifier.size(18.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.Warning,
+                        null,
+                        tint = ArcaneRed,
+                        modifier = Modifier.size(18.dp)
+                    )
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = ArcaneRed)
                 }
             }
@@ -191,7 +236,10 @@ internal fun UploadImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
                         enabled = pickedUri != null && !isUploading,
                         modifier = Modifier.weight(1f),
                     ) {
-                        if (isUploading) CircularProgressIndicator(Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
+                        if (isUploading) CircularProgressIndicator(
+                            Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
                         else Text("Upload")
                     }
                 }

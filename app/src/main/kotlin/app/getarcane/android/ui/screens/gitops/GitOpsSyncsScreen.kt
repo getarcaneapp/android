@@ -107,26 +107,52 @@ fun GitOpsSyncsScreen() {
         topBar = {
             TopAppBar(
                 title = { Text("GitOps") },
-                actions = { IconButton(onClick = { showCreate = true }) { Icon(Icons.Filled.Add, "Create GitOps Sync") } },
+                actions = {
+                    IconButton(onClick = { showCreate = true }) {
+                        Icon(
+                            Icons.Filled.Add,
+                            "Create GitOps Sync"
+                        )
+                    }
+                },
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
                 placeholder = { Text("Search gitops") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             )
             when (val s = state) {
-                is Loadable.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-                is Loadable.Error -> ContentUnavailable("Error", Icons.AutoMirrored.Filled.CallSplit, s.message, "Refresh") { refreshKey++ }
+                is Loadable.Loading -> Box(
+                    Modifier.fillMaxSize(),
+                    Alignment.Center
+                ) { CircularProgressIndicator() }
+
+                is Loadable.Error -> ContentUnavailable(
+                    "Error",
+                    Icons.AutoMirrored.Filled.CallSplit,
+                    s.message,
+                    "Refresh"
+                ) { refreshKey++ }
+
                 is Loadable.Success -> {
                     val q = search.trim()
                     val filtered = s.value
-                        .filter { q.isEmpty() || it.name.contains(q, true) || it.projectName.contains(q, true) || it.branch.contains(q, true) }
+                        .filter {
+                            q.isEmpty() || it.name.contains(
+                                q,
+                                true
+                            ) || it.projectName.contains(q, true) || it.branch.contains(q, true)
+                        }
                         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                     if (s.value.isEmpty()) {
                         ContentUnavailable("No GitOps Syncs", Icons.AutoMirrored.Filled.CallSplit)
@@ -134,9 +160,19 @@ fun GitOpsSyncsScreen() {
                         LazyColumn(Modifier.fillMaxSize()) {
                             actionMessage?.let { msg ->
                                 item(key = "action-msg") {
-                                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
                                         Icon(Icons.Filled.CheckCircle, null, tint = ArcaneGreen)
-                                        Text(msg, color = ArcaneGreen, style = MaterialTheme.typography.bodyMedium)
+                                        Text(
+                                            msg,
+                                            color = ArcaneGreen,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
                                     }
                                 }
                             }
@@ -144,7 +180,14 @@ fun GitOpsSyncsScreen() {
                                 SyncRow(
                                     sync = sync,
                                     onClick = { details = sync },
-                                    onSync = { act("Sync") { client!!.gitops.performSync(sync.id, envId = envId) } },
+                                    onSync = {
+                                        act("Sync") {
+                                            client!!.gitops.performSync(
+                                                sync.id,
+                                                envId = envId
+                                            )
+                                        }
+                                    },
                                     onDelete = { confirmDelete = sync },
                                 )
                                 HorizontalDivider(Modifier.padding(start = 16.dp))
@@ -197,7 +240,12 @@ fun GitOpsSyncsScreen() {
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-private fun SyncRow(sync: GitOpsSync, onClick: () -> Unit, onSync: () -> Unit, onDelete: () -> Unit) {
+private fun SyncRow(
+    sync: GitOpsSync,
+    onClick: () -> Unit,
+    onSync: () -> Unit,
+    onDelete: () -> Unit
+) {
     var menu by remember { mutableStateOf(false) }
     Box {
         ListItem(
@@ -210,12 +258,26 @@ private fun SyncRow(sync: GitOpsSync, onClick: () -> Unit, onSync: () -> Unit, o
                 }
                 Text(sub, maxLines = 2, overflow = TextOverflow.Ellipsis)
             },
-            trailingContent = { sync.lastSyncStatus?.let { Text(it.uppercase(), style = MaterialTheme.typography.labelSmall, color = syncStatusColor(it)) } },
+            trailingContent = {
+                sync.lastSyncStatus?.let {
+                    Text(
+                        it.uppercase(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = syncStatusColor(it)
+                    )
+                }
+            },
             modifier = Modifier.combinedClickable(onClick = onClick, onLongClick = { menu = true }),
         )
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Sync Now") }, onClick = { menu = false; onSync() }, leadingIcon = { Icon(Icons.Filled.Sync, null) })
-            DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Filled.Delete, null) })
+            DropdownMenuItem(
+                text = { Text("Sync Now") },
+                onClick = { menu = false; onSync() },
+                leadingIcon = { Icon(Icons.Filled.Sync, null) })
+            DropdownMenuItem(
+                text = { Text("Delete") },
+                onClick = { menu = false; onDelete() },
+                leadingIcon = { Icon(Icons.Filled.Delete, null) })
         }
     }
 }
@@ -234,11 +296,20 @@ private fun GitOpsSyncDetailsDialog(sync: GitOpsSync, onDismiss: () -> Unit) {
                 DetailLine("Auto Sync", if (sync.autoSync) "Yes" else "No")
                 DetailLine("Sync Interval", "${sync.syncInterval}s")
                 sync.lastSyncStatus?.let { DetailLine("Last Sync Status", it) }
-                sync.lastSyncAt?.let { DetailLine("Last Sync", relativeTime(it.toEpochMilliseconds())) }
+                sync.lastSyncAt?.let {
+                    DetailLine(
+                        "Last Sync",
+                        relativeTime(it.toEpochMilliseconds())
+                    )
+                }
                 sync.lastSyncCommit?.let { DetailLine("Last Commit", it) }
                 sync.lastSyncError?.takeIf { it.isNotEmpty() }?.let {
                     Column {
-                        Text("Last Error", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Last Error",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Text(it, style = MaterialTheme.typography.bodyMedium, color = ArcaneRed)
                     }
                 }
@@ -252,17 +323,22 @@ private fun GitOpsSyncDetailsDialog(sync: GitOpsSync, onDismiss: () -> Unit) {
 @Composable
 private fun DetailLine(label: String, value: String) {
     Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
-private fun syncStatusColor(status: String): androidx.compose.ui.graphics.Color = when (status.lowercase()) {
-    "success", "synced", "ok" -> ArcaneGreen
-    "error", "failed" -> ArcaneRed
-    "pending", "syncing", "in_progress" -> ArcaneOrange
-    else -> ArcaneGray
-}
+private fun syncStatusColor(status: String): androidx.compose.ui.graphics.Color =
+    when (status.lowercase()) {
+        "success", "synced", "ok" -> ArcaneGreen
+        "error", "failed" -> ArcaneRed
+        "pending", "syncing", "in_progress" -> ArcaneOrange
+        else -> ArcaneGray
+    }
 
 /** Collected GitOps sync form values. */
 private data class GitOpsSyncForm(
@@ -287,24 +363,77 @@ private fun GitOpsSyncFormSheet(onDismiss: () -> Unit, onSubmit: (GitOpsSyncForm
     var composePath by remember { mutableStateOf("") }
     var autoSync by remember { mutableStateOf(true) }
 
-    val canSave = name.trim().isNotEmpty() && repositoryId.trim().isNotEmpty() && composePath.trim().isNotEmpty()
+    val canSave = name.trim().isNotEmpty() && repositoryId.trim().isNotEmpty() && composePath.trim()
+        .isNotEmpty()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Create GitOps Sync", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                TextButton(onClick = { onSubmit(GitOpsSyncForm(name.trim(), repositoryId.trim(), branch.trim(), composePath.trim(), autoSync)) }, enabled = canSave) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Create GitOps Sync",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                TextButton(onClick = {
+                    onSubmit(
+                        GitOpsSyncForm(
+                            name.trim(),
+                            repositoryId.trim(),
+                            branch.trim(),
+                            composePath.trim(),
+                            autoSync
+                        )
+                    )
+                }, enabled = canSave) {
                     Text("Save")
                 }
             }
-            OutlinedTextField(name, { name = it }, label = { Text("Name *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(repositoryId, { repositoryId = it }, label = { Text("Repository ID *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(branch, { branch = it }, label = { Text("Branch") }, placeholder = { Text("main") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(composePath, { composePath = it }, label = { Text("Path *") }, placeholder = { Text("docker-compose.yml") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                name,
+                { name = it },
+                label = { Text("Name *") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                repositoryId,
+                { repositoryId = it },
+                label = { Text("Repository ID *") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                branch,
+                { branch = it },
+                label = { Text("Branch") },
+                placeholder = { Text("main") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                composePath,
+                { composePath = it },
+                label = { Text("Path *") },
+                placeholder = { Text("docker-compose.yml") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text("Auto Sync", style = MaterialTheme.typography.bodyLarge)
                 Switch(checked = autoSync, onCheckedChange = { autoSync = it })
             }

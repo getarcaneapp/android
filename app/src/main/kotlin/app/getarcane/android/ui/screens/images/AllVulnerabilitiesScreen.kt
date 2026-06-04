@@ -82,7 +82,8 @@ fun AllVulnerabilitiesScreen(onBack: () -> Unit) {
         if (client == null) return
         isLoading = true
         try {
-            val sevParam = selectedSeverities.takeIf { it.isNotEmpty() }?.joinToString(",") { it.wire }
+            val sevParam =
+                selectedSeverities.takeIf { it.isNotEmpty() }?.joinToString(",") { it.wire }
             val response = client.vulnerabilities.listAll(
                 envId = envId,
                 query = SearchPaginationSort(start = page * ALL_PAGE_SIZE, limit = ALL_PAGE_SIZE),
@@ -106,9 +107,11 @@ fun AllVulnerabilitiesScreen(onBack: () -> Unit) {
 
     LaunchedEffect(reloadTick) {
         if (client == null) return@LaunchedEffect
-        summary = runCatching { client.vulnerabilities.environmentSummary(envId = envId) }.getOrNull()
+        summary =
+            runCatching { client.vulnerabilities.environmentSummary(envId = envId) }.getOrNull()
         runCatching {
-            val sevParam = selectedSeverities.takeIf { it.isNotEmpty() }?.joinToString(",") { it.wire }
+            val sevParam =
+                selectedSeverities.takeIf { it.isNotEmpty() }?.joinToString(",") { it.wire }
             client.vulnerabilities.imageOptions(envId = envId, severity = sevParam)
         }.getOrNull()?.let { opts -> imageOptions.clear(); imageOptions.addAll(opts) }
         reload()
@@ -119,7 +122,14 @@ fun AllVulnerabilitiesScreen(onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("All Vulnerabilities") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            "Back"
+                        )
+                    }
+                },
                 actions = {
                     IconButton(onClick = { showFilterSheet = true }) {
                         Icon(
@@ -135,16 +145,30 @@ fun AllVulnerabilitiesScreen(onBack: () -> Unit) {
         PullToRefreshBox(
             isRefreshing = refreshing,
             onRefresh = { refreshing = true; reloadTick++ },
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
         ) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 item {
                     DetailSection("Environment Summary") { SummaryCard(summary) }
                 }
 
                 if (items.isNotEmpty()) {
-                    item { Text("FINDINGS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(items.size, key = { idx -> "${items[idx].imageId}|${items[idx].vulnerabilityId}|${items[idx].pkgName}#$idx" }) { idx ->
+                    item {
+                        Text(
+                            "FINDINGS",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    items(
+                        items.size,
+                        key = { idx -> "${items[idx].imageId}|${items[idx].vulnerabilityId}|${items[idx].pkgName}#$idx" }) { idx ->
                         val item = items[idx]
                         var showDetail by remember(item, idx) { mutableStateOf(false) }
                         VulnerabilityWithImageRow(item) { showDetail = true }
@@ -154,7 +178,10 @@ fun AllVulnerabilitiesScreen(onBack: () -> Unit) {
                     }
                     if (hasMore) {
                         item {
-                            TextButton(onClick = { page += 1; scope.launch { loadItems() } }, modifier = Modifier.fillMaxWidth()) {
+                            TextButton(
+                                onClick = { page += 1; scope.launch { loadItems() } },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
                                 Text("Load More")
                             }
                         }
@@ -178,7 +205,11 @@ fun AllVulnerabilitiesScreen(onBack: () -> Unit) {
             imageOptions = imageOptions,
             selectedImage = selectedImage,
             onSelectImage = { selectedImage = it },
-            onToggleSeverity = { sev, on -> if (on) selectedSeverities.add(sev) else selectedSeverities.remove(sev) },
+            onToggleSeverity = { sev, on ->
+                if (on) selectedSeverities.add(sev) else selectedSeverities.remove(
+                    sev
+                )
+            },
             onReset = { selectedSeverities.clear(); selectedImage = null },
             onDone = { showFilterSheet = false; reloadTick++ },
             onDismiss = { showFilterSheet = false },
@@ -198,9 +229,16 @@ fun AllVulnerabilitiesScreen(onBack: () -> Unit) {
 @Composable
 private fun SummaryCard(summary: EnvironmentVulnerabilitySummary?) {
     if (summary == null) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             CircularProgressIndicator(Modifier.size(18.dp))
-            Text("Loading…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Loading…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         return
     }
@@ -209,16 +247,45 @@ private fun SummaryCard(summary: EnvironmentVulnerabilitySummary?) {
             Metric("Images", "${summary.totalImages}", MaterialTheme.colorScheme.onSurfaceVariant)
             Metric("Scanned", "${summary.scannedImages}", MaterialTheme.colorScheme.primary)
             summary.summary?.let { s ->
-                Metric("Total CVEs", "${s.total}", if (s.total > 0) ArcaneOrange else MaterialTheme.colorScheme.onSurfaceVariant)
+                Metric(
+                    "Total CVEs",
+                    "${s.total}",
+                    if (s.total > 0) ArcaneOrange else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
         summary.summary?.let { s ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SeverityPill("Critical", s.critical, severityColor(VulnerabilitySeverity.CRITICAL), Modifier.weight(1f))
-                SeverityPill("High", s.high, severityColor(VulnerabilitySeverity.HIGH), Modifier.weight(1f))
-                SeverityPill("Med", s.medium, severityColor(VulnerabilitySeverity.MEDIUM), Modifier.weight(1f))
-                SeverityPill("Low", s.low, severityColor(VulnerabilitySeverity.LOW), Modifier.weight(1f))
-                SeverityPill("?", s.unknown, severityColor(VulnerabilitySeverity.UNKNOWN), Modifier.weight(1f))
+                SeverityPill(
+                    "Critical",
+                    s.critical,
+                    severityColor(VulnerabilitySeverity.CRITICAL),
+                    Modifier.weight(1f)
+                )
+                SeverityPill(
+                    "High",
+                    s.high,
+                    severityColor(VulnerabilitySeverity.HIGH),
+                    Modifier.weight(1f)
+                )
+                SeverityPill(
+                    "Med",
+                    s.medium,
+                    severityColor(VulnerabilitySeverity.MEDIUM),
+                    Modifier.weight(1f)
+                )
+                SeverityPill(
+                    "Low",
+                    s.low,
+                    severityColor(VulnerabilitySeverity.LOW),
+                    Modifier.weight(1f)
+                )
+                SeverityPill(
+                    "?",
+                    s.unknown,
+                    severityColor(VulnerabilitySeverity.UNKNOWN),
+                    Modifier.weight(1f)
+                )
             }
         }
     }
@@ -227,34 +294,68 @@ private fun SummaryCard(summary: EnvironmentVulnerabilitySummary?) {
 @Composable
 private fun Metric(label: String, value: String, color: androidx.compose.ui.graphics.Color) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
 @Composable
 private fun VulnerabilityWithImageRow(item: VulnerabilityWithImage, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp),
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SeverityBadge(item.severity)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(item.vulnerabilityId, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            Text(item.imageName, style = MaterialTheme.typography.labelMedium, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                item.pkgName + (item.installedVersion.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""),
+                item.vulnerabilityId,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                item.imageName,
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                item.pkgName + (item.installedVersion.takeIf { it.isNotEmpty() }?.let { " · $it" }
+                    ?: ""),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        item.cvss?.preferredScore?.let { Text(String.format("%.1f", it), style = MaterialTheme.typography.labelMedium, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        item.cvss?.preferredScore?.let {
+            Text(
+                String.format("%.1f", it),
+                style = MaterialTheme.typography.labelMedium,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
 @Composable
-private fun VulnerabilityWithImageDetailDialog(record: VulnerabilityWithImage, onDismiss: () -> Unit) {
+private fun VulnerabilityWithImageDetailDialog(
+    record: VulnerabilityWithImage,
+    onDismiss: () -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(record.vulnerabilityId, fontFamily = FontFamily.Monospace) },
@@ -262,24 +363,50 @@ private fun VulnerabilityWithImageDetailDialog(record: VulnerabilityWithImage, o
             LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Image", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Image",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         LabeledRow("Name", record.imageName)
                         MonoRow(record.imageId, maxLines = 2)
                         Spacer(Modifier.size(4.dp))
                         LabeledRow("Severity", severityDisplayLabel(record.severity))
                         LabeledRow("Package", record.pkgName)
-                        if (record.installedVersion.isNotEmpty()) LabeledRow("Installed", record.installedVersion)
-                        record.fixedVersion?.takeIf { it.isNotEmpty() }?.let { LabeledRow("Fixed in", it) }
-                        record.cvss?.preferredScore?.let { LabeledRow("CVSS", String.format("%.1f", it)) }
+                        if (record.installedVersion.isNotEmpty()) LabeledRow(
+                            "Installed",
+                            record.installedVersion
+                        )
+                        record.fixedVersion?.takeIf { it.isNotEmpty() }
+                            ?.let { LabeledRow("Fixed in", it) }
+                        record.cvss?.preferredScore?.let {
+                            LabeledRow(
+                                "CVSS",
+                                String.format("%.1f", it)
+                            )
+                        }
                         record.publishedDate?.let { LabeledRow("Published", formatImageDate(it)) }
                         record.lastModifiedDate?.let { LabeledRow("Modified", formatImageDate(it)) }
                     }
                 }
-                record.title?.takeIf { it.isNotEmpty() }?.let { item { Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold) } }
-                record.description?.takeIf { it.isNotEmpty() }?.let { item { Text(it, style = MaterialTheme.typography.bodySmall) } }
+                record.title?.takeIf { it.isNotEmpty() }?.let {
+                    item {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                record.description?.takeIf { it.isNotEmpty() }
+                    ?.let { item { Text(it, style = MaterialTheme.typography.bodySmall) } }
                 record.references?.takeIf { it.isNotEmpty() }?.let { refs ->
                     item {
-                        Text("References", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "References",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         Column { refs.forEach { MonoRow(it, maxLines = 2) } }
                     }
                 }
@@ -303,37 +430,98 @@ private fun AllVulnFilterSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        LazyColumn(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             item {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Filters", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text(
+                        "Filters",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
                     TextButton(onClick = onReset) { Text("Reset") }
                     TextButton(onClick = onDone) { Text("Done") }
                 }
             }
-            item { Text("SEVERITY", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            item {
+                Text(
+                    "SEVERITY",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             items(VulnerabilitySeverity.entries.size) { i ->
                 val sev = VulnerabilitySeverity.entries[i]
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     SeverityBadge(sev)
                     Spacer(Modifier.size(8.dp))
-                    Text(severityDisplayLabel(sev), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    Switch(checked = selectedSeverities.contains(sev), onCheckedChange = { onToggleSeverity(sev, it) })
+                    Text(
+                        severityDisplayLabel(sev),
+                        Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Switch(
+                        checked = selectedSeverities.contains(sev),
+                        onCheckedChange = { onToggleSeverity(sev, it) })
                 }
             }
             if (imageOptions.isNotEmpty()) {
-                item { Text("IMAGE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 item {
-                    Row(Modifier.fillMaxWidth().selectable(selected = selectedImage == null, onClick = { onSelectImage(null) }).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RadioButton(selected = selectedImage == null, onClick = { onSelectImage(null) })
+                    Text(
+                        "IMAGE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                item {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = selectedImage == null,
+                                onClick = { onSelectImage(null) })
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RadioButton(
+                            selected = selectedImage == null,
+                            onClick = { onSelectImage(null) })
                         Text("All", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 items(imageOptions.size) { i ->
                     val name = imageOptions[i]
-                    Row(Modifier.fillMaxWidth().selectable(selected = selectedImage == name, onClick = { onSelectImage(name) }).padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        RadioButton(selected = selectedImage == name, onClick = { onSelectImage(name) })
-                        Text(name, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .selectable(
+                                selected = selectedImage == name,
+                                onClick = { onSelectImage(name) })
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        RadioButton(
+                            selected = selectedImage == name,
+                            onClick = { onSelectImage(name) })
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontFamily = FontFamily.Monospace,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
             }

@@ -1,7 +1,7 @@
 package app.getarcane.android.ui.screens.events
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,8 +60,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
+import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
@@ -108,7 +108,11 @@ fun EventsScreen() {
 
 private const val PAGE_SIZE = 50
 
-private enum class EventSeverityFilter(val title: String, val wire: String?, val icon: ImageVector) {
+private enum class EventSeverityFilter(
+    val title: String,
+    val wire: String?,
+    val icon: ImageVector
+) {
     All("All", null, Icons.Filled.History),
     Info("Info", "info", Icons.Filled.Info),
     Warning("Warning", "warning", Icons.Filled.Warning),
@@ -175,39 +179,59 @@ private fun EventListScreen(onLoaded: (List<Event>) -> Unit, onOpen: (String) ->
                 actions = {
                     Box {
                         IconButton(onClick = { menuOpen = true }) {
-                            Icon(Icons.Filled.FilterList, "Filter", tint = if (severity == EventSeverityFilter.All) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
+                            Icon(
+                                Icons.Filled.FilterList,
+                                "Filter",
+                                tint = if (severity == EventSeverityFilter.All) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
+                            )
                         }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             Text(
                                 "Severity",
                                 style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 4.dp),
+                                modifier = Modifier.padding(
+                                    start = 12.dp,
+                                    top = 8.dp,
+                                    bottom = 4.dp
+                                ),
                             )
                             EventSeverityFilter.entries.forEach { f ->
                                 DropdownMenuItem(
                                     text = { Text(f.title) },
                                     onClick = { severity = f; menuOpen = false },
                                     leadingIcon = { Icon(f.icon, null) },
-                                    trailingIcon = { if (severity == f) Icon(Icons.Filled.Check, null) },
+                                    trailingIcon = {
+                                        if (severity == f) Icon(
+                                            Icons.Filled.Check,
+                                            null
+                                        )
+                                    },
                                 )
                             }
                         }
                     }
-                    IconButton(onClick = { refreshing = true; refreshKey++ }, enabled = state !is Loadable.Loading) {
+                    IconButton(
+                        onClick = { refreshing = true; refreshKey++ },
+                        enabled = state !is Loadable.Loading
+                    ) {
                         Icon(Icons.Filled.Refresh, "Refresh")
                     }
                 },
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
                 placeholder = { Text("Search events") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             )
             PullToRefreshBox(
                 isRefreshing = refreshing,
@@ -222,15 +246,17 @@ private fun EventListScreen(onLoaded: (List<Event>) -> Unit, onOpen: (String) ->
                         s.message,
                         "Retry",
                     ) { refreshKey++ }
+
                     is Loadable.Success -> {
                         val trimmed = search.trim()
                         val filtered = s.value.filter { e ->
-                            val matchesSeverity = severity.wire == null || e.severity.lowercase() == severity.wire
+                            val matchesSeverity =
+                                severity.wire == null || e.severity.lowercase() == severity.wire
                             val matchesSearch = trimmed.isEmpty() ||
-                                e.title.contains(trimmed, true) ||
-                                (e.description ?: "").contains(trimmed, true) ||
-                                (e.resourceName ?: "").contains(trimmed, true) ||
-                                e.type.contains(trimmed, true)
+                                    e.title.contains(trimmed, true) ||
+                                    (e.description ?: "").contains(trimmed, true) ||
+                                    (e.resourceName ?: "").contains(trimmed, true) ||
+                                    e.type.contains(trimmed, true)
                             matchesSeverity && matchesSearch
                         }
                         if (s.value.isEmpty()) {
@@ -243,7 +269,9 @@ private fun EventListScreen(onLoaded: (List<Event>) -> Unit, onOpen: (String) ->
                                 if (hasMore && trimmed.isEmpty() && severity == EventSeverityFilter.All) {
                                     item(key = "load-more") {
                                         Row(
-                                            Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
                                             horizontalArrangement = Arrangement.Center,
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
@@ -251,9 +279,16 @@ private fun EventListScreen(onLoaded: (List<Event>) -> Unit, onOpen: (String) ->
                                                 CircularProgressIndicator(Modifier.size(22.dp))
                                             } else {
                                                 TextButton(onClick = { loadMore() }) {
-                                                    Icon(Icons.Filled.ArrowDownward, null, modifier = Modifier.size(18.dp))
+                                                    Icon(
+                                                        Icons.Filled.ArrowDownward,
+                                                        null,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
                                                     Spacer(Modifier.size(6.dp))
-                                                    Text("Show More", fontWeight = FontWeight.SemiBold)
+                                                    Text(
+                                                        "Show More",
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
                                                 }
                                             }
                                         }
@@ -297,7 +332,9 @@ private fun EventRow(event: Event, onClick: () -> Unit) {
         verticalAlignment = Alignment.Top,
     ) {
         Box(
-            Modifier.size(32.dp).background(tint.copy(alpha = 0.15f), CircleShape),
+            Modifier
+                .size(32.dp)
+                .background(tint.copy(alpha = 0.15f), CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(severityIcon(event.severity), null, tint = tint, modifier = Modifier.size(18.dp))
@@ -319,14 +356,21 @@ private fun EventRow(event: Event, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     relativeTime(event.timestamp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 )
                 if (event.type.isNotEmpty()) {
-                    Text("•", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                    Text(
+                        "•",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
                     Text(
                         event.type,
                         style = MaterialTheme.typography.labelSmall,
@@ -348,29 +392,51 @@ private fun EventDetailScreen(event: Event?, onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Event") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            "Back"
+                        )
+                    }
+                },
             )
         },
     ) { padding ->
         if (event == null) {
-            Box(Modifier.fillMaxSize().padding(padding)) {
+            Box(Modifier
+                .fillMaxSize()
+                .padding(padding)) {
                 ErrorBanner("Event not found.", modifier = Modifier.padding(16.dp))
             }
             return@Scaffold
         }
         val tint = severityTint(event.severity)
         LazyColumn(
-            Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
                 DetailSection {
-                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Box(
-                            Modifier.size(44.dp).background(tint.copy(alpha = 0.15f), CircleShape),
+                            Modifier
+                                .size(44.dp)
+                                .background(tint.copy(alpha = 0.15f), CircleShape),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(severityIcon(event.severity), null, tint = tint, modifier = Modifier.size(24.dp))
+                            Icon(
+                                severityIcon(event.severity),
+                                null,
+                                tint = tint,
+                                modifier = Modifier.size(24.dp)
+                            )
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(event.title, style = MaterialTheme.typography.titleMedium)
@@ -383,7 +449,11 @@ private fun EventDetailScreen(event: Event?, onBack: () -> Unit) {
                         }
                     }
                     event.description?.takeIf { it.isNotEmpty() }?.let {
-                        Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                 }
             }
@@ -401,9 +471,12 @@ private fun EventDetailScreen(event: Event?, onBack: () -> Unit) {
             if (event.resourceType != null || event.resourceName != null || event.resourceId != null) {
                 item {
                     DetailSection("Resource") {
-                        event.resourceType?.takeIf { it.isNotEmpty() }?.let { LabeledRow("Type", it.replaceFirstChar { c -> c.uppercase() }) }
-                        event.resourceName?.takeIf { it.isNotEmpty() }?.let { LabeledRow("Name", it) }
-                        event.resourceId?.takeIf { it.isNotEmpty() }?.let { LabeledRow("ID", it, mono = true) }
+                        event.resourceType?.takeIf { it.isNotEmpty() }
+                            ?.let { LabeledRow("Type", it.replaceFirstChar { c -> c.uppercase() }) }
+                        event.resourceName?.takeIf { it.isNotEmpty() }
+                            ?.let { LabeledRow("Name", it) }
+                        event.resourceId?.takeIf { it.isNotEmpty() }
+                            ?.let { LabeledRow("ID", it, mono = true) }
                     }
                 }
             }
@@ -412,8 +485,10 @@ private fun EventDetailScreen(event: Event?, onBack: () -> Unit) {
                 item {
                     DetailSection("Context") {
                         event.username?.takeIf { it.isNotEmpty() }?.let { LabeledRow("User", it) }
-                        event.userId?.takeIf { it.isNotEmpty() }?.let { LabeledRow("User ID", it, mono = true) }
-                        event.environmentId?.takeIf { it.isNotEmpty() }?.let { LabeledRow("Environment", it, mono = true) }
+                        event.userId?.takeIf { it.isNotEmpty() }
+                            ?.let { LabeledRow("User ID", it, mono = true) }
+                        event.environmentId?.takeIf { it.isNotEmpty() }
+                            ?.let { LabeledRow("Environment", it, mono = true) }
                     }
                 }
             }
@@ -439,6 +514,7 @@ private fun jsonValueString(value: JsonValue?): String = when (value) {
         val d = value.value
         if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()
     }
+
     is JsonValue.Bool -> value.value.toString()
     else -> value.stringValue ?: value.toString()
 }
@@ -447,7 +523,11 @@ private fun jsonValueString(value: JsonValue?): String = when (value) {
 private fun DetailSection(title: String? = null, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (title != null) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
         }
         content()
@@ -456,8 +536,17 @@ private fun DetailSection(title: String? = null, content: @Composable () -> Unit
 
 @Composable
 private fun LabeledRow(label: String, value: String, mono: Boolean = false) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Text(
             value,
             style = MaterialTheme.typography.bodyMedium,
@@ -467,7 +556,8 @@ private fun LabeledRow(label: String, value: String, mono: Boolean = false) {
     }
 }
 
-private val monthNames = listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+private val monthNames =
+    listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 /** Named relative time (e.g. "2 hours ago", "just now"). Mirrors iOS `.relative(presentation: .named)`. */
 private fun relativeTime(instant: Instant): String {

@@ -50,7 +50,7 @@ import kotlinx.coroutines.launch
 /** Build-provider settings editor (local / Depot). Port of iOS `BuildSettingsView`. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BuildSettingsScreen(onBack: () -> Unit) {
+fun BuildSettingsScreen(onBack: (() -> Unit)? = null) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
@@ -112,8 +112,10 @@ fun BuildSettingsScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = { Text("Builds") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
             )

@@ -1,5 +1,6 @@
 package app.getarcane.android
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -23,12 +24,15 @@ import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneTheme
 
 class MainActivity : ComponentActivity() {
+    private val arcaneManager by lazy { ArcaneClientManager(this) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleOidcRedirectIntent(intent)
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
-            val manager = remember { ArcaneClientManager(context) }
+            val manager = remember { arcaneManager }
             val pinnedStore = remember { PinnedItemsStore(context) }
             val prefs = remember { Prefs(context) }
             val accentHex by prefs.accentHex.collectAsState(initial = null)
@@ -46,5 +50,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleOidcRedirectIntent(intent)
+    }
+
+    private fun handleOidcRedirectIntent(intent: Intent?) {
+        arcaneManager.handleOidcRedirect(intent?.data)
     }
 }

@@ -48,6 +48,17 @@ import app.getarcane.android.ui.screens.networks.NetworksScreen
 import app.getarcane.android.ui.screens.ports.PortsScreen
 import app.getarcane.android.ui.screens.projects.ProjectsScreen
 import app.getarcane.android.ui.screens.settings.SettingsScreen
+import app.getarcane.android.ui.screens.settings.ApiKeysScreen
+import app.getarcane.android.ui.screens.settings.UsersScreen
+import app.getarcane.android.ui.screens.settings.notifications.NotificationSettingsScreen
+import app.getarcane.android.ui.screens.settings.rbac.OidcRoleMappingsScreen
+import app.getarcane.android.ui.screens.settings.rbac.RolesScreen
+import app.getarcane.android.ui.screens.settings.registries.ContainerRegistriesScreen
+import app.getarcane.android.ui.screens.settings.registries.TemplateRegistriesScreen
+import app.getarcane.android.ui.screens.settings.system.AuthenticationSettingsScreen
+import app.getarcane.android.ui.screens.settings.system.BuildSettingsScreen
+import app.getarcane.android.ui.screens.settings.system.SystemSettingsScreen
+import app.getarcane.android.ui.screens.settings.webhooks.WebhooksScreen
 import app.getarcane.android.ui.screens.swarm.SwarmScreen
 import app.getarcane.android.ui.screens.updates.UpdatesScreen
 import app.getarcane.android.ui.screens.volumes.VolumesScreen
@@ -102,7 +113,7 @@ fun MainTabView() {
             val tab = AppTab.byId(selected)
             val envKey = if (tab?.isEnvironmentScoped == true) manager.activeEnvironmentId.rawValue else ""
             key(selected, envKey) {
-                TabContent(selected)
+                TabContent(selected, onSelectTab = { selected = it })
             }
         }
     }
@@ -165,10 +176,10 @@ private fun RowScope.NavBarItem(
 }
 
 @Composable
-private fun TabContent(tabId: String) {
+private fun TabContent(tabId: String, onSelectTab: (String) -> Unit) {
     when (tabId) {
         SETTINGS_ID -> SettingsScreen()
-        AppTab.Dashboard.id -> DashboardScreen()
+        AppTab.Dashboard.id -> DashboardScreen(onOpenTab = onSelectTab)
         AppTab.Containers.id -> ContainersScreen()
         AppTab.Images.id -> ImagesScreen()
         AppTab.Projects.id -> ProjectsScreen()
@@ -182,6 +193,17 @@ private fun TabContent(tabId: String) {
         AppTab.Swarm.id -> SwarmScreen()
         AppTab.GitOps.id -> GitOpsScreen()
         AppTab.GitRepositories.id -> GitRepositoriesScreen()
+        AppTab.ContainerRegistries.id -> ContainerRegistriesScreen()
+        AppTab.TemplateRegistries.id -> TemplateRegistriesScreen()
+        AppTab.Users.id -> UsersScreen(onOpenUser = {})
+        AppTab.ApiKeys.id -> ApiKeysScreen()
+        AppTab.Notifications.id -> NotificationSettingsScreen(onOpenProvider = {})
+        AppTab.Webhooks.id -> WebhooksScreen()
+        AppTab.SystemSettings.id -> SystemSettingsScreen(onOpenCategory = {}, onUpgrade = {})
+        AppTab.Authentication.id -> AuthenticationSettingsScreen()
+        AppTab.Builds.id -> BuildSettingsScreen()
+        AppTab.Roles.id -> RolesScreen(onOpenRole = {}, onCreateRole = {})
+        AppTab.OidcRoleMappings.id -> OidcRoleMappingsScreen()
         else -> PlaceholderScreen(AppTab.byId(tabId)?.title ?: "Unknown")
     }
 }

@@ -53,7 +53,7 @@ import kotlinx.coroutines.launch
 /** Local-auth + OIDC settings editor. Port of iOS `AuthenticationSettingsView`. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AuthenticationSettingsScreen(onBack: () -> Unit) {
+fun AuthenticationSettingsScreen(onBack: (() -> Unit)? = null) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
@@ -149,8 +149,10 @@ fun AuthenticationSettingsScreen(onBack: () -> Unit) {
             TopAppBar(
                 title = { Text("Authentication") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
             )

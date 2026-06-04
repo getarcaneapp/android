@@ -70,7 +70,7 @@ fun RenameContainerSheet(
                 singleLine = true,
                 isError = newName.isNotEmpty() && !isValid,
                 enabled = !submitting,
-                keyboardOptions = KeyboardOptions(autoCorrect = false, capitalization = KeyboardCapitalization.None),
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, capitalization = KeyboardCapitalization.None),
                 modifier = Modifier.fillMaxWidth(),
             )
 

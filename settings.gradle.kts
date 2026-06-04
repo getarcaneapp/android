@@ -1,3 +1,5 @@
+import java.util.Properties
+
 pluginManagement {
     repositories {
         google {
@@ -23,14 +25,34 @@ dependencyResolutionManagement {
 rootProject.name = "Arcane Mobile"
 include(":app")
 
-// Resolve the Arcane SDK (`app.getarcane:arcane-core` / `:arcane-android`) from its public Git
-// repo, built on demand as a Gradle source dependency (the `main` branch is pinned at the
-// dependency use-site in app/build.gradle.kts).
+val androidSdkDirFromRootLocalProperties = file("local.properties")
+    .takeIf { it.isFile }
+    ?.let { localProperties ->
+        Properties().apply {
+            localProperties.inputStream().use(::load)
+        }.getProperty("sdk.dir")
+    }
+    ?.takeIf { it.isNotBlank() }
+
+if (
+    androidSdkDirFromRootLocalProperties != null &&
+    System.getenv("ANDROID_HOME").isNullOrBlank() &&
+    System.getenv("ANDROID_SDK_ROOT").isNullOrBlank() &&
+    System.getProperty("android.home").isNullOrBlank()
+) {
+    System.setProperty("android.home", androidSdkDirFromRootLocalProperties)
+}
+
+val localArcaneSdk = file("../libarcane-kotlin")
+
+// Resolve the Arcane SDK (`app.getarcane:arcane-core` / `:arcane-android`) from the sibling Git
+// checkout when present, otherwise from its public Git repo built on demand as a Gradle source
+// dependency (the `main` branch is pinned at the dependency use-site in app/build.gradle.kts).
 //
-// For local SDK development, build with `-Parcane.localSdk` to use the sibling `../libarcane-kotlin`
-// checkout as a composite build instead — uncommitted SDK changes are picked up immediately.
-if (providers.gradleProperty("arcane.localSdk").isPresent) {
-    includeBuild("../libarcane-kotlin")
+// Pass `-Parcane.remoteSdk` to force the public Git source dependency even when the sibling
+// checkout exists.
+if (localArcaneSdk.isDirectory && !providers.gradleProperty("arcane.remoteSdk").isPresent) {
+    includeBuild(localArcaneSdk)
 } else {
     sourceControl {
         gitRepository(uri("https://github.com/getarcaneapp/libarcane-kotlin.git")) {

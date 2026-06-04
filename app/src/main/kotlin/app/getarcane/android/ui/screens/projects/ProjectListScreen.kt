@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
@@ -26,7 +27,6 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -187,8 +187,8 @@ fun ProjectListScreen(
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More options") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             Text("Sort", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
-                            DropdownMenuItem(text = { Text("A–Z") }, onClick = { sortAsc = true; menuOpen = false }, leadingIcon = { if (sortAsc) Icon(Icons.Filled.Sort, null) })
-                            DropdownMenuItem(text = { Text("Z–A") }, onClick = { sortAsc = false; menuOpen = false }, leadingIcon = { if (!sortAsc) Icon(Icons.Filled.Sort, null) })
+                            DropdownMenuItem(text = { Text("A–Z") }, onClick = { sortAsc = true; menuOpen = false }, leadingIcon = { if (sortAsc) Icon(Icons.AutoMirrored.Filled.Sort, null) })
+                            DropdownMenuItem(text = { Text("Z–A") }, onClick = { sortAsc = false; menuOpen = false }, leadingIcon = { if (!sortAsc) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             HorizontalDivider()
                             Text("Filter", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
                             ProjectStatusFilter.entries.forEach { f ->
@@ -196,7 +196,7 @@ fun ProjectListScreen(
                                     text = { Text(f.label) },
                                     onClick = { filter = f; menuOpen = false },
                                     leadingIcon = { Icon(Icons.Filled.FilterList, null) },
-                                    trailingIcon = { if (filter == f) Icon(Icons.Filled.Sort, null) },
+                                    trailingIcon = { if (filter == f) Icon(Icons.AutoMirrored.Filled.Sort, null) },
                                 )
                             }
                             HorizontalDivider()
@@ -206,7 +206,7 @@ fun ProjectListScreen(
                                     text = { Text(f.title) },
                                     onClick = { updateFilter = f; menuOpen = false },
                                     leadingIcon = { Icon(Icons.Filled.FilterList, null) },
-                                    trailingIcon = { if (updateFilter == f) Icon(Icons.Filled.Sort, null) },
+                                    trailingIcon = { if (updateFilter == f) Icon(Icons.AutoMirrored.Filled.Sort, null) },
                                 )
                             }
                             HorizontalDivider()

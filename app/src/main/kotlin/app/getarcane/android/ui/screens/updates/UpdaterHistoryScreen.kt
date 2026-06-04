@@ -63,6 +63,7 @@ import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcanePink
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
+import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.base.JsonValue
 import app.getarcane.sdk.models.updater.AutoUpdateRecord
 import kotlinx.coroutines.launch
@@ -71,10 +72,10 @@ private const val PAGE_SIZE = 50
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UpdaterHistoryScreen(onBack: () -> Unit) {
+fun UpdaterHistoryScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, environmentName: String? = null) {
     val manager = LocalArcaneManager.current
     val client = manager.client
-    val envId = manager.activeEnvironmentId
+    val envId = environmentId ?: manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
 
     var state by remember { mutableStateOf<Loadable<List<AutoUpdateRecord>>>(Loadable.Loading) }
@@ -126,7 +127,7 @@ fun UpdaterHistoryScreen(onBack: () -> Unit) {
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
-                placeholder = { Text("Search updater history") },
+                placeholder = { Text("Search ${environmentName ?: manager.activeEnvironmentName} history") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),

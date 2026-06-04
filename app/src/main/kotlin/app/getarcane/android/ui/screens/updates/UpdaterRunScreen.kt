@@ -68,6 +68,7 @@ import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcanePink
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
+import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.updater.UpdaterResourceResult
 import app.getarcane.sdk.models.updater.UpdaterResult
 import app.getarcane.sdk.models.updater.UpdaterStatus
@@ -85,10 +86,10 @@ private sealed interface RunPhase {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UpdaterRunScreen(onBack: () -> Unit) {
+fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, environmentName: String? = null) {
     val manager = LocalArcaneManager.current
     val client = manager.client
-    val envId = manager.activeEnvironmentId
+    val envId = environmentId ?: manager.activeEnvironmentId
 
     var phase by remember { mutableStateOf<RunPhase>(RunPhase.Starting) }
     var liveStatus by remember { mutableStateOf<UpdaterStatus?>(null) }
@@ -138,9 +139,9 @@ fun UpdaterRunScreen(onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 when (val p = phase) {
-                    is RunPhase.Starting -> Hero(icon = Icons.Filled.Sync, tint = ArcaneBlue, title = "Starting…", subtitle = "Triggering updater", spinning = false, showSpinner = true)
+                    is RunPhase.Starting -> Hero(icon = Icons.Filled.Sync, tint = ArcaneBlue, title = "Starting…", subtitle = "Triggering updater for ${environmentName ?: manager.activeEnvironmentName}", spinning = false, showSpinner = true)
                     is RunPhase.Running -> {
-                        Hero(icon = Icons.Filled.Sync, tint = ArcaneBlue, title = "Running Updater", subtitle = runningSubtitle(liveStatus), spinning = true, showSpinner = false)
+                        Hero(icon = Icons.Filled.Sync, tint = ArcaneBlue, title = "Running Updater", subtitle = runningSubtitle(liveStatus, environmentName ?: manager.activeEnvironmentName), spinning = true, showSpinner = false)
                         liveStatus?.let { status ->
                             CountersCard("In Progress", Icons.Filled.BarChart, ArcanePurple) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -193,8 +194,8 @@ fun UpdaterRunScreen(onBack: () -> Unit) {
     }
 }
 
-private fun runningSubtitle(status: UpdaterStatus?): String {
-    if (status == null) return "Working on it"
+private fun runningSubtitle(status: UpdaterStatus?, environmentName: String): String {
+    if (status == null) return "Working on $environmentName"
     val parts = buildList {
         if (status.updatingContainers > 0) add("${status.updatingContainers} container${if (status.updatingContainers == 1) "" else "s"}")
         if (status.updatingProjects > 0) add("${status.updatingProjects} project${if (status.updatingProjects == 1) "" else "s"}")

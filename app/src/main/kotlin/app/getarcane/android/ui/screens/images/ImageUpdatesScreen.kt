@@ -133,38 +133,67 @@ fun ImageUpdatesScreen(images: List<ImageSummary>, onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Updates") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            "Back"
+                        )
+                    }
+                },
             )
         },
     ) { padding ->
         PullToRefreshBox(
             isRefreshing = refreshing,
             onRefresh = { refreshing = true; reloadTick++ },
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
         ) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 item { DetailSection("Summary") { SummaryStrip(summary, loadingSummary) } }
 
                 item {
                     Column {
                         Row(
-                            Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            androidx.compose.material3.TextButton(onClick = { scanAll() }, enabled = !isScanning, contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)) {
+                            androidx.compose.material3.TextButton(
+                                onClick = { scanAll() },
+                                enabled = !isScanning,
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                            ) {
                                 Icon(Icons.Filled.Search, null, modifier = Modifier.size(18.dp))
                                 Text("  Scan all images")
                             }
                             Spacer(Modifier.weight(1f))
                             if (isScanning) CircularProgressIndicator(Modifier.size(18.dp))
                         }
-                        Text("Contacts each image's registry. Can take a while for large environments.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Contacts each image's registry. Can take a while for large environments.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
                 if (taggedRefs.isNotEmpty()) {
-                    item { Text("IMAGES", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    item {
+                        Text(
+                            "IMAGES",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     items(taggedRefs.size, key = { taggedRefs[it] }) { i ->
                         val ref = taggedRefs[i]
                         UpdateRow(
@@ -178,9 +207,21 @@ fun ImageUpdatesScreen(images: List<ImageSummary>, onBack: () -> Unit) {
 
                 errorMessage?.let { msg ->
                     item {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Filled.Warning, null, tint = ArcaneRed, modifier = Modifier.size(18.dp))
-                            Text(msg, style = MaterialTheme.typography.bodyMedium, color = ArcaneRed)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Filled.Warning,
+                                null,
+                                tint = ArcaneRed,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                msg,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = ArcaneRed
+                            )
                         }
                     }
                 }
@@ -192,45 +233,137 @@ fun ImageUpdatesScreen(images: List<ImageSummary>, onBack: () -> Unit) {
 @Composable
 private fun SummaryStrip(summary: ImageUpdateSummary?, isLoading: Boolean) {
     when {
-        summary != null -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            UpdateMetric("Total", "${summary.totalImages}", MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
-            UpdateMetric("With updates", "${summary.imagesWithUpdates}", if (summary.imagesWithUpdates > 0) ArcaneOrange else MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
-            UpdateMetric("Digest", "${summary.digestUpdates}", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
-            UpdateMetric("Errors", "${summary.errorsCount}", if (summary.errorsCount > 0) ArcaneRed else MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
+        summary != null -> Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            UpdateMetric(
+                "Total",
+                "${summary.totalImages}",
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                Modifier.weight(1f)
+            )
+            UpdateMetric(
+                "With updates",
+                "${summary.imagesWithUpdates}",
+                if (summary.imagesWithUpdates > 0) ArcaneOrange else MaterialTheme.colorScheme.onSurfaceVariant,
+                Modifier.weight(1f)
+            )
+            UpdateMetric(
+                "Digest",
+                "${summary.digestUpdates}",
+                MaterialTheme.colorScheme.primary,
+                Modifier.weight(1f)
+            )
+            UpdateMetric(
+                "Errors",
+                "${summary.errorsCount}",
+                if (summary.errorsCount > 0) ArcaneRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                Modifier.weight(1f)
+            )
         }
-        isLoading -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+        isLoading -> Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             CircularProgressIndicator(Modifier.size(18.dp))
-            Text("Loading summary…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Loading summary…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-        else -> Text("No summary available", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        else -> Text(
+            "No summary available",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
 @Composable
-private fun UpdateMetric(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
+private fun UpdateMetric(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
 @Composable
-private fun UpdateRow(ref: String, info: ImageUpdateResponse?, isChecking: Boolean, onRecheck: () -> Unit) {
+private fun UpdateRow(
+    ref: String,
+    info: ImageUpdateResponse?,
+    isChecking: Boolean,
+    onRecheck: () -> Unit
+) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(ref, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                ref,
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             when {
-                info == null -> Text("Not yet checked", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                !info.error.isNullOrEmpty() -> Text(info.error!!, style = MaterialTheme.typography.labelSmall, color = ArcaneRed, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                info.hasUpdate -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.Filled.ArrowCircleUp, null, tint = ArcaneOrange, modifier = Modifier.size(16.dp))
-                    Text(versionLine(info), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                info == null -> Text(
+                    "Not yet checked",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                !info.error.isNullOrEmpty() -> Text(
+                    info.error!!,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ArcaneRed,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                info.hasUpdate -> Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        Icons.Filled.ArrowCircleUp,
+                        null,
+                        tint = ArcaneOrange,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        versionLine(info),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                else -> Text("Up to date", style = MaterialTheme.typography.labelMedium, color = ArcaneGreen)
+
+                else -> Text(
+                    "Up to date",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ArcaneGreen
+                )
             }
         }
         if (isChecking) {

@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
@@ -78,28 +77,74 @@ private data class JobScheduleField(
 )
 
 private val jobScheduleFields = listOf(
-    JobScheduleField("autoHealInterval", "Auto Heal", Icons.Filled.Favorite, ArcanePink) { it.autoHealInterval },
-    JobScheduleField("autoUpdateInterval", "Auto Update", Icons.Filled.Sync, ArcaneBlue) { it.autoUpdateInterval },
-    JobScheduleField("dockerClientRefreshInterval", "Docker Client Refresh", Icons.Filled.Inventory2, ArcaneBlue) { it.dockerClientRefreshInterval },
-    JobScheduleField("environmentHealthInterval", "Environment Health", Icons.Filled.MonitorHeart, ArcaneGreen) { it.environmentHealthInterval },
-    JobScheduleField("eventCleanupInterval", "Event Cleanup", Icons.Filled.Delete, ArcaneRed) { it.eventCleanupInterval },
-    JobScheduleField("gitopsSyncInterval", "GitOps Sync", Icons.AutoMirrored.Filled.CallMerge, ArcaneIndigo) { it.gitopsSyncInterval },
-    JobScheduleField("pollingInterval", "Polling", Icons.Filled.Wifi, ArcaneTeal) { it.pollingInterval },
-    JobScheduleField("scheduledPruneInterval", "Scheduled Prune", Icons.Filled.ContentCut, ArcaneOrange) { it.scheduledPruneInterval },
-    JobScheduleField("vulnerabilityScanInterval", "Vulnerability Scan", Icons.Filled.Shield, ArcanePurple) { it.vulnerabilityScanInterval },
+    JobScheduleField(
+        "autoHealInterval",
+        "Auto Heal",
+        Icons.Filled.Favorite,
+        ArcanePink
+    ) { it.autoHealInterval },
+    JobScheduleField(
+        "autoUpdateInterval",
+        "Auto Update",
+        Icons.Filled.Sync,
+        ArcaneBlue
+    ) { it.autoUpdateInterval },
+    JobScheduleField(
+        "dockerClientRefreshInterval",
+        "Docker Client Refresh",
+        Icons.Filled.Inventory2,
+        ArcaneBlue
+    ) { it.dockerClientRefreshInterval },
+    JobScheduleField(
+        "environmentHealthInterval",
+        "Environment Health",
+        Icons.Filled.MonitorHeart,
+        ArcaneGreen
+    ) { it.environmentHealthInterval },
+    JobScheduleField(
+        "eventCleanupInterval",
+        "Event Cleanup",
+        Icons.Filled.Delete,
+        ArcaneRed
+    ) { it.eventCleanupInterval },
+    JobScheduleField(
+        "gitopsSyncInterval",
+        "GitOps Sync",
+        Icons.AutoMirrored.Filled.CallMerge,
+        ArcaneIndigo
+    ) { it.gitopsSyncInterval },
+    JobScheduleField(
+        "pollingInterval",
+        "Polling",
+        Icons.Filled.Wifi,
+        ArcaneTeal
+    ) { it.pollingInterval },
+    JobScheduleField(
+        "scheduledPruneInterval",
+        "Scheduled Prune",
+        Icons.Filled.ContentCut,
+        ArcaneOrange
+    ) { it.scheduledPruneInterval },
+    JobScheduleField(
+        "vulnerabilityScanInterval",
+        "Vulnerability Scan",
+        Icons.Filled.Shield,
+        ArcanePurple
+    ) { it.vulnerabilityScanInterval },
 )
 
-private fun buildUpdate(changed: Map<String, String>): UpdateJobScheduleConfig = UpdateJobScheduleConfig(
-    environmentHealthInterval = changed["environmentHealthInterval"],
-    eventCleanupInterval = changed["eventCleanupInterval"],
-    autoUpdateInterval = changed["autoUpdateInterval"],
-    dockerClientRefreshInterval = changed["dockerClientRefreshInterval"],
-    pollingInterval = changed["pollingInterval"],
-    scheduledPruneInterval = changed["scheduledPruneInterval"],
-    gitopsSyncInterval = changed["gitopsSyncInterval"],
-    vulnerabilityScanInterval = changed["vulnerabilityScanInterval"],
-    autoHealInterval = changed["autoHealInterval"],
-)
+private fun buildUpdate(changed: Map<String, String>): UpdateJobScheduleConfig =
+    UpdateJobScheduleConfig(
+        environmentHealthInterval = changed["environmentHealthInterval"],
+        eventCleanupInterval = changed["eventCleanupInterval"],
+        autoUpdateInterval = changed["autoUpdateInterval"],
+        dockerClientRefreshInterval = changed["dockerClientRefreshInterval"],
+        pollingInterval = changed["pollingInterval"],
+        scheduledPruneInterval = changed["scheduledPruneInterval"],
+        gitopsSyncInterval = changed["gitopsSyncInterval"],
+        vulnerabilityScanInterval = changed["vulnerabilityScanInterval"],
+        autoHealInterval = changed["autoHealInterval"],
+    )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -150,7 +195,9 @@ fun JobScheduleConfigScreen(onBack: () -> Unit) {
         val changed = jobScheduleFields
             .filter { values[it.key] != original[it.key] }
             .associate { it.key to (values[it.key] ?: "") }
-        if (changed.isEmpty()) { isSaving = false; return }
+        if (changed.isEmpty()) {
+            isSaving = false; return
+        }
         scope.launch {
             try {
                 val updated = client.jobs.updateSchedules(buildUpdate(changed), envId = envId)
@@ -169,11 +216,25 @@ fun JobScheduleConfigScreen(onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Schedules") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            "Back"
+                        )
+                    }
+                },
                 actions = {
-                    IconButton(onClick = { refreshKey++ }, enabled = !isLoading) { Icon(Icons.Filled.Refresh, "Refresh") }
+                    IconButton(
+                        onClick = { refreshKey++ },
+                        enabled = !isLoading
+                    ) { Icon(Icons.Filled.Refresh, "Refresh") }
                     if (isSaving) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(end = 12.dp), strokeWidth = 2.dp)
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .padding(end = 12.dp), strokeWidth = 2.dp
+                        )
                     } else {
                         TextButton(onClick = { save() }, enabled = hasChanges) { Text("Save") }
                     }
@@ -181,14 +242,24 @@ fun JobScheduleConfigScreen(onBack: () -> Unit) {
             )
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             if (isLoading && !loaded) {
-                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
                     Text("  Loading schedules…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     jobScheduleFields.forEach { field ->
                         item(key = field.key) {
                             ScheduleRow(
@@ -209,24 +280,52 @@ fun JobScheduleConfigScreen(onBack: () -> Unit) {
                     if (hasChanges) {
                         item(key = "discard") {
                             TextButton(
-                                onClick = { jobScheduleFields.forEach { values[it.key] = original[it.key] ?: "" } },
+                                onClick = {
+                                    jobScheduleFields.forEach {
+                                        values[it.key] = original[it.key] ?: ""
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                             ) { Text("Discard Changes", color = ArcaneRed) }
                         }
                     }
                     errorMessage?.let { msg ->
                         item(key = "error") {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Icon(Icons.Filled.Warning, null, tint = ArcaneRed, modifier = Modifier.size(18.dp))
-                                Text(msg, color = ArcaneRed, style = MaterialTheme.typography.bodyMedium)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Warning,
+                                    null,
+                                    tint = ArcaneRed,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    msg,
+                                    color = ArcaneRed,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
                         }
                     }
                     savedMessage?.let { msg ->
                         item(key = "saved") {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Icon(Icons.Filled.CheckCircle, null, tint = ArcaneGreen, modifier = Modifier.size(18.dp))
-                                Text(msg, color = ArcaneGreen, style = MaterialTheme.typography.bodyMedium)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.CheckCircle,
+                                    null,
+                                    tint = ArcaneGreen,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    msg,
+                                    color = ArcaneGreen,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
                         }
                     }
@@ -238,13 +337,27 @@ fun JobScheduleConfigScreen(onBack: () -> Unit) {
 
 @Composable
 private fun ScheduleRow(field: JobScheduleField, value: String, onChange: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Box(
-                Modifier.size(28.dp).background(field.tint.copy(alpha = 0.15f), CircleShape),
+                Modifier
+                    .size(28.dp)
+                    .background(field.tint.copy(alpha = 0.15f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) { Icon(field.icon, null, tint = field.tint, modifier = Modifier.size(16.dp)) }
-            Text(field.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                field.label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
         }
         OutlinedTextField(
             value = value,
@@ -260,7 +373,11 @@ private fun ScheduleRow(field: JobScheduleField, value: String, onChange: (Strin
             modifier = Modifier.fillMaxWidth(),
         )
         CronExpression.readable(value)?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+            Text(
+                it,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+            )
         }
     }
 }

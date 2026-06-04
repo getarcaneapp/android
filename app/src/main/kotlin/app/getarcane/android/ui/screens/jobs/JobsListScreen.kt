@@ -21,10 +21,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.AllInclusive
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PauseCircle
-import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -109,47 +109,85 @@ fun JobsListScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Jobs") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            "Back"
+                        )
+                    }
+                },
                 actions = {
                     IconButton(onClick = { refreshKey++ }) { Icon(Icons.Filled.Refresh, "Refresh") }
                 },
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },
                 placeholder = { Text("Search jobs") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             )
             when (val s = state) {
-                is Loadable.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-                is Loadable.Error -> ContentUnavailable("Couldn't Load Jobs", Icons.Filled.PlaylistPlay, s.message, "Refresh") { refreshKey++ }
+                is Loadable.Loading -> Box(
+                    Modifier.fillMaxSize(),
+                    Alignment.Center
+                ) { CircularProgressIndicator() }
+
+                is Loadable.Error -> ContentUnavailable(
+                    "Couldn't Load Jobs",
+                    Icons.AutoMirrored.Filled.PlaylistPlay,
+                    s.message,
+                    "Refresh"
+                ) { refreshKey++ }
+
                 is Loadable.Success -> {
                     val q = search.trim()
                     val filtered = if (q.isEmpty()) s.value else s.value.filter {
-                        it.name.contains(q, true) || it.description.contains(q, true) || it.category.contains(q, true)
+                        it.name.contains(q, true) || it.description.contains(
+                            q,
+                            true
+                        ) || it.category.contains(q, true)
                     }
                     if (s.value.isEmpty()) {
-                        ContentUnavailable("No Jobs", Icons.Filled.PlaylistPlay)
+                        ContentUnavailable("No Jobs", Icons.AutoMirrored.Filled.PlaylistPlay)
                     } else {
                         val grouped = filtered
                             .groupBy { it.category.ifEmpty { "Other" } }
                             .toSortedMap()
                             .mapValues { (_, v) -> v.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }) }
-                        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp)) {
+                        LazyColumn(
+                            Modifier.fillMaxSize(),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp)
+                        ) {
                             actionMessage?.let { msg ->
                                 item(key = "action-msg") {
                                     Row(
-                                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     ) {
-                                        Icon(Icons.Filled.CheckCircle, null, tint = ArcaneGreen, modifier = Modifier.size(18.dp))
-                                        Text(msg, color = ArcaneGreen, style = MaterialTheme.typography.bodyMedium)
+                                        Icon(
+                                            Icons.Filled.CheckCircle,
+                                            null,
+                                            tint = ArcaneGreen,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            msg,
+                                            color = ArcaneGreen,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
                                     }
                                 }
                             }
@@ -159,7 +197,11 @@ fun JobsListScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                                         category.replaceFirstChar { it.uppercase() },
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 4.dp),
+                                        modifier = Modifier.padding(
+                                            start = 16.dp,
+                                            top = 14.dp,
+                                            bottom = 4.dp
+                                        ),
                                     )
                                 }
                                 items(jobs, key = { it.id }) { job ->
@@ -190,15 +232,43 @@ private fun JobRow(job: JobStatus, isRunning: Boolean, onClick: () -> Unit) {
     ) {
         JobIcon(job = job, isRunning = isRunning, size = 32)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(job.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                job.name,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             if (job.description.isNotEmpty()) {
-                Text(job.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    job.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(job.schedule, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    job.schedule,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
                 job.nextRun?.let { next ->
-                    Text("•", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                    Text(relativeTime(next.toEpochMilliseconds()), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
+                    Text(
+                        "•",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                    Text(
+                        relativeTime(next.toEpochMilliseconds()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
                 }
             }
         }
@@ -228,17 +298,24 @@ fun JobIcon(job: JobStatus, isRunning: Boolean, size: Int) {
         transition.animateFloat(
             initialValue = 0f,
             targetValue = 360f,
-            animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Restart),
+            animationSpec = infiniteRepeatable(
+                tween(1100, easing = LinearEasing),
+                RepeatMode.Restart
+            ),
             label = "spinAngle",
         ).value
     } else {
         0f
     }
     Box(
-        Modifier.size(size.dp).background(tint.copy(alpha = 0.15f), CircleShape),
+        Modifier
+            .size(size.dp)
+            .background(tint.copy(alpha = 0.15f), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size((size * 0.55f).dp).rotate(rotation))
+        Icon(icon, null, tint = tint, modifier = Modifier
+            .size((size * 0.55f).dp)
+            .rotate(rotation))
     }
 }
 
@@ -250,7 +327,10 @@ fun JobBadge(text: String, tint: Color) {
         fontWeight = FontWeight.Bold,
         color = tint,
         modifier = Modifier
-            .background(tint.copy(alpha = 0.15f), androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .background(
+                tint.copy(alpha = 0.15f),
+                androidx.compose.foundation.shape.RoundedCornerShape(50)
+            )
             .padding(horizontal = 6.dp, vertical = 3.dp),
     )
 }
@@ -265,6 +345,9 @@ internal fun relativeTime(epochMillis: Long): String =
 
 /** Absolute date+time string (abbreviated date, standard time). Mirrors iOS `.formatted(date:.abbreviated,time:.standard)`. */
 internal fun absoluteDateTime(epochMillis: Long): String {
-    val df = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.MEDIUM)
+    val df = java.text.DateFormat.getDateTimeInstance(
+        java.text.DateFormat.MEDIUM,
+        java.text.DateFormat.MEDIUM
+    )
     return df.format(java.util.Date(epochMillis))
 }

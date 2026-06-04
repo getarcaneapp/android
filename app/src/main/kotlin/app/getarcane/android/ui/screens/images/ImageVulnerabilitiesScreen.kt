@@ -64,7 +64,8 @@ import kotlinx.coroutines.launch
 
 private const val VULN_PAGE_SIZE = 50
 
-private fun ignoreKey(v: Vulnerability): String = "${v.vulnerabilityId}|${v.pkgName}|${v.installedVersion}"
+private fun ignoreKey(v: Vulnerability): String =
+    "${v.vulnerabilityId}|${v.pkgName}|${v.installedVersion}"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -98,7 +99,8 @@ fun ImageVulnerabilitiesScreen(
         if (client == null) return
         isLoading = true
         try {
-            val sevParam = selectedSeverities.takeIf { it.isNotEmpty() }?.joinToString(",") { it.wire }
+            val sevParam =
+                selectedSeverities.takeIf { it.isNotEmpty() }?.joinToString(",") { it.wire }
             val response = client.vulnerabilities.listForImage(
                 envId = envId,
                 imageId = imageId,
@@ -117,7 +119,12 @@ fun ImageVulnerabilitiesScreen(
     suspend fun reload() {
         page = 0
         vulnerabilities.clear()
-        summary = runCatching { client?.vulnerabilities?.scanSummary(envId = envId, imageId = imageId) }.getOrNull()
+        summary = runCatching {
+            client?.vulnerabilities?.scanSummary(
+                envId = envId,
+                imageId = imageId
+            )
+        }.getOrNull()
         loadVulnerabilities()
     }
 
@@ -160,7 +167,14 @@ fun ImageVulnerabilitiesScreen(
         topBar = {
             TopAppBar(
                 title = { Text("Vulnerabilities") },
-                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            "Back"
+                        )
+                    }
+                },
             )
         },
     ) { padding ->
@@ -178,12 +192,18 @@ fun ImageVulnerabilitiesScreen(
         PullToRefreshBox(
             isRefreshing = refreshing,
             onRefresh = { refreshing = true; reloadTick++ },
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
         ) {
             val filtered = vulnerabilities.filter { v ->
                 showIgnored || ignoredByKey[ignoreKey(v)] == null
             }
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 summary?.let { sum ->
                     item {
                         DetailSection("Summary") {
@@ -200,21 +220,41 @@ fun ImageVulnerabilitiesScreen(
                 item {
                     DetailSection("Filters") {
                         VulnerabilitySeverity.entries.forEach { sev ->
-                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 SeverityBadge(sev)
                                 Spacer(Modifier.size(8.dp))
-                                Text(severityDisplayLabel(sev), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    severityDisplayLabel(sev),
+                                    Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                                 Switch(
                                     checked = selectedSeverities.contains(sev),
                                     onCheckedChange = { on ->
-                                        if (on) selectedSeverities.add(sev) else selectedSeverities.remove(sev)
+                                        if (on) selectedSeverities.add(sev) else selectedSeverities.remove(
+                                            sev
+                                        )
                                         scope.launch { reload() }
                                     },
                                 )
                             }
                         }
-                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Show Ignored", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Show Ignored",
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                             Switch(checked = showIgnored, onCheckedChange = { showIgnored = it })
                         }
                     }
@@ -223,15 +263,32 @@ fun ImageVulnerabilitiesScreen(
                 item {
                     Column {
                         Row(
-                            Modifier.fillMaxWidth().clickable(enabled = !isScanning) { runScan() }.padding(vertical = 10.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = !isScanning) { runScan() }
+                                .padding(vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Icon(Icons.Filled.Search, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                            Text(if (isScanning) "Scanning…" else "Re-scan now", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
+                            Icon(
+                                Icons.Filled.Search,
+                                null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                if (isScanning) "Scanning…" else "Re-scan now",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.weight(1f)
+                            )
                             if (isScanning) CircularProgressIndicator(Modifier.size(18.dp))
                         }
-                        Text("Re-runs Trivy against this image.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            "Re-runs Trivy against this image.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
@@ -251,7 +308,9 @@ fun ImageVulnerabilitiesScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    items(filtered.size, key = { idx -> ignoreKey(filtered[idx]) + "#$idx" }) { idx ->
+                    items(
+                        filtered.size,
+                        key = { idx -> ignoreKey(filtered[idx]) + "#$idx" }) { idx ->
                         val vuln = filtered[idx]
                         val ignore = ignoredByKey[ignoreKey(vuln)]
                         var showDetail by remember(vuln, idx) { mutableStateOf(false) }
@@ -263,11 +322,18 @@ fun ImageVulnerabilitiesScreen(
                                 onClick = { showDetail = true },
                                 onLongClick = { if (isAdmin) rowMenu = true },
                             )
-                            androidx.compose.material3.DropdownMenu(expanded = rowMenu, onDismissRequest = { rowMenu = false }) {
+                            androidx.compose.material3.DropdownMenu(
+                                expanded = rowMenu,
+                                onDismissRequest = { rowMenu = false }) {
                                 if (ignore != null) {
                                     androidx.compose.material3.DropdownMenuItem(
                                         text = { Text("Unignore") },
-                                        onClick = { rowMenu = false; unignore(ignore, ignoreKey(vuln)) },
+                                        onClick = {
+                                            rowMenu = false; unignore(
+                                            ignore,
+                                            ignoreKey(vuln)
+                                        )
+                                        },
                                     )
                                 } else {
                                     androidx.compose.material3.DropdownMenuItem(
@@ -278,7 +344,10 @@ fun ImageVulnerabilitiesScreen(
                             }
                         }
                         if (showDetail) {
-                            VulnerabilityDetailDialog(record = vuln, ignoreInfo = ignore, onDismiss = { showDetail = false })
+                            VulnerabilityDetailDialog(
+                                record = vuln,
+                                ignoreInfo = ignore,
+                                onDismiss = { showDetail = false })
                         }
                     }
 
@@ -339,12 +408,17 @@ private fun VulnerabilityRow(
                 textDecoration = if (isIgnored) TextDecoration.LineThrough else TextDecoration.None,
             )
             Text(
-                record.pkgName + (record.installedVersion.takeIf { it.isNotEmpty() }?.let { " · $it" } ?: ""),
+                record.pkgName + (record.installedVersion.takeIf { it.isNotEmpty() }
+                    ?.let { " · $it" } ?: ""),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             record.fixedVersion?.takeIf { it.isNotEmpty() }?.let {
-                Text("Fixed in $it", style = MaterialTheme.typography.labelSmall, color = ArcaneGreen)
+                Text(
+                    "Fixed in $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ArcaneGreen
+                )
             }
         }
         if (isIgnored) {
@@ -353,19 +427,31 @@ private fun VulnerabilityRow(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
-                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f), CircleShape)
+                    .background(
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
+                        CircleShape
+                    )
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             )
         } else {
             record.cvss?.preferredScore?.let { cvss ->
-                Text(String.format("%.1f", cvss), style = MaterialTheme.typography.labelMedium, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    String.format("%.1f", cvss),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }
 }
 
 @Composable
-private fun VulnerabilityDetailDialog(record: Vulnerability, ignoreInfo: IgnoredVulnerability?, onDismiss: () -> Unit) {
+private fun VulnerabilityDetailDialog(
+    record: Vulnerability,
+    ignoreInfo: IgnoredVulnerability?,
+    onDismiss: () -> Unit
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(record.vulnerabilityId, fontFamily = FontFamily.Monospace) },
@@ -375,28 +461,51 @@ private fun VulnerabilityDetailDialog(record: Vulnerability, ignoreInfo: Ignored
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         LabeledRow("Severity", severityDisplayLabel(record.severity))
                         LabeledRow("Package", record.pkgName)
-                        if (record.installedVersion.isNotEmpty()) LabeledRow("Installed", record.installedVersion)
-                        record.fixedVersion?.takeIf { it.isNotEmpty() }?.let { LabeledRow("Fixed in", it) }
-                        record.cvss?.preferredScore?.let { LabeledRow("CVSS", String.format("%.1f", it)) }
+                        if (record.installedVersion.isNotEmpty()) LabeledRow(
+                            "Installed",
+                            record.installedVersion
+                        )
+                        record.fixedVersion?.takeIf { it.isNotEmpty() }
+                            ?.let { LabeledRow("Fixed in", it) }
+                        record.cvss?.preferredScore?.let {
+                            LabeledRow(
+                                "CVSS",
+                                String.format("%.1f", it)
+                            )
+                        }
                         record.publishedDate?.let { LabeledRow("Published", formatImageDate(it)) }
                         record.lastModifiedDate?.let { LabeledRow("Modified", formatImageDate(it)) }
                     }
                 }
                 record.title?.takeIf { it.isNotEmpty() }?.let { title ->
-                    item { Spacer(Modifier.size(4.dp)); Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold) }
+                    item {
+                        Spacer(Modifier.size(4.dp)); Text(
+                        title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    }
                 }
                 record.description?.takeIf { it.isNotEmpty() }?.let { desc ->
                     item { Text(desc, style = MaterialTheme.typography.bodySmall) }
                 }
                 record.references?.takeIf { it.isNotEmpty() }?.let { refs ->
                     item {
-                        Text("References", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "References",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         Column { refs.forEach { MonoRow(it, maxLines = 2) } }
                     }
                 }
                 ignoreInfo?.let { ig ->
                     item {
-                        Text("Ignored", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Ignored",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
                         Column {
                             ig.reason?.takeIf { it.isNotEmpty() }?.let { LabeledRow("Reason", it) }
                             LabeledRow("By", ig.createdBy)
@@ -440,7 +549,13 @@ private fun IgnoreVulnerabilityDialog(
                     minLines = 2,
                     maxLines = 5,
                 )
-                errorMessage?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
+                errorMessage?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.error
+                    )
+                }
             }
         },
         confirmButton = {

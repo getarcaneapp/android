@@ -61,7 +61,7 @@ private val ImageUpdateInfo.isDefinitive: Boolean
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ImageUpdatesScreen(onRunUpdater: () -> Unit, onHistory: () -> Unit) {
+fun ImageUpdatesScreen(onRunUpdater: () -> Unit, onHistory: () -> Unit, actionsEnabled: Boolean = true) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
@@ -149,6 +149,7 @@ fun ImageUpdatesScreen(onRunUpdater: () -> Unit, onHistory: () -> Unit) {
             UpdatesActionBar(
                 onRunUpdater = onRunUpdater,
                 onHistory = onHistory,
+                enabled = actionsEnabled,
             )
         },
     ) { padding ->
@@ -341,26 +342,27 @@ private fun ImageUpdateInfo.asResponse(): ImageUpdateResponse = ImageUpdateRespo
 
 /** Bottom action bar with Run Updater / Updater History. Mirrors iOS `actionToolbar` on UpdatesView. */
 @Composable
-private fun UpdatesActionBar(onRunUpdater: () -> Unit, onHistory: () -> Unit) {
+private fun UpdatesActionBar(onRunUpdater: () -> Unit, onHistory: () -> Unit, enabled: Boolean) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
     ) {
-        ActionToolbarButton("Run Updater", Icons.Filled.PlayArrow, ArcaneOrange, onRunUpdater)
-        ActionToolbarButton("Updater History", Icons.Filled.History, ArcaneBlue, onHistory)
+        ActionToolbarButton("Run Updater", Icons.Filled.PlayArrow, ArcaneOrange, enabled, onRunUpdater)
+        ActionToolbarButton("Updater History", Icons.Filled.History, ArcaneBlue, enabled, onHistory)
     }
 }
 
 @Composable
-private fun ActionToolbarButton(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, onClick: () -> Unit) {
+private fun ActionToolbarButton(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, enabled: Boolean, onClick: () -> Unit) {
+    val contentAlpha = if (enabled) 1f else 0.45f
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
             Modifier
                 .size(50.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), CircleShape)
-                .clickable(onClick = onClick),
+                .clickable(enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center,
-        ) { Icon(icon, title, tint = tint, modifier = Modifier.size(22.dp)) }
-        Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        ) { Icon(icon, title, tint = tint.copy(alpha = contentAlpha), modifier = Modifier.size(22.dp)) }
+        Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha), maxLines = 1)
     }
 }

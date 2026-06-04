@@ -21,7 +21,9 @@ import app.getarcane.android.ui.components.ContentUnavailable
 @Composable
 fun SwarmScreen() {
     Scaffold(topBar = { TopAppBar(title = { Text("Swarm") }) }) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(Modifier
+            .fillMaxSize()
+            .padding(padding)) {
             ContentUnavailable(
                 title = "Swarm",
                 icon = Icons.Filled.Layers,

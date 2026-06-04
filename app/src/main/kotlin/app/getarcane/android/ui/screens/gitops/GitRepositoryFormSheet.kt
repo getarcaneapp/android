@@ -66,23 +66,98 @@ fun GitRepositoryFormSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp),
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                TextButton(onClick = { onSubmit(GitRepoForm(name.trim(), url.trim(), authType.trim().ifEmpty { "none" }, username.trim(), token, sshKey, description.trim(), enabled)) }, enabled = canSave) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                TextButton(onClick = {
+                    onSubmit(
+                        GitRepoForm(
+                            name.trim(),
+                            url.trim(),
+                            authType.trim().ifEmpty { "none" },
+                            username.trim(),
+                            token,
+                            sshKey,
+                            description.trim(),
+                            enabled
+                        )
+                    )
+                }, enabled = canSave) {
                     Text("Save")
                 }
             }
-            OutlinedTextField(name, { name = it }, label = { Text("Name *") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(url, { url = it }, label = { Text("URL *") }, placeholder = { Text("https://github.com/org/repo.git") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(authType, { authType = it }, label = { Text("Auth Type") }, placeholder = { Text("none / token / ssh") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(username, { username = it }, label = { Text("Username") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(token, { token = it }, label = { Text("Token") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(sshKey, { sshKey = it }, label = { Text("SSH Key") }, minLines = 4, maxLines = 10, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(description, { description = it }, label = { Text("Description") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                name,
+                { name = it },
+                label = { Text("Name *") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                url,
+                { url = it },
+                label = { Text("URL *") },
+                placeholder = { Text("https://github.com/org/repo.git") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                authType,
+                { authType = it },
+                label = { Text("Auth Type") },
+                placeholder = { Text("none / token / ssh") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                username,
+                { username = it },
+                label = { Text("Username") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                token,
+                { token = it },
+                label = { Text("Token") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                sshKey,
+                { sshKey = it },
+                label = { Text("SSH Key") },
+                minLines = 4,
+                maxLines = 10,
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                description,
+                { description = it },
+                label = { Text("Description") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text("Enabled", style = MaterialTheme.typography.bodyLarge)
                 Switch(checked = enabled, onCheckedChange = { enabled = it })
             }

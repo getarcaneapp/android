@@ -17,12 +17,12 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.AlertDialog
@@ -122,12 +122,12 @@ fun VolumeListScreen(onOpen: (String) -> Unit) {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More options") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             Text("Sort", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
-                            DropdownMenuItem(text = { Text("A–Z") }, onClick = { sortAsc = true; menuOpen = false }, trailingIcon = { if (sortAsc) Icon(Icons.Filled.Sort, null) })
-                            DropdownMenuItem(text = { Text("Z–A") }, onClick = { sortAsc = false; menuOpen = false }, trailingIcon = { if (!sortAsc) Icon(Icons.Filled.Sort, null) })
+                            DropdownMenuItem(text = { Text("A–Z") }, onClick = { sortAsc = true; menuOpen = false }, trailingIcon = { if (sortAsc) Icon(Icons.AutoMirrored.Filled.Sort, null) })
+                            DropdownMenuItem(text = { Text("Z–A") }, onClick = { sortAsc = false; menuOpen = false }, trailingIcon = { if (!sortAsc) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             HorizontalDivider()
                             Text("Scope", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
                             ScopeFilter.entries.forEach { f ->
-                                DropdownMenuItem(text = { Text(f.label) }, onClick = { scopeFilter = f; menuOpen = false }, trailingIcon = { if (scopeFilter == f) Icon(Icons.Filled.Sort, null) })
+                                DropdownMenuItem(text = { Text(f.label) }, onClick = { scopeFilter = f; menuOpen = false }, trailingIcon = { if (scopeFilter == f) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             }
                         }
                     }
