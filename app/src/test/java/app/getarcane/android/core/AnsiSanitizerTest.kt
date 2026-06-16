@@ -71,6 +71,13 @@ class AnsiSanitizerTest {
     }
 
     @Test
+    fun parseSgr_treatsEmptyParametersAsReset() {
+        val segments = AnsiSanitizer.parseSgr("\u001b[31;mplain")
+
+        assertEquals(listOf(AnsiSanitizer.StyledText("plain")), segments)
+    }
+
+    @Test
     fun parseSgr_supportsRemainingReadableForegroundColorsAndDefault() {
         val segments = AnsiSanitizer.parseSgr("\u001b[35mmag\u001b[36mcyan\u001b[37mwhite\u001b[39mdefault")
 
