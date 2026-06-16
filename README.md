@@ -18,6 +18,8 @@ Arcane Mobile is the official Android companion for [Arcane](https://github.com/
 
 For setup instructions, configuration details, and development guides, visit the **[official documentation site](https://getarcane.app)**.
 
+For continuation context from the currently running Android app, see [`docs/current-app-state.md`](docs/current-app-state.md).
+
 ## Requirements
 
 - Android 7.0 (API 24) or later
