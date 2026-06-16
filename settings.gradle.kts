@@ -22,8 +22,9 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Arcane Mobile"
+rootProject.name = "arcane-android"
 include(":app")
+project(":app").projectDir = file("app")
 
 val androidSdkDirFromRootLocalProperties = file("local.properties")
     .takeIf { it.isFile }

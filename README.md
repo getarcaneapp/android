@@ -42,16 +42,21 @@ Open the project in **Android Studio** (Quail Feature Drop or later) and let it 
 
 ### Android Studio run configuration
 
-No custom Gradle or activity arguments are required. In Android Studio, create an
-**Android App** run configuration with:
+Open the repository root (the directory containing `settings.gradle.kts`) in
+Android Studio. After Gradle sync, the project should expose a single Android
+application module/source set named `arcane-android.app.main` (shown in some
+Android Studio dialogs as `app` or `app.main`).
 
-- Module: `app`
+A shared **Android App** run configuration named `Arcane Android` is checked in
+under `.run/`. If Android Studio does not pick it up automatically, create one
+manually with:
+
+- Module: `arcane-android.app.main` (or the `app`/`app.main` entry Android Studio shows)
 - Launch: Default Activity (`app.getarcane.android/.MainActivity`)
 - Deploy target: any API 24+ emulator or device
 
 The checked-in manifest already marks `MainActivity` as the launcher activity,
-so Android Studio can also create the same configuration automatically from the
-toolbar after the initial Gradle sync.
+so no custom activity arguments are required.
 
 The app depends on [`libarcane-kotlin`](https://github.com/getarcaneapp/libarcane-kotlin) — the Kotlin SDK that talks to the Arcane API. By default, Gradle resolves the SDK from the sibling `../libarcane-kotlin` Git checkout when it exists; otherwise it resolves the SDK from the public Git repository on the `main` branch and builds it on demand. No separate publish step is needed.
 
