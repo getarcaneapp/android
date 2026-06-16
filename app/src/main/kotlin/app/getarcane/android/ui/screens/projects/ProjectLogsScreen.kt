@@ -31,10 +31,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.getarcane.android.core.AnsiSanitizer
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ErrorBanner
+import app.getarcane.android.ui.components.buildAnsiAnnotatedString
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.streaming.LogLine
@@ -109,7 +109,7 @@ private fun LogLineRow(line: LogLine) {
             )
         }
         Text(
-            AnsiSanitizer.strip(line.text),
+            buildAnsiAnnotatedString(line.text),
             fontFamily = FontFamily.Monospace,
             fontSize = 12.sp,
             color = color,

@@ -53,6 +53,7 @@ import app.getarcane.android.core.AnsiSanitizer
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ErrorBanner
+import app.getarcane.android.ui.components.buildAnsiAnnotatedString
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
@@ -242,7 +243,7 @@ private fun LogLineRow(line: LogLine) {
             )
         }
         Text(
-            AnsiSanitizer.strip(line.text),
+            buildAnsiAnnotatedString(line.text),
             fontFamily = FontFamily.Monospace,
             fontSize = 12.sp,
             color = color,
