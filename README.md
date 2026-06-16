@@ -31,7 +31,7 @@ This is a [Jetpack Compose](https://developer.android.com/compose) app written i
 
 | Toolchain | Version |
 | --- | --- |
-| Android Gradle Plugin | 9.1.1 |
+| Android Gradle Plugin | 9.0.0 |
 | Gradle | 9.4.1 |
 | Kotlin | 2.2.10 |
 | JDK | 21 |
