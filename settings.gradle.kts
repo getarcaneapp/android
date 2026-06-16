@@ -45,14 +45,21 @@ if (
 }
 
 val localArcaneSdk = file("../libarcane-kotlin")
+val appAgpVersion = agpVersionFrom(file("gradle/libs.versions.toml"))
+val localArcaneSdkAgpVersion = agpVersionFrom(localArcaneSdk.resolve("gradle/libs.versions.toml"))
+val useLocalArcaneSdk =
+    localArcaneSdk.isDirectory &&
+        !providers.gradleProperty("arcane.remoteSdk").isPresent &&
+        localArcaneSdkAgpVersion == appAgpVersion
 
 // Resolve the Arcane SDK (`app.getarcane:arcane-core` / `:arcane-android`) from the sibling Git
-// checkout when present, otherwise from its public Git repo built on demand as a Gradle source
-// dependency (the `main` branch is pinned at the dependency use-site in app/build.gradle.kts).
+// checkout only when its Android Gradle Plugin version matches this app. Gradle rejects composite
+// builds that apply multiple AGP versions, so a stale sibling checkout must fall back to the public
+// Git source dependency instead of breaking sync/builds.
 //
 // Pass `-Parcane.remoteSdk` to force the public Git source dependency even when the sibling
 // checkout exists.
-if (localArcaneSdk.isDirectory && !providers.gradleProperty("arcane.remoteSdk").isPresent) {
+if (useLocalArcaneSdk) {
     includeBuild(localArcaneSdk)
 } else {
     sourceControl {
@@ -62,3 +69,11 @@ if (localArcaneSdk.isDirectory && !providers.gradleProperty("arcane.remoteSdk").
         }
     }
 }
+
+fun agpVersionFrom(versionCatalog: File): String? =
+    versionCatalog
+        .takeIf { it.isFile }
+        ?.readLines()
+        ?.firstNotNullOfOrNull { line ->
+            Regex("""^agp\s*=\s*"([^"]+)"""").find(line)?.groupValues?.get(1)
+        }

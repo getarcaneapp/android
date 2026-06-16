@@ -146,7 +146,7 @@ object AnsiSanitizer {
         if (isBlank()) {
             emptyList()
         } else {
-            split(';').mapNotNull { it.toIntOrNull() }
+            split(';').map { it.toIntOrNull() ?: 0 }
         }
 
     private const val ESC_CHAR = '\u001b'
