@@ -29,16 +29,29 @@ This is a [Jetpack Compose](https://developer.android.com/compose) app written i
 
 | Toolchain | Version |
 | --- | --- |
-| Android Gradle Plugin | 9.2.1 |
-| Gradle | 9.3.1 |
+| Android Gradle Plugin | 9.1.1 |
+| Gradle | 9.4.1 |
 | Kotlin | 2.2.10 |
-| JDK | 17+ |
+| JDK | 21 |
 
-Open the project in **Android Studio** (Otter Feature Drop or later) and let it sync, or build from the command line:
+Open the project in **Android Studio** (Quail Feature Drop or later) and let it sync, or build from the command line:
 
 ```sh
 ./gradlew :app:installDebug
 ```
+
+### Android Studio run configuration
+
+No custom Gradle or activity arguments are required. In Android Studio, create an
+**Android App** run configuration with:
+
+- Module: `app`
+- Launch: Default Activity (`app.getarcane.android/.MainActivity`)
+- Deploy target: any API 24+ emulator or device
+
+The checked-in manifest already marks `MainActivity` as the launcher activity,
+so Android Studio can also create the same configuration automatically from the
+toolbar after the initial Gradle sync.
 
 The app depends on [`libarcane-kotlin`](https://github.com/getarcaneapp/libarcane-kotlin) — the Kotlin SDK that talks to the Arcane API. By default, Gradle resolves the SDK from the sibling `../libarcane-kotlin` Git checkout when it exists; otherwise it resolves the SDK from the public Git repository on the `main` branch and builds it on demand. No separate publish step is needed.
 
