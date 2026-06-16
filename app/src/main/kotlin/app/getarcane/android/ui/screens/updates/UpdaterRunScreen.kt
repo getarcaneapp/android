@@ -69,6 +69,7 @@ import app.getarcane.android.ui.theme.ArcanePink
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.EnvironmentId
+import app.getarcane.sdk.errors.ArcaneError
 import app.getarcane.sdk.models.updater.UpdaterResourceResult
 import app.getarcane.sdk.models.updater.UpdaterResult
 import app.getarcane.sdk.models.updater.UpdaterStatus
@@ -77,12 +78,23 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.coroutines.coroutineContext
 
-private sealed interface RunPhase {
+internal sealed interface RunPhase {
     data object Starting : RunPhase
     data object Running : RunPhase
     data class Completed(val result: UpdaterResult) : RunPhase
+    data class OutcomeUnknown(val message: String) : RunPhase
     data class Failed(val message: String) : RunPhase
 }
+
+internal fun updaterRunFailurePhase(error: Throwable, observedServerStart: Boolean): RunPhase =
+    if (observedServerStart && error is ArcaneError.Transport) {
+        RunPhase.OutcomeUnknown(
+            "The updater started on the server, but the final response was interrupted. " +
+                "Refresh Updates or open Updater History to review the results.",
+        )
+    } else {
+        RunPhase.Failed(friendlyErrorMessage(error))
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,7 +131,7 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
             val result = client.updater.run(envId = envId)
             RunPhase.Completed(result)
         } catch (e: Throwable) {
-            RunPhase.Failed(friendlyErrorMessage(e))
+            updaterRunFailurePhase(e, observedServerStart = liveStatus != null || phase is RunPhase.Running)
         } finally {
             pollJob.cancel()
         }
@@ -187,6 +199,7 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                             }
                         }
                     }
+                    is RunPhase.OutcomeUnknown -> ContentUnavailable("Updater Started", Icons.Filled.Warning, p.message)
                     is RunPhase.Failed -> ContentUnavailable("Updater Failed", Icons.Filled.Warning, p.message)
                 }
             }
