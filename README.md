@@ -29,24 +29,36 @@ This is a [Jetpack Compose](https://developer.android.com/compose) app written i
 
 | Toolchain | Version |
 | --- | --- |
-| Android Gradle Plugin | 9.2.1 |
-| Gradle | 9.3.1 |
+| Android Gradle Plugin | 9.1.1 (aligned with libarcane-kotlin source dependency) |
+| Gradle | 9.4.1 (wrapper) |
 | Kotlin | 2.2.10 |
-| JDK | 17+ |
+| JDK | 21 recommended; 17+ supported |
 
-Open the project in **Android Studio** (Otter Feature Drop or later) and let it sync, or build from the command line:
-
-```sh
-./gradlew :app:installDebug
-```
-
-The app depends on [`libarcane-kotlin`](https://github.com/getarcaneapp/libarcane-kotlin) — the Kotlin SDK that talks to the Arcane API. By default, Gradle resolves the SDK from the sibling `../libarcane-kotlin` Git checkout when it exists; otherwise it resolves the SDK from the public Git repository on the `main` branch and builds it on demand. No separate publish step is needed.
-
-To force the public Git source dependency even when the sibling checkout exists, pass `-Parcane.remoteSdk`:
+Open the project in **Android Studio** (Otter Feature Drop or later) and let it sync, or build from the command line. For a local CLI checkout, point Gradle at the Android SDK and use JDK 21:
 
 ```sh
-./gradlew :app:installDebug -Parcane.remoteSdk
+printf 'sdk.dir=/home/nameless1/Android/Sdk\n' > local.properties
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+export ANDROID_HOME=/home/nameless1/Android/Sdk
+export ANDROID_SDK_ROOT=/home/nameless1/Android/Sdk
+./gradlew testDebugUnitTest lintDebug assembleDebug --no-daemon
 ```
+
+Install the debug build on a connected emulator or device:
+
+```sh
+./gradlew :app:installDebug --no-daemon
+```
+
+The app depends on [`libarcane-kotlin`](https://github.com/getarcaneapp/libarcane-kotlin) — the Kotlin SDK that talks to the Arcane API. By default, Gradle resolves the SDK from a compatible sibling `../libarcane-kotlin` Git checkout when it exists; otherwise it resolves the SDK from the public Git repository on the `main` branch and builds it on demand. No separate publish step is needed. A sibling checkout is considered compatible only when its Android Gradle Plugin version matches this app, because Gradle/AGP do not allow multiple AGP versions in the same composite/source build.
+
+To force the public Git source dependency even when a compatible sibling checkout exists, pass `-Parcane.remoteSdk`:
+
+```sh
+./gradlew testDebugUnitTest lintDebug assembleDebug -Parcane.remoteSdk --no-daemon
+```
+
+To force a sibling checkout for local SDK development, pass `-Parcane.localSdk`; if that checkout uses a different AGP version, align one side first.
 
 ### Running on an emulator
 
@@ -54,6 +66,13 @@ A helper script boots the `arcane` AVD with public DNS servers (needed for the h
 
 ```sh
 ./run-emulator.sh
+```
+
+Once an emulator or device is available, install and launch the app from Android Studio, or use:
+
+```sh
+./gradlew :app:installDebug --no-daemon
+adb shell monkey -p app.getarcane.android 1
 ```
 
 ## Reporting Issues

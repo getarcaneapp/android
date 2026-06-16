@@ -47,15 +47,26 @@ kotlin {
     }
 }
 
-// Arcane SDK source: the sibling checkout when present, or the public Git repo's `main` branch
-// when built with -Parcane.remoteSdk or without the sibling checkout (kept in sync with
-// settings.gradle.kts). The composite build ignores the version constraint and substitutes the
-// local modules, so the branch is only used for git.
+// Arcane SDK source: a compatible sibling checkout when present, or the public Git repo's `main`
+// branch when built with -Parcane.remoteSdk or without a compatible sibling checkout (kept in sync
+// with settings.gradle.kts). Android Gradle Plugin versions must match across composite/source builds,
+// so an incompatible sibling checkout is skipped unless `-Parcane.localSdk` is passed explicitly.
 val localArcaneSdk = rootProject.layout.projectDirectory.dir("../libarcane-kotlin").asFile
-val arcaneFromGit = providers.gradleProperty("arcane.remoteSdk").isPresent || !localArcaneSdk.isDirectory
+
+fun agpVersionFromCatalog(catalog: File): String? = catalog
+    .takeIf { it.isFile }
+    ?.readText()
+    ?.let { Regex("""(?m)^agp\s*=\s*"([^"]+)"""").find(it)?.groupValues?.get(1) }
+
+val appAgpVersion = agpVersionFromCatalog(rootProject.layout.projectDirectory.file("gradle/libs.versions.toml").asFile)
+val localArcaneSdkAgpVersion = agpVersionFromCatalog(localArcaneSdk.resolve("gradle/libs.versions.toml"))
+val useLocalArcaneSdk = localArcaneSdk.isDirectory &&
+    !providers.gradleProperty("arcane.remoteSdk").isPresent &&
+    (providers.gradleProperty("arcane.localSdk").isPresent || appAgpVersion == localArcaneSdkAgpVersion)
+val arcaneFromGit = !useLocalArcaneSdk
 
 dependencies {
-    // Arcane SDK — resolved from the sibling checkout when present, otherwise from Git.
+    // Arcane SDK — resolved from a compatible sibling checkout when present, otherwise from Git.
     if (arcaneFromGit) {
         implementation(libs.arcane.core) { version { branch = "main" } }
         implementation(libs.arcane.android) { version { branch = "main" } }
