@@ -31,6 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.getarcane.android.core.AnsiSanitizer
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ErrorBanner
@@ -108,7 +109,7 @@ private fun LogLineRow(line: LogLine) {
             )
         }
         Text(
-            line.text,
+            AnsiSanitizer.strip(line.text),
             fontFamily = FontFamily.Monospace,
             fontSize = 12.sp,
             color = color,

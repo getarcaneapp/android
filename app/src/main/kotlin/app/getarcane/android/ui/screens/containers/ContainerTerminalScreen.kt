@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.core.AnsiSanitizer
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.BannerSeverity
@@ -64,8 +65,6 @@ private const val CHAR_BUDGET = 200_000
 private const val ESC = "\u001b"
 private const val CTRL_C = "\u0003"
 private const val CTRL_D = "\u0004"
-private const val BEL = '\u0007'
-private const val ESC_CHAR = '\u001b'
 
 /**
  * Interactive container terminal over a WebSocket exec session. Output appended to a monospaced
@@ -302,57 +301,5 @@ private fun ShortcutButton(label: String, enabled: Boolean, onClick: () -> Unit)
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         )
-    }
-}
-
-/**
- * Best-effort stripper for ANSI escape sequences (the UI does not interpret them). Drops CSI/OSC
- * sequences, short two-byte escapes, and the bell. Port of iOS `AnsiSanitizer`.
- */
-object AnsiSanitizer {
-    fun strip(input: String): String {
-        if (!input.contains(ESC_CHAR) && !input.contains(BEL)) return input
-        val out = StringBuilder(input.length)
-        var i = 0
-        val n = input.length
-        while (i < n) {
-            when (input[i]) {
-                BEL -> i++ // bell
-                ESC_CHAR -> i = consumeEscape(input, i + 1)
-                else -> {
-                    out.append(input[i])
-                    i++
-                }
-            }
-        }
-        return out.toString()
-    }
-
-    /** Returns the index just past the consumed escape sequence (ESC already skipped at [start]). */
-    private fun consumeEscape(s: String, start: Int): Int {
-        var i = start
-        val n = s.length
-        if (i >= n) return i
-        when (s[i]) {
-            '[' -> {
-                i++
-                while (i < n) {
-                    val v = s[i].code
-                    i++
-                    if (v in 0x40..0x7E) break
-                }
-            }
-            ']' -> {
-                i++
-                while (i < n) {
-                    if (s[i] == BEL) { i++; break }
-                    if (s[i] == ESC_CHAR) { i += 2; break }
-                    i++
-                }
-            }
-            '(', ')', '*', '+', '%', '#' -> i += 2 // designator byte
-            else -> i++ // single-character escape
-        }
-        return i
     }
 }
