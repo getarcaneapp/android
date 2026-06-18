@@ -49,9 +49,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.getarcane.android.core.AnsiSanitizer
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ErrorBanner
+import app.getarcane.android.ui.components.buildAnsiAnnotatedString
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
@@ -150,7 +152,7 @@ private fun LogsContent(
     }
 
     val filtered = remember(lines.size, search) {
-        if (search.isBlank()) lines.toList() else lines.filter { it.text.contains(search, ignoreCase = true) }
+        if (search.isBlank()) lines.toList() else lines.filter { AnsiSanitizer.strip(it.text).contains(search, ignoreCase = true) }
     }
 
     LaunchedEffect(filtered.size, autoScroll) {
@@ -241,7 +243,7 @@ private fun LogLineRow(line: LogLine) {
             )
         }
         Text(
-            line.text,
+            buildAnsiAnnotatedString(line.text),
             fontFamily = FontFamily.Monospace,
             fontSize = 12.sp,
             color = color,

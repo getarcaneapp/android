@@ -18,6 +18,8 @@ Arcane Mobile is the official Android companion for [Arcane](https://github.com/
 
 For setup instructions, configuration details, and development guides, visit the **[official documentation site](https://getarcane.app)**.
 
+For continuation context from the currently running Android app, see [`docs/current-app-state.md`](docs/current-app-state.md).
+
 ## Requirements
 
 - Android 7.0 (API 24) or later
@@ -29,16 +31,34 @@ This is a [Jetpack Compose](https://developer.android.com/compose) app written i
 
 | Toolchain | Version |
 | --- | --- |
-| Android Gradle Plugin | 9.2.1 |
-| Gradle | 9.3.1 |
+| Android Gradle Plugin | 9.1.1 |
+| Gradle | 9.4.1 |
 | Kotlin | 2.2.10 |
-| JDK | 17+ |
+| JDK | 21 |
 
-Open the project in **Android Studio** (Otter Feature Drop or later) and let it sync, or build from the command line:
+Open the project in **Android Studio** (Quail Feature Drop or later) and let it sync, or build from the command line:
 
 ```sh
 ./gradlew :app:installDebug
 ```
+
+### Android Studio run configuration
+
+Open the repository root (the directory containing `settings.gradle.kts`) in
+Android Studio. After Gradle sync, the project should expose a single Android
+application module/source set named `arcane-android.app.main` (shown in some
+Android Studio dialogs as `app` or `app.main`).
+
+A shared **Android App** run configuration named `Arcane Android` is checked in
+under `.run/`. If Android Studio does not pick it up automatically, create one
+manually with:
+
+- Module: `arcane-android.app.main` (or the `app`/`app.main` entry Android Studio shows)
+- Launch: Default Activity (`app.getarcane.android/.MainActivity`)
+- Deploy target: any API 24+ emulator or device
+
+The checked-in manifest already marks `MainActivity` as the launcher activity,
+so no custom activity arguments are required.
 
 The app depends on [`libarcane-kotlin`](https://github.com/getarcaneapp/libarcane-kotlin) — the Kotlin SDK that talks to the Arcane API. By default, Gradle resolves the SDK from the sibling `../libarcane-kotlin` Git checkout when it exists; otherwise it resolves the SDK from the public Git repository on the `main` branch and builds it on demand. No separate publish step is needed.
 

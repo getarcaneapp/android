@@ -52,7 +52,12 @@ kotlin {
 // settings.gradle.kts). The composite build ignores the version constraint and substitutes the
 // local modules, so the branch is only used for git.
 val localArcaneSdk = rootProject.layout.projectDirectory.dir("../libarcane-kotlin").asFile
-val arcaneFromGit = providers.gradleProperty("arcane.remoteSdk").isPresent || !localArcaneSdk.isDirectory
+val appAgpVersion = agpVersionFrom(rootProject.layout.projectDirectory.file("gradle/libs.versions.toml").asFile)
+val localArcaneSdkAgpVersion = agpVersionFrom(localArcaneSdk.resolve("gradle/libs.versions.toml"))
+val arcaneFromGit =
+    providers.gradleProperty("arcane.remoteSdk").isPresent ||
+        !localArcaneSdk.isDirectory ||
+        localArcaneSdkAgpVersion != appAgpVersion
 
 dependencies {
     // Arcane SDK — resolved from the sibling checkout when present, otherwise from Git.
@@ -91,3 +96,11 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
 }
+
+fun agpVersionFrom(versionCatalog: File): String? =
+    versionCatalog
+        .takeIf { it.isFile }
+        ?.readLines()
+        ?.firstNotNullOfOrNull { line ->
+            Regex("""^agp\s*=\s*"([^"]+)"""").find(line)?.groupValues?.get(1)
+        }
