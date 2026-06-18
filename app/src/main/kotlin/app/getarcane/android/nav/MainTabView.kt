@@ -102,6 +102,14 @@ fun MainTabView() {
         selected = AppTab.Dashboard.id
     }
 
+    val rootBackAction = MainBackNavigation.resolve(selected)
+    BackHandler(enabled = rootBackAction == MainBackNavigation.Action.SwitchToDashboard) {
+        // Register this before child content so nested NavHosts and transient UI get first chance to
+        // consume Back. Once a non-Dashboard tab is at its root, system Back returns home instead of
+        // exiting the Activity from a resource/settings tab dead end.
+        selected = AppTab.Dashboard.id
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar {
