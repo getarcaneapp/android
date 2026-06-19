@@ -61,6 +61,18 @@ class UpdaterRunScreenTest {
     }
 
     @Test
+    fun activeStatusWithoutBaselineIsNotStartEvidence() {
+        val observed = UpdaterRunStatusSnapshot(
+            updatingContainers = 1,
+            updatingProjects = 0,
+            containerIds = listOf("pre-existing-container"),
+            projectIds = emptyList(),
+        )
+
+        assertEquals(false, observed.isNewActiveWorkComparedTo(null))
+    }
+
+    @Test
     fun inactiveStatusAfterObservedStartUsesPollingOutcome() {
         val phase = updaterRunPollingCompletedPhase()
 

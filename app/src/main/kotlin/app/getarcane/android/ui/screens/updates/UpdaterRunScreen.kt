@@ -73,6 +73,7 @@ import app.getarcane.sdk.errors.ArcaneError
 import app.getarcane.sdk.models.updater.UpdaterResourceResult
 import app.getarcane.sdk.models.updater.UpdaterResult
 import app.getarcane.sdk.models.updater.UpdaterStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -112,7 +113,7 @@ internal data class UpdaterRunStatusSnapshot(
         updatingContainers > 0 || updatingProjects > 0 || containerIds.isNotEmpty() || projectIds.isNotEmpty()
 
     fun isNewActiveWorkComparedTo(baseline: UpdaterRunStatusSnapshot?): Boolean =
-        hasActiveWork && this != baseline
+        baseline != null && hasActiveWork && this != baseline
 
     companion object {
         fun from(status: UpdaterStatus): UpdaterRunStatusSnapshot =
@@ -152,19 +153,25 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
         // The backend detaches activity-backed updater work from the request lifecycle, so status
         // polling is the source of truth for large batches where proxies/clients can interrupt the
         // final POST response after work has already started.
-        val runJob = async { client.updater.run(envId = envId) }
+        val runJob = async {
+            try {
+                Result.success(client.updater.run(envId = envId))
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                Result.failure(error)
+            }
+        }
         delay(400)
         if (phase is RunPhase.Starting) phase = RunPhase.Running
 
         while (coroutineContext.isActive) {
             if (runJob.isCompleted) {
-                phase = runCatching { runJob.await() }
-                    .fold(
-                        onSuccess = { result -> RunPhase.Completed(result) },
-                        onFailure = { error ->
-                            updaterRunFailurePhase(error, observedServerStart = observedServerStart)
-                        },
-                    )
+                phase = runJob.await().fold(
+                    onSuccess = { result -> RunPhase.Completed(result) },
+                    onFailure = { error ->
+                        updaterRunFailurePhase(error, observedServerStart = observedServerStart)
+                    },
+                )
                 break
             }
 
