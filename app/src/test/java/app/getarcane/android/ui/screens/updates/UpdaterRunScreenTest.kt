@@ -34,4 +34,29 @@ class UpdaterRunScreenTest {
             (phase as RunPhase.OutcomeUnknown).message,
         )
     }
+
+    @Test
+    fun activeStatusMatchingBaselineIsNotStartEvidence() {
+        val baseline = UpdaterRunStatusSnapshot(
+            updatingContainers = 1,
+            updatingProjects = 0,
+            containerIds = listOf("existing-container"),
+            projectIds = emptyList(),
+        )
+
+        assertEquals(false, baseline.isNewActiveWorkComparedTo(baseline))
+    }
+
+    @Test
+    fun newActiveStatusIsStartEvidence() {
+        val baseline = UpdaterRunStatusSnapshot(
+            updatingContainers = 0,
+            updatingProjects = 0,
+            containerIds = emptyList(),
+            projectIds = emptyList(),
+        )
+        val observed = baseline.copy(updatingContainers = 1, containerIds = listOf("container-a"))
+
+        assertEquals(true, observed.isNewActiveWorkComparedTo(baseline))
+    }
 }

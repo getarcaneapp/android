@@ -96,6 +96,29 @@ internal fun updaterRunFailurePhase(error: Throwable, observedServerStart: Boole
         RunPhase.Failed(friendlyErrorMessage(error))
     }
 
+internal data class UpdaterRunStatusSnapshot(
+    val updatingContainers: Int,
+    val updatingProjects: Int,
+    val containerIds: List<String>,
+    val projectIds: List<String>,
+) {
+    val hasActiveWork: Boolean =
+        updatingContainers > 0 || updatingProjects > 0 || containerIds.isNotEmpty() || projectIds.isNotEmpty()
+
+    fun isNewActiveWorkComparedTo(baseline: UpdaterRunStatusSnapshot?): Boolean =
+        hasActiveWork && this != baseline
+
+    companion object {
+        fun from(status: UpdaterStatus): UpdaterRunStatusSnapshot =
+            UpdaterRunStatusSnapshot(
+                updatingContainers = status.updatingContainers,
+                updatingProjects = status.updatingProjects,
+                containerIds = status.containerIds,
+                projectIds = status.projectIds,
+            )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, environmentName: String? = null) {
@@ -114,13 +137,24 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
         phase = RunPhase.Starting
         liveStatus = null
 
-        // Poll loop: flips to Running quickly, then refreshes live status.
+        var observedServerStart = false
+        val baselineStatus = runCatching { client.updater.status(envId = envId) }.getOrNull()
+        val baselineSnapshot = baselineStatus?.let(UpdaterRunStatusSnapshot::from)
+        liveStatus = baselineStatus
+
+        // Poll loop: flips to Running quickly for local progress UI, then refreshes live status.
+        // Only status evidence that differs from the pre-run baseline is treated as proof that this
+        // run reached the server; the local timer alone must not turn a pre-accept timeout into an
+        // unknown outcome.
         val pollJob = launch {
             delay(400)
             if (phase is RunPhase.Starting) phase = RunPhase.Running
             while (coroutineContext.isActive) {
                 runCatching { client.updater.status(envId = envId) }.getOrNull()?.let { status ->
                     liveStatus = status
+                    if (UpdaterRunStatusSnapshot.from(status).isNewActiveWorkComparedTo(baselineSnapshot)) {
+                        observedServerStart = true
+                    }
                     if (phase is RunPhase.Starting) phase = RunPhase.Running
                 }
                 delay(1500)
@@ -131,7 +165,7 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
             val result = client.updater.run(envId = envId)
             RunPhase.Completed(result)
         } catch (e: Throwable) {
-            updaterRunFailurePhase(e, observedServerStart = liveStatus != null || phase is RunPhase.Running)
+            updaterRunFailurePhase(e, observedServerStart = observedServerStart)
         } finally {
             pollJob.cancel()
         }

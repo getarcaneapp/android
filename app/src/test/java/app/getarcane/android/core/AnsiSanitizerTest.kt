@@ -42,6 +42,13 @@ class AnsiSanitizerTest {
     }
 
     @Test
+    fun strip_keepsScanningOscUntilBelOrStringTerminator() {
+        val input = "before\u001b]2;foo\u001b[31mbar\u0007after \u001b]2;title\u001b\\done"
+
+        assertEquals("beforeafter done", AnsiSanitizer.strip(input))
+    }
+
+    @Test
     fun parseSgr_returnsStyledSegmentsForCommonForegroundColorsAndReset() {
         val segments = AnsiSanitizer.parseSgr("plain \u001b[31mred\u001b[0m \u001b[32mgreen")
 
