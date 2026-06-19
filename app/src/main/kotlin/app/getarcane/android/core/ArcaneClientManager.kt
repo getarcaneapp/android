@@ -12,7 +12,6 @@ import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.android.AndroidSecureTokenStore
 import app.getarcane.sdk.android.oidc.OidcAuthenticator
-import app.getarcane.sdk.auth.TokenStore
 import app.getarcane.sdk.models.auth.OidcStatusInfo
 import app.getarcane.sdk.models.user.User
 import io.ktor.client.engine.HttpClientEngine
@@ -31,22 +30,6 @@ import okhttp3.HttpUrl
 enum class AuthStatus { SETUP, AUTHENTICATING, LOGIN, AUTHENTICATED }
 
 internal const val ARCANE_REQUEST_TIMEOUT_MILLIS: Long = 10 * 60 * 1000
-
-internal fun androidArcaneConfiguration(
-    url: String,
-    tokenStore: TokenStore,
-    defaultEnvironmentId: EnvironmentId,
-    defaultHeaders: Map<String, String>,
-    engine: HttpClientEngine,
-): ArcaneConfiguration =
-    ArcaneConfiguration(
-        baseUrl = url,
-        tokenStore = tokenStore,
-        defaultEnvironmentId = defaultEnvironmentId,
-        defaultHeaders = defaultHeaders,
-        engine = engine,
-        requestTimeoutMillis = ARCANE_REQUEST_TIMEOUT_MILLIS,
-    )
 
 /**
  * Central app state: server config, the [ArcaneClient], auth state, current user, server
@@ -114,12 +97,13 @@ class ArcaneClientManager(context: Context) {
 
     private fun makeClient(url: String, defaultHeaders: Map<String, String> = emptyMap()): ArcaneClient =
         ArcaneClient(
-            androidArcaneConfiguration(
-                url = url,
+            ArcaneConfiguration(
+                baseUrl = url,
                 tokenStore = AndroidSecureTokenStore(appContext),
                 defaultEnvironmentId = activeEnvironmentId,
                 defaultHeaders = defaultHeaders,
                 engine = makeHttpEngine(),
+                requestTimeoutMillis = ARCANE_REQUEST_TIMEOUT_MILLIS,
             ),
         )
 
