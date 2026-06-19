@@ -29,8 +29,6 @@ import okhttp3.HttpUrl
 
 enum class AuthStatus { SETUP, AUTHENTICATING, LOGIN, AUTHENTICATED }
 
-internal const val ARCANE_REQUEST_TIMEOUT_MILLIS: Long = 10 * 60 * 1000
-
 /**
  * Central app state: server config, the [ArcaneClient], auth state, current user, server
  * capabilities, and the active environment. Compose-observable (mutableState-backed). Port of the
@@ -103,7 +101,6 @@ class ArcaneClientManager(context: Context) {
                 defaultEnvironmentId = activeEnvironmentId,
                 defaultHeaders = defaultHeaders,
                 engine = makeHttpEngine(),
-                requestTimeoutMillis = ARCANE_REQUEST_TIMEOUT_MILLIS,
             ),
         )
 
