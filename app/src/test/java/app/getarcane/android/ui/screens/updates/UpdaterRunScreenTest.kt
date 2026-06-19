@@ -59,4 +59,16 @@ class UpdaterRunScreenTest {
 
         assertEquals(true, observed.isNewActiveWorkComparedTo(baseline))
     }
+
+    @Test
+    fun inactiveStatusAfterObservedStartUsesPollingOutcome() {
+        val phase = updaterRunPollingCompletedPhase()
+
+        assertTrue(phase is RunPhase.OutcomeUnknown)
+        assertEquals(
+            "The updater is no longer reporting active work. Refresh Updates or open Updater History " +
+                "to review the results.",
+            (phase as RunPhase.OutcomeUnknown).message,
+        )
+    }
 }

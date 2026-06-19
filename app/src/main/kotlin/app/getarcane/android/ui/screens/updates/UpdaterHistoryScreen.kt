@@ -63,12 +63,56 @@ import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcanePink
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
+import app.getarcane.sdk.ArcaneClient
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.base.JsonValue
-import app.getarcane.sdk.models.updater.AutoUpdateRecord
+import app.getarcane.sdk.serialization.ArcaneInstantSerializer
 import kotlinx.coroutines.launch
+import kotlinx.datetime.Instant
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 
 private const val PAGE_SIZE = 50
+
+@Serializable
+internal data class UpdaterHistoryEnvelope(
+    val success: Boolean = true,
+    val data: List<UpdaterHistoryRecord> = emptyList(),
+)
+
+@Serializable
+internal data class UpdaterHistoryRecord(
+    val id: String,
+    val resourceId: String,
+    val resourceType: String,
+    val resourceName: String,
+    val status: String,
+    @Serializable(with = ArcaneInstantSerializer::class)
+    val startTime: Instant,
+    @Serializable(with = ArcaneInstantSerializer::class)
+    val endTime: Instant? = null,
+    val updateAvailable: Boolean,
+    val updateApplied: Boolean,
+    val oldImageVersions: Map<String, JsonValue>? = null,
+    val newImageVersions: Map<String, JsonValue>? = null,
+    val error: String? = null,
+    val details: Map<String, JsonValue>? = null,
+    @Serializable(with = ArcaneInstantSerializer::class)
+    val createdAt: Instant? = null,
+    @Serializable(with = ArcaneInstantSerializer::class)
+    val updatedAt: Instant? = null,
+)
+
+internal fun parseUpdaterHistory(text: String): List<UpdaterHistoryRecord> =
+    app.getarcane.sdk.serialization.ArcaneJson.default.decodeFromString<UpdaterHistoryEnvelope>(text).data
+
+internal suspend fun loadUpdaterHistory(client: ArcaneClient, envId: EnvironmentId, limit: Int): List<UpdaterHistoryRecord> {
+    val text = client.transport.rawRequestText(
+        path = client.rest.environmentPath(envId, "updater/history"),
+        query = listOf("limit" to limit.toString()),
+    )
+    return client.configuration.json.decodeFromString<UpdaterHistoryEnvelope>(text).data
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,20 +122,20 @@ fun UpdaterHistoryScreen(onBack: () -> Unit, environmentId: EnvironmentId? = nul
     val envId = environmentId ?: manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
 
-    var state by remember { mutableStateOf<Loadable<List<AutoUpdateRecord>>>(Loadable.Loading) }
+    var state by remember { mutableStateOf<Loadable<List<UpdaterHistoryRecord>>>(Loadable.Loading) }
     var limit by remember { mutableStateOf(PAGE_SIZE) }
     var hasMore by remember { mutableStateOf(false) }
     var isLoadingMore by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
     var refreshKey by remember { mutableStateOf(0) }
-    var selected by remember { mutableStateOf<AutoUpdateRecord?>(null) }
+    var selected by remember { mutableStateOf<UpdaterHistoryRecord?>(null) }
 
     LaunchedEffect(envId.rawValue, refreshKey) {
         if (client == null) return@LaunchedEffect
         limit = PAGE_SIZE
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            val fetched = client.updater.history(limit = limit, envId = envId)
+            val fetched = loadUpdaterHistory(client, envId, limit)
             hasMore = fetched.size >= limit
             Loadable.Success(fetched)
         } catch (e: Throwable) {
@@ -104,7 +148,7 @@ fun UpdaterHistoryScreen(onBack: () -> Unit, environmentId: EnvironmentId? = nul
         isLoadingMore = true
         val newLimit = limit + PAGE_SIZE
         scope.launch {
-            runCatching { client.updater.history(limit = newLimit, envId = envId) }
+            runCatching { loadUpdaterHistory(client, envId, newLimit) }
                 .onSuccess { fetched ->
                     state = Loadable.Success(fetched)
                     limit = newLimit
@@ -138,7 +182,7 @@ fun UpdaterHistoryScreen(onBack: () -> Unit, environmentId: EnvironmentId? = nul
                 is Loadable.Success -> {
                     val q = search.trim()
                     val filtered = if (q.isEmpty()) s.value else s.value.filter {
-                        it.resourceName.contains(q, true) || it.resourceType.contains(q, true) || it.status.wire.contains(q, true)
+                        it.resourceName.contains(q, true) || it.resourceType.contains(q, true) || it.status.contains(q, true)
                     }
                     if (s.value.isEmpty()) {
                         ContentUnavailable("No Update History", Icons.Filled.History)
@@ -177,7 +221,7 @@ fun UpdaterHistoryScreen(onBack: () -> Unit, environmentId: EnvironmentId? = nul
 }
 
 @Composable
-private fun UpdaterHistoryRow(record: AutoUpdateRecord, onClick: () -> Unit) {
+private fun UpdaterHistoryRow(record: UpdaterHistoryRecord, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -201,7 +245,7 @@ private fun UpdaterHistoryRow(record: AutoUpdateRecord, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UpdaterHistoryDetailDialog(record: AutoUpdateRecord, onDismiss: () -> Unit) {
+private fun UpdaterHistoryDetailDialog(record: UpdaterHistoryRecord, onDismiss: () -> Unit) {
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
@@ -293,18 +337,18 @@ private fun typeTint(type: String): Color = when (type.lowercase()) {
     else -> ArcaneGray
 }
 
-private fun recordStatusText(record: AutoUpdateRecord): String {
+private fun recordStatusText(record: UpdaterHistoryRecord): String {
     if (!record.error.isNullOrEmpty()) return "Failed"
     if (record.updateApplied) return "Updated"
     if (record.updateAvailable) return "Available"
-    return record.status.wire.replaceFirstChar { it.uppercase() }
+    return record.status.replaceFirstChar { it.uppercase() }
 }
 
-private fun recordStatusTint(record: AutoUpdateRecord): Color {
+private fun recordStatusTint(record: UpdaterHistoryRecord): Color {
     if (!record.error.isNullOrEmpty()) return ArcaneRed
     if (record.updateApplied) return ArcaneGreen
     if (record.updateAvailable) return ArcaneOrange
-    return when (record.status.wire.lowercase()) {
+    return when (record.status.lowercase()) {
         "skipped", "ignored" -> ArcaneGray
         "failed", "error" -> ArcaneRed
         "updated", "success" -> ArcaneGreen
@@ -318,7 +362,7 @@ private fun versionMap(raw: Map<String, JsonValue>?): Map<String, String> {
     return raw.mapNotNull { (k, v) -> (v as? JsonValue.Str)?.value?.let { k to it } }.toMap()
 }
 
-private fun recordImageChange(record: AutoUpdateRecord): String? {
+private fun recordImageChange(record: UpdaterHistoryRecord): String? {
     val oldVersions = versionMap(record.oldImageVersions)
     val newVersions = versionMap(record.newImageVersions)
     val key = newVersions.keys.firstOrNull() ?: oldVersions.keys.firstOrNull() ?: return null

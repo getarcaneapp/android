@@ -73,9 +73,9 @@ import app.getarcane.sdk.errors.ArcaneError
 import app.getarcane.sdk.models.updater.UpdaterResourceResult
 import app.getarcane.sdk.models.updater.UpdaterResult
 import app.getarcane.sdk.models.updater.UpdaterStatus
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlin.coroutines.coroutineContext
 
 internal sealed interface RunPhase {
@@ -95,6 +95,12 @@ internal fun updaterRunFailurePhase(error: Throwable, observedServerStart: Boole
     } else {
         RunPhase.Failed(friendlyErrorMessage(error))
     }
+
+internal fun updaterRunPollingCompletedPhase(): RunPhase =
+    RunPhase.OutcomeUnknown(
+        "The updater is no longer reporting active work. Refresh Updates or open Updater History " +
+            "to review the results.",
+    )
 
 internal data class UpdaterRunStatusSnapshot(
     val updatingContainers: Int,
@@ -142,32 +148,39 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
         val baselineSnapshot = baselineStatus?.let(UpdaterRunStatusSnapshot::from)
         liveStatus = baselineStatus
 
-        // Poll loop: flips to Running quickly for local progress UI, then refreshes live status.
-        // Only status evidence that differs from the pre-run baseline is treated as proof that this
-        // run reached the server; the local timer alone must not turn a pre-accept timeout into an
-        // unknown outcome.
-        val pollJob = launch {
-            delay(400)
-            if (phase is RunPhase.Starting) phase = RunPhase.Running
-            while (coroutineContext.isActive) {
-                runCatching { client.updater.status(envId = envId) }.getOrNull()?.let { status ->
-                    liveStatus = status
-                    if (UpdaterRunStatusSnapshot.from(status).isNewActiveWorkComparedTo(baselineSnapshot)) {
-                        observedServerStart = true
-                    }
-                    if (phase is RunPhase.Starting) phase = RunPhase.Running
-                }
-                delay(1500)
-            }
-        }
+        // Start the updater request, but do not make the UI wait on that long-running response.
+        // The backend detaches activity-backed updater work from the request lifecycle, so status
+        // polling is the source of truth for large batches where proxies/clients can interrupt the
+        // final POST response after work has already started.
+        val runJob = async { client.updater.run(envId = envId) }
+        delay(400)
+        if (phase is RunPhase.Starting) phase = RunPhase.Running
 
-        phase = try {
-            val result = client.updater.run(envId = envId)
-            RunPhase.Completed(result)
-        } catch (e: Throwable) {
-            updaterRunFailurePhase(e, observedServerStart = observedServerStart)
-        } finally {
-            pollJob.cancel()
+        while (coroutineContext.isActive) {
+            if (runJob.isCompleted) {
+                phase = runCatching { runJob.await() }
+                    .fold(
+                        onSuccess = { result -> RunPhase.Completed(result) },
+                        onFailure = { error ->
+                            updaterRunFailurePhase(error, observedServerStart = observedServerStart)
+                        },
+                    )
+                break
+            }
+
+            runCatching { client.updater.status(envId = envId) }.getOrNull()?.let { status ->
+                liveStatus = status
+                val snapshot = UpdaterRunStatusSnapshot.from(status)
+                if (snapshot.isNewActiveWorkComparedTo(baselineSnapshot)) {
+                    observedServerStart = true
+                } else if (observedServerStart && !snapshot.hasActiveWork) {
+                    phase = updaterRunPollingCompletedPhase()
+                    runJob.cancel()
+                    break
+                }
+                if (phase is RunPhase.Starting) phase = RunPhase.Running
+            }
+            delay(1500)
         }
     }
 
