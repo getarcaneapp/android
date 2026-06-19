@@ -69,19 +69,61 @@ import app.getarcane.android.ui.theme.ArcanePink
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.EnvironmentId
+import app.getarcane.sdk.errors.ArcaneError
 import app.getarcane.sdk.models.updater.UpdaterResourceResult
 import app.getarcane.sdk.models.updater.UpdaterResult
 import app.getarcane.sdk.models.updater.UpdaterStatus
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlin.coroutines.coroutineContext
 
-private sealed interface RunPhase {
+internal sealed interface RunPhase {
     data object Starting : RunPhase
     data object Running : RunPhase
     data class Completed(val result: UpdaterResult) : RunPhase
+    data class OutcomeUnknown(val message: String) : RunPhase
     data class Failed(val message: String) : RunPhase
+}
+
+internal fun updaterRunFailurePhase(error: Throwable, observedServerStart: Boolean): RunPhase =
+    if (observedServerStart && error is ArcaneError.Transport) {
+        RunPhase.OutcomeUnknown(
+            "The updater started on the server, but the final response was interrupted. " +
+                "Refresh Updates or open Updater History to review the results.",
+        )
+    } else {
+        RunPhase.Failed(friendlyErrorMessage(error))
+    }
+
+internal fun updaterRunPollingCompletedPhase(): RunPhase =
+    RunPhase.OutcomeUnknown(
+        "The updater is no longer reporting active work. Refresh Updates or open Updater History " +
+            "to review the results.",
+    )
+
+internal data class UpdaterRunStatusSnapshot(
+    val updatingContainers: Int,
+    val updatingProjects: Int,
+    val containerIds: List<String>,
+    val projectIds: List<String>,
+) {
+    val hasActiveWork: Boolean =
+        updatingContainers > 0 || updatingProjects > 0 || containerIds.isNotEmpty() || projectIds.isNotEmpty()
+
+    fun isNewActiveWorkComparedTo(baseline: UpdaterRunStatusSnapshot?): Boolean =
+        baseline != null && hasActiveWork && this != baseline
+
+    companion object {
+        fun from(status: UpdaterStatus): UpdaterRunStatusSnapshot =
+            UpdaterRunStatusSnapshot(
+                updatingContainers = status.updatingContainers,
+                updatingProjects = status.updatingProjects,
+                containerIds = status.containerIds,
+                projectIds = status.projectIds,
+            )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,26 +144,50 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
         phase = RunPhase.Starting
         liveStatus = null
 
-        // Poll loop: flips to Running quickly, then refreshes live status.
-        val pollJob = launch {
-            delay(400)
-            if (phase is RunPhase.Starting) phase = RunPhase.Running
-            while (coroutineContext.isActive) {
-                runCatching { client.updater.status(envId = envId) }.getOrNull()?.let { status ->
-                    liveStatus = status
-                    if (phase is RunPhase.Starting) phase = RunPhase.Running
-                }
-                delay(1500)
+        var observedServerStart = false
+        val baselineStatus = runCatching { client.updater.status(envId = envId) }.getOrNull()
+        val baselineSnapshot = baselineStatus?.let(UpdaterRunStatusSnapshot::from)
+        liveStatus = baselineStatus
+
+        // Start the updater request, but do not make the UI wait on that long-running response.
+        // The backend detaches activity-backed updater work from the request lifecycle, so status
+        // polling is the source of truth for large batches where proxies/clients can interrupt the
+        // final POST response after work has already started.
+        val runJob = async {
+            try {
+                Result.success(client.updater.run(envId = envId))
+            } catch (error: Throwable) {
+                if (error is CancellationException) throw error
+                Result.failure(error)
             }
         }
+        delay(400)
+        if (phase is RunPhase.Starting) phase = RunPhase.Running
 
-        phase = try {
-            val result = client.updater.run(envId = envId)
-            RunPhase.Completed(result)
-        } catch (e: Throwable) {
-            RunPhase.Failed(friendlyErrorMessage(e))
-        } finally {
-            pollJob.cancel()
+        while (coroutineContext.isActive) {
+            if (runJob.isCompleted) {
+                phase = runJob.await().fold(
+                    onSuccess = { result -> RunPhase.Completed(result) },
+                    onFailure = { error ->
+                        updaterRunFailurePhase(error, observedServerStart = observedServerStart)
+                    },
+                )
+                break
+            }
+
+            runCatching { client.updater.status(envId = envId) }.getOrNull()?.let { status ->
+                liveStatus = status
+                val snapshot = UpdaterRunStatusSnapshot.from(status)
+                if (snapshot.isNewActiveWorkComparedTo(baselineSnapshot)) {
+                    observedServerStart = true
+                } else if (observedServerStart && !snapshot.hasActiveWork) {
+                    phase = updaterRunPollingCompletedPhase()
+                    runJob.cancel()
+                    break
+                }
+                if (phase is RunPhase.Starting) phase = RunPhase.Running
+            }
+            delay(1500)
         }
     }
 
@@ -187,6 +253,7 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                             }
                         }
                     }
+                    is RunPhase.OutcomeUnknown -> ContentUnavailable("Updater Started", Icons.Filled.Warning, p.message)
                     is RunPhase.Failed -> ContentUnavailable("Updater Failed", Icons.Filled.Warning, p.message)
                 }
             }

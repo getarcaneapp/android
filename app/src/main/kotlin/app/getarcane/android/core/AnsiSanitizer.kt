@@ -87,7 +87,7 @@ object AnsiSanitizer {
                         i++
                         break
                     }
-                    if (s[i] == ESC_CHAR) {
+                    if (s[i] == ESC_CHAR && i + 1 < n && s[i + 1] == '\\') {
                         i += 2
                         break
                     }

@@ -66,7 +66,7 @@ import app.getarcane.android.ui.screens.volumes.VolumesScreen
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.models.user.isGlobalAdmin
 
-private const val SETTINGS_ID = "settings"
+private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
 
 /**
  * Bottom-nav shell: 4 swappable tabs + Settings. Tapping selects; long-pressing a tab opens the
@@ -84,8 +84,14 @@ fun MainTabView() {
 
     var selected by rememberSaveable { mutableStateOf(AppTab.Dashboard.id) }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
-    if (selected != SETTINGS_ID && visible.none { it.id == selected }) {
-        selected = visible.firstOrNull()?.id ?: AppTab.Dashboard.id
+    val normalizedSelection = MainTabSelection.normalize(
+        selectedTabId = selected,
+        visibleTabs = visible,
+        isAdmin = isAdmin,
+        supportsV2 = supportsV2,
+    )
+    if (selected != normalizedSelection) {
+        selected = normalizedSelection
     }
 
     val rootBackAction = MainBackNavigation.resolve(selected)
