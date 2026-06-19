@@ -103,6 +103,14 @@ internal fun updaterRunPollingCompletedPhase(): RunPhase =
             "to review the results.",
     )
 
+internal suspend fun runUpdaterRequestCatching(block: suspend () -> UpdaterResult): Result<UpdaterResult> =
+    try {
+        Result.success(block())
+    } catch (error: Throwable) {
+        if (error is CancellationException && !coroutineContext.isActive) throw error
+        Result.failure(error)
+    }
+
 internal data class UpdaterRunStatusSnapshot(
     val updatingContainers: Int,
     val updatingProjects: Int,
@@ -153,14 +161,7 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
         // The backend detaches activity-backed updater work from the request lifecycle, so status
         // polling is the source of truth for large batches where proxies/clients can interrupt the
         // final POST response after work has already started.
-        val runJob = async {
-            try {
-                Result.success(client.updater.run(envId = envId))
-            } catch (error: Throwable) {
-                if (error is CancellationException) throw error
-                Result.failure(error)
-            }
-        }
+        val runJob = async { runUpdaterRequestCatching { client.updater.run(envId = envId) } }
         delay(400)
         if (phase is RunPhase.Starting) phase = RunPhase.Running
 
