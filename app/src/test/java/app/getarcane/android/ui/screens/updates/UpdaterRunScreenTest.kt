@@ -95,4 +95,17 @@ class UpdaterRunScreenTest {
             (phase as RunPhase.OutcomeUnknown).message,
         )
     }
+
+    @Test
+    fun newHistoryRecordIsServerStartEvidence() {
+        val baseline = setOf("history-before-run")
+        val observed = setOf("history-before-run", "history-created-by-run")
+
+        assertEquals(true, hasNewUpdaterHistoryRecord(baseline, observed))
+    }
+
+    @Test
+    fun historyWithoutBaselineIsNotServerStartEvidence() {
+        assertEquals(false, hasNewUpdaterHistoryRecord(null, setOf("unrelated-history")))
+    }
 }

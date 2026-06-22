@@ -103,6 +103,9 @@ internal fun updaterRunPollingCompletedPhase(): RunPhase =
             "to review the results.",
     )
 
+internal fun hasNewUpdaterHistoryRecord(baselineIds: Set<String>?, observedIds: Set<String>): Boolean =
+    baselineIds != null && observedIds.any { id -> id !in baselineIds }
+
 internal suspend fun runUpdaterRequestCatching(block: suspend () -> UpdaterResult): Result<UpdaterResult> =
     try {
         Result.success(block())
@@ -155,6 +158,9 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
         var observedServerStart = false
         val baselineStatus = runCatching { client.updater.status(envId = envId) }.getOrNull()
         val baselineSnapshot = baselineStatus?.let(UpdaterRunStatusSnapshot::from)
+        val baselineHistoryIds = runCatching {
+            loadUpdaterHistory(client = client, envId = envId, limit = 5).mapTo(mutableSetOf()) { it.id }
+        }.getOrNull()
         liveStatus = baselineStatus
 
         // Start the updater request, but do not make the UI wait on that long-running response.
@@ -167,10 +173,19 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
 
         while (coroutineContext.isActive) {
             if (runJob.isCompleted) {
+                val finalStatusStartEvidence = runCatching { client.updater.status(envId = envId) }
+                    .getOrNull()
+                    ?.also { status -> liveStatus = status }
+                    ?.let { status -> UpdaterRunStatusSnapshot.from(status).isNewActiveWorkComparedTo(baselineSnapshot) }
+                    ?: false
+                val finalHistoryStartEvidence = runCatching {
+                    loadUpdaterHistory(client = client, envId = envId, limit = 5).mapTo(mutableSetOf()) { it.id }
+                }.getOrNull()?.let { ids -> hasNewUpdaterHistoryRecord(baselineHistoryIds, ids) } ?: false
+                val finalServerStartEvidence = observedServerStart || finalStatusStartEvidence || finalHistoryStartEvidence
                 phase = runJob.await().fold(
                     onSuccess = { result -> RunPhase.Completed(result) },
                     onFailure = { error ->
-                        updaterRunFailurePhase(error, observedServerStart = observedServerStart)
+                        updaterRunFailurePhase(error, observedServerStart = finalServerStartEvidence)
                     },
                 )
                 break
