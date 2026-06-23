@@ -108,4 +108,28 @@ class UpdaterRunScreenTest {
     fun historyWithoutBaselineIsNotServerStartEvidence() {
         assertEquals(false, hasNewUpdaterHistoryRecord(null, setOf("unrelated-history")))
     }
+
+    @Test
+    fun interruptedRequestContinuesPollingWhileWorkIsStillActive() {
+        val activeStatus = UpdaterRunStatusSnapshot(
+            updatingContainers = 2,
+            updatingProjects = 0,
+            containerIds = listOf("container-a", "container-b"),
+            projectIds = emptyList(),
+        )
+
+        assertEquals(true, shouldContinuePollingAfterRunFailure(observedServerStart = true, latestStatus = activeStatus))
+    }
+
+    @Test
+    fun interruptedRequestDoesNotContinuePollingWithoutActiveWork() {
+        val inactiveStatus = UpdaterRunStatusSnapshot(
+            updatingContainers = 0,
+            updatingProjects = 0,
+            containerIds = emptyList(),
+            projectIds = emptyList(),
+        )
+
+        assertEquals(false, shouldContinuePollingAfterRunFailure(observedServerStart = true, latestStatus = inactiveStatus))
+    }
 }
