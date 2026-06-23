@@ -1,5 +1,6 @@
 package app.getarcane.android.ui.screens.updates
 
+import android.util.Log
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -79,6 +80,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
 
+private const val UpdaterRunLogTag = "ArcaneUpdaterRun"
+
 internal sealed interface RunPhase {
     data object Starting : RunPhase
     data object Running : RunPhase
@@ -87,11 +90,35 @@ internal sealed interface RunPhase {
     data class Failed(val message: String) : RunPhase
 }
 
+internal data class UpdaterRunEvidence(
+    val observedServerStart: Boolean,
+    val successfulPostStartStatusProbe: Boolean,
+    val successfulPostStartHistoryProbe: Boolean,
+) {
+    val hasReachabilityEvidence: Boolean = successfulPostStartStatusProbe || successfulPostStartHistoryProbe
+    val shouldAvoidConnectivityFailure: Boolean = observedServerStart || hasReachabilityEvidence
+}
+
 internal fun updaterRunFailurePhase(error: Throwable, observedServerStart: Boolean): RunPhase =
-    if (observedServerStart && error is ArcaneError.Transport) {
+    updaterRunFailurePhase(
+        error = error,
+        evidence = UpdaterRunEvidence(
+            observedServerStart = observedServerStart,
+            successfulPostStartStatusProbe = false,
+            successfulPostStartHistoryProbe = false,
+        ),
+    )
+
+internal fun updaterRunFailurePhase(error: Throwable, evidence: UpdaterRunEvidence): RunPhase =
+    if (evidence.shouldAvoidConnectivityFailure && error is ArcaneError.Transport) {
         RunPhase.OutcomeUnknown(
-            "The updater started on the server, but the final response was interrupted. " +
-                "Refresh Updates or open Updater History to review the results.",
+            if (evidence.observedServerStart) {
+                "The updater started on the server, but the final response was interrupted. " +
+                    "Refresh Updates or open Updater History to review the results."
+            } else {
+                "The updater request was interrupted, but Android could still reach the server. " +
+                    "Refresh Updates or open Updater History to review the results."
+            },
         )
     } else {
         RunPhase.Failed(friendlyErrorMessage(error))
@@ -118,6 +145,18 @@ internal suspend fun runUpdaterRequestCatching(block: suspend () -> UpdaterResul
         if (error is CancellationException && !coroutineContext.isActive) throw error
         Result.failure(error)
     }
+
+private fun logUpdaterDebug(message: String) {
+    Log.d(UpdaterRunLogTag, message)
+}
+
+private fun logUpdaterError(message: String, error: Throwable) {
+    Log.e(
+        UpdaterRunLogTag,
+        "$message type=${error::class.qualifiedName} message=${error.message}",
+        error,
+    )
+}
 
 internal data class UpdaterRunStatusSnapshot(
     val updatingContainers: Int,
@@ -159,62 +198,105 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
         }
         phase = RunPhase.Starting
         liveStatus = null
+        logUpdaterDebug("Starting updater flow envId=${envId.rawValue} environmentName=${environmentName ?: manager.activeEnvironmentName}")
 
         var observedServerStart = false
         var requestFailureHandled = false
-        val baselineStatus = runCatching { client.updater.status(envId = envId) }.getOrNull()
+        val baselineStatus = runCatching { client.updater.status(envId = envId) }
+            .onFailure { error -> logUpdaterError("Baseline status probe failed envId=${envId.rawValue}", error) }
+            .getOrNull()
         val baselineSnapshot = baselineStatus?.let(UpdaterRunStatusSnapshot::from)
+        logUpdaterDebug("Baseline status envId=${envId.rawValue} snapshot=$baselineSnapshot")
         val baselineHistoryIds = runCatching {
             loadUpdaterHistory(client = client, envId = envId, limit = 5).mapTo(mutableSetOf()) { it.id }
-        }.getOrNull()
+        }
+            .onFailure { error -> logUpdaterError("Baseline history probe failed envId=${envId.rawValue}", error) }
+            .getOrNull()
+        logUpdaterDebug("Baseline history envId=${envId.rawValue} ids=${baselineHistoryIds?.joinToString() ?: "<unavailable>"}")
         liveStatus = baselineStatus
 
         // Start the updater request, but do not make the UI wait on that long-running response.
         // The backend detaches activity-backed updater work from the request lifecycle, so status
         // polling is the source of truth for large batches where proxies/clients can interrupt the
         // final POST response after work has already started.
-        val runJob = async { runUpdaterRequestCatching { client.updater.run(envId = envId) } }
+        val runJob = async {
+            logUpdaterDebug("Submitting updater run envId=${envId.rawValue}")
+            runUpdaterRequestCatching { client.updater.run(envId = envId) }
+        }
         delay(400)
         if (phase is RunPhase.Starting) phase = RunPhase.Running
 
         while (coroutineContext.isActive) {
             if (runJob.isCompleted && !requestFailureHandled) {
+                var finalStatusProbeSucceeded = false
                 val finalStatusSnapshot = runCatching { client.updater.status(envId = envId) }
+                    .onSuccess { finalStatusProbeSucceeded = true }
+                    .onFailure { error -> logUpdaterError("Final status probe failed envId=${envId.rawValue}", error) }
                     .getOrNull()
                     ?.also { status -> liveStatus = status }
                     ?.let(UpdaterRunStatusSnapshot::from)
                 val finalStatusStartEvidence = finalStatusSnapshot?.isNewActiveWorkComparedTo(baselineSnapshot) ?: false
+                var finalHistoryProbeSucceeded = false
                 val finalHistoryStartEvidence = runCatching {
                     loadUpdaterHistory(client = client, envId = envId, limit = 5).mapTo(mutableSetOf()) { it.id }
-                }.getOrNull()?.let { ids -> hasNewUpdaterHistoryRecord(baselineHistoryIds, ids) } ?: false
+                }
+                    .onSuccess { finalHistoryProbeSucceeded = true }
+                    .onFailure { error -> logUpdaterError("Final history probe failed envId=${envId.rawValue}", error) }
+                    .getOrNull()
+                    ?.let { ids -> hasNewUpdaterHistoryRecord(baselineHistoryIds, ids) }
+                    ?: false
                 val finalServerStartEvidence = observedServerStart || finalStatusStartEvidence || finalHistoryStartEvidence
+                val evidence = UpdaterRunEvidence(
+                    observedServerStart = finalServerStartEvidence,
+                    successfulPostStartStatusProbe = finalStatusProbeSucceeded,
+                    successfulPostStartHistoryProbe = finalHistoryProbeSucceeded,
+                )
                 val runResult = runJob.await()
                 phase = runResult.fold(
-                    onSuccess = { result -> RunPhase.Completed(result) },
+                    onSuccess = { result ->
+                        logUpdaterDebug(
+                            "Updater run completed envId=${envId.rawValue} checked=${result.checked} updated=${result.updated} " +
+                                "skipped=${result.skipped} failed=${result.failed} duration=${result.duration}",
+                        )
+                        RunPhase.Completed(result)
+                    },
                     onFailure = { error ->
+                        logUpdaterError(
+                            "Updater run failed envId=${envId.rawValue} evidence=$evidence " +
+                                "finalStatus=$finalStatusSnapshot finalStatusStart=$finalStatusStartEvidence " +
+                                "finalHistoryStart=$finalHistoryStartEvidence",
+                            error,
+                        )
                         if (shouldContinuePollingAfterRunFailure(finalServerStartEvidence, finalStatusSnapshot)) {
                             requestFailureHandled = true
                             RunPhase.Running
                         } else {
-                            updaterRunFailurePhase(error, observedServerStart = finalServerStartEvidence)
+                            updaterRunFailurePhase(error, evidence = evidence)
                         }
                     },
                 )
                 if (!requestFailureHandled) break
             }
 
-            runCatching { client.updater.status(envId = envId) }.getOrNull()?.let { status ->
-                liveStatus = status
-                val snapshot = UpdaterRunStatusSnapshot.from(status)
-                if (snapshot.isNewActiveWorkComparedTo(baselineSnapshot)) {
-                    observedServerStart = true
-                } else if (observedServerStart && !snapshot.hasActiveWork) {
-                    phase = updaterRunPollingCompletedPhase()
-                    runJob.cancel()
-                    break
+            runCatching { client.updater.status(envId = envId) }
+                .onFailure { error -> logUpdaterError("Polling status failed envId=${envId.rawValue}", error) }
+                .getOrNull()
+                ?.let { status ->
+                    liveStatus = status
+                    val snapshot = UpdaterRunStatusSnapshot.from(status)
+                    if (snapshot.isNewActiveWorkComparedTo(baselineSnapshot)) {
+                        if (!observedServerStart) {
+                            logUpdaterDebug("Observed server start envId=${envId.rawValue} snapshot=$snapshot baseline=$baselineSnapshot")
+                        }
+                        observedServerStart = true
+                    } else if (observedServerStart && !snapshot.hasActiveWork) {
+                        logUpdaterDebug("Updater status became inactive after observed start envId=${envId.rawValue} snapshot=$snapshot")
+                        phase = updaterRunPollingCompletedPhase()
+                        runJob.cancel()
+                        break
+                    }
+                    if (phase is RunPhase.Starting) phase = RunPhase.Running
                 }
-                if (phase is RunPhase.Starting) phase = RunPhase.Running
-            }
             delay(1500)
         }
     }
