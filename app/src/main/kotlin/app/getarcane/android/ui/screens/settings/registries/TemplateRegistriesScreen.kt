@@ -129,7 +129,12 @@ fun TemplateRegistriesScreen(onBack: (() -> Unit)? = null) {
                     is Loadable.Error -> Box(Modifier.fillMaxSize().padding(16.dp)) { ErrorBanner(s.message, onRetry = { refreshKey++ }) }
                     is Loadable.Success -> {
                         if (s.value.isEmpty()) {
-                            ContentUnavailable("No Template Registries", Icons.Filled.Description)
+                            ContentUnavailable(
+                                "No Template Registries",
+                                Icons.Filled.Description,
+                                "Add a template registry to make project templates available from mobile. You can also browse templates once a registry is configured.",
+                                "Add Registry",
+                            ) { showCreate = true }
                         } else {
                             LazyColumn(Modifier.fillMaxSize()) {
                                 items(s.value, key = { it.id }) { registry ->

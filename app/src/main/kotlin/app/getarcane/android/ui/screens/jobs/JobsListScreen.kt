@@ -158,7 +158,18 @@ fun JobsListScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                         ) || it.category.contains(q, true)
                     }
                     if (s.value.isEmpty()) {
-                        ContentUnavailable("No Jobs", Icons.AutoMirrored.Filled.PlaylistPlay)
+                        ContentUnavailable(
+                            "No Jobs",
+                            Icons.AutoMirrored.Filled.PlaylistPlay,
+                            "Scheduled jobs for this environment will appear here when the server reports them.",
+                            "Refresh",
+                        ) { refreshKey++ }
+                    } else if (filtered.isEmpty()) {
+                        ContentUnavailable(
+                            "No Matching Jobs",
+                            Icons.Filled.Search,
+                            "No jobs match “$q”. Clear the search or try another job name, category, or description.",
+                        )
                     } else {
                         val grouped = filtered
                             .groupBy { it.category.ifEmpty { "Other" } }

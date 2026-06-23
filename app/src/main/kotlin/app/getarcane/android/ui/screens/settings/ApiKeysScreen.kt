@@ -99,7 +99,12 @@ fun ApiKeysScreen() {
                 is Loadable.Error -> Box(Modifier.fillMaxSize().padding(16.dp)) { ErrorBanner(s.message, onRetry = { refreshKey++ }) }
                 is Loadable.Success -> {
                     if (s.value.isEmpty()) {
-                        ContentUnavailable("No API Keys", Icons.Outlined.Key)
+                        ContentUnavailable(
+                            "No API Keys",
+                            Icons.Outlined.Key,
+                            "Create a scoped API key when another tool or automation needs access to Arcane. The raw key is only shown once.",
+                            "Create API Key",
+                        ) { showCreate = true }
                     } else {
                         LazyColumn(Modifier.fillMaxSize()) {
                             items(s.value, key = { it.id }) { key ->
