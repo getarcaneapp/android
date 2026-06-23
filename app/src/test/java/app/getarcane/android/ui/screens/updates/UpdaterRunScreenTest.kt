@@ -36,6 +36,40 @@ class UpdaterRunScreenTest {
     }
 
     @Test
+    fun transportFailureAfterSuccessfulPostStartProbeAvoidsConnectivityFailureCopy() {
+        val phase = updaterRunFailurePhase(
+            ArcaneError.Transport("timeout"),
+            evidence = UpdaterRunEvidence(
+                observedServerStart = false,
+                successfulPostStartStatusProbe = true,
+                successfulPostStartHistoryProbe = false,
+            ),
+        )
+
+        assertTrue(phase is RunPhase.OutcomeUnknown)
+        assertEquals(
+            "The updater request was interrupted, but Android could still reach the server. " +
+                "Refresh Updates or open Updater History to review the results.",
+            (phase as RunPhase.OutcomeUnknown).message,
+        )
+    }
+
+    @Test
+    fun nonTransportFailureAfterSuccessfulPostStartProbeRemainsFailure() {
+        val phase = updaterRunFailurePhase(
+            ArcaneError.Decoding("bad payload"),
+            evidence = UpdaterRunEvidence(
+                observedServerStart = false,
+                successfulPostStartStatusProbe = true,
+                successfulPostStartHistoryProbe = true,
+            ),
+        )
+
+        assertTrue(phase is RunPhase.Failed)
+        assertEquals("The server returned an unexpected response.", (phase as RunPhase.Failed).message)
+    }
+
+    @Test
     fun activeStatusMatchingBaselineIsNotStartEvidence() {
         val baseline = UpdaterRunStatusSnapshot(
             updatingContainers = 1,
