@@ -115,7 +115,7 @@ class ArcaneClientManager(context: Context) {
     fun configure(rawUrl: String) {
         scope.launch {
             errorMessage = null
-            val normalized = normalizeUrl(rawUrl)
+            val normalized = ServerUrl.normalize(rawUrl)
             if (normalized == null) {
                 errorMessage = "Enter a valid server URL (e.g. https://arcane.example.com)."
                 return@launch
@@ -394,15 +394,6 @@ class ArcaneClientManager(context: Context) {
         scope.launch { refreshOidc() }
     }
 
-    private fun normalizeUrl(raw: String): String? {
-        val trimmed = raw.trim()
-        if (trimmed.isEmpty()) return null
-        val withScheme = if (trimmed.contains("://")) trimmed else "https://$trimmed"
-        // Basic sanity: must have a host after the scheme.
-        val host = withScheme.substringAfter("://").substringBefore("/")
-        if (host.isBlank()) return null
-        return withScheme.trimEnd('/')
-    }
 }
 
 private class ArcaneCookieJar : CookieJar {

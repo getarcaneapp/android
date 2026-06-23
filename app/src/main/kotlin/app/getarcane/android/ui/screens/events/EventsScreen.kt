@@ -260,7 +260,18 @@ private fun EventListScreen(onLoaded: (List<Event>) -> Unit, onOpen: (String) ->
                             matchesSeverity && matchesSearch
                         }
                         if (s.value.isEmpty()) {
-                            ContentUnavailable("No Events", Icons.Filled.History)
+                            ContentUnavailable(
+                                "No Events",
+                                Icons.Filled.History,
+                                "Activity and audit events for this environment will appear here as containers, projects, and admin settings change.",
+                                "Retry",
+                            ) { refreshKey++ }
+                        } else if (filtered.isEmpty()) {
+                            ContentUnavailable(
+                                "No Matching Events",
+                                Icons.Filled.History,
+                                "No events match the current search and severity filters. Clear the search or switch severity to All.",
+                            )
                         } else {
                             LazyColumn(Modifier.fillMaxSize()) {
                                 items(filtered, key = { it.id }) { event ->
