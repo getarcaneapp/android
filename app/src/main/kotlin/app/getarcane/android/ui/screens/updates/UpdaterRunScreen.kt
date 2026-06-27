@@ -81,6 +81,18 @@ import kotlinx.coroutines.isActive
 import kotlin.coroutines.coroutineContext
 
 private const val UpdaterRunLogTag = "ArcaneUpdaterRun"
+private const val UpdaterPollDelayMillis = 1_500L
+private const val PostFailureObservationPolls = 20
+
+private val TerminalUpdaterHistoryStatuses = setOf(
+    "updated",
+    "success",
+    "failed",
+    "error",
+    "skipped",
+    "ignored",
+    "up_to_date",
+)
 
 internal sealed interface RunPhase {
     data object Starting : RunPhase
@@ -110,7 +122,7 @@ internal fun updaterRunFailurePhase(error: Throwable, observedServerStart: Boole
     )
 
 internal fun updaterRunFailurePhase(error: Throwable, evidence: UpdaterRunEvidence): RunPhase =
-    if (evidence.shouldAvoidConnectivityFailure && error is ArcaneError.Transport) {
+    if (evidence.shouldAvoidConnectivityFailure && isInterruptedUpdaterRunFailure(error)) {
         val message = if (evidence.observedServerStart) {
             "The updater started on the server, but the final response was interrupted. " +
                 "Refresh Updates or open Updater History to review the results."
@@ -136,10 +148,23 @@ internal fun updaterRunPollingCompletedPhase(): RunPhase =
 internal fun hasNewUpdaterHistoryRecord(baselineIds: Set<String>?, observedIds: Set<String>): Boolean =
     baselineIds != null && observedIds.any { id -> id !in baselineIds }
 
-internal fun shouldContinuePollingAfterRunFailure(
-    observedServerStart: Boolean,
-    latestStatus: UpdaterRunStatusSnapshot?,
-): Boolean = observedServerStart && latestStatus?.hasActiveWork == true
+internal fun isInterruptedUpdaterRunFailure(error: Throwable): Boolean =
+    error is ArcaneError.Transport || error is CancellationException
+
+internal fun shouldObserveAfterRunFailure(error: Throwable, evidence: UpdaterRunEvidence): Boolean =
+    isInterruptedUpdaterRunFailure(error) && evidence.shouldAvoidConnectivityFailure
+
+internal fun UpdaterHistoryRecord.hasTerminalUpdaterEvidence(): Boolean =
+    endTime != null ||
+        updateApplied ||
+        !error.isNullOrEmpty() ||
+        status.lowercase() in TerminalUpdaterHistoryStatuses
+
+internal fun newUpdaterHistoryRecords(
+    baselineIds: Set<String>?,
+    records: List<UpdaterHistoryRecord>,
+): List<UpdaterHistoryRecord> =
+    if (baselineIds == null) emptyList() else records.filter { record -> record.id !in baselineIds }
 
 internal suspend fun runUpdaterRequestCatching(block: suspend () -> UpdaterResult): Result<UpdaterResult> =
     try {
@@ -213,6 +238,10 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
 
         var observedServerStart = false
         var requestFailureHandled = false
+        var postFailureError: Throwable? = null
+        var postFailureEvidence: UpdaterRunEvidence? = null
+        var postFailurePollsRemaining = 0
+        var observedActiveStatusAfterFailure = false
         val baselineStatus = runCatching { client.updater.status(envId = envId) }
             .onFailure { error -> logUpdaterError("Baseline status probe failed envId=${envId.rawValue}", error) }
             .getOrNull()
@@ -272,8 +301,8 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                         RunPhase.Completed(result)
                     },
                     onFailure = { error ->
-                        val canContinuePolling = shouldContinuePollingAfterRunFailure(finalServerStartEvidence, finalStatusSnapshot)
-                        val handledInterruptedTransport = evidence.shouldAvoidConnectivityFailure && error is ArcaneError.Transport
+                        val shouldObserveAfterFailure = shouldObserveAfterRunFailure(error, evidence)
+                        val handledInterruptedTransport = evidence.shouldAvoidConnectivityFailure && isInterruptedUpdaterRunFailure(error)
                         val diagnosticMessage =
                             "envId=${envId.rawValue} evidence=$evidence finalStatus=$finalStatusSnapshot " +
                                 "finalStatusStart=$finalStatusStartEvidence finalHistoryStart=$finalHistoryStartEvidence"
@@ -282,11 +311,15 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                         } else {
                             logUpdaterError("Updater run failed $diagnosticMessage", error)
                         }
-                        if (canContinuePolling) {
+                        if (shouldObserveAfterFailure) {
                             requestFailureHandled = true
                             observedServerStart = finalServerStartEvidence
+                            postFailureError = error
+                            postFailureEvidence = evidence
+                            postFailurePollsRemaining = PostFailureObservationPolls
+                            observedActiveStatusAfterFailure = finalStatusSnapshot?.hasActiveWork == true
                             logUpdaterDebug(
-                                "Updater run response failed after server evidence; continuing status polling " +
+                                "Updater run response failed after server evidence; observing status/history " +
                                     "envId=${envId.rawValue} finalStatus=$finalStatusSnapshot",
                             )
                             RunPhase.Running
@@ -298,7 +331,11 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                 if (!requestFailureHandled) break
             }
 
+            val observingAfterFailure = postFailureError != null
             runCatching { client.updater.status(envId = envId) }
+                .onSuccess {
+                    postFailureEvidence = postFailureEvidence?.copy(successfulPostStartStatusProbe = true)
+                }
                 .onFailure { error -> logUpdaterError("Polling status failed envId=${envId.rawValue}", error) }
                 .getOrNull()
                 ?.let { status ->
@@ -309,6 +346,16 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                             logUpdaterDebug("Observed server start envId=${envId.rawValue} snapshot=$snapshot baseline=$baselineSnapshot")
                         }
                         observedServerStart = true
+                    }
+                    if (observingAfterFailure) {
+                        if (snapshot.hasActiveWork) {
+                            observedActiveStatusAfterFailure = true
+                        } else if (observedActiveStatusAfterFailure) {
+                            logUpdaterDebug("Updater status became inactive after post-failure active work envId=${envId.rawValue} snapshot=$snapshot")
+                            phase = updaterRunPollingCompletedPhase()
+                            runJob.cancel()
+                            break
+                        }
                     } else if (observedServerStart && !snapshot.hasActiveWork) {
                         logUpdaterDebug("Updater status became inactive after observed start envId=${envId.rawValue} snapshot=$snapshot")
                         phase = updaterRunPollingCompletedPhase()
@@ -317,7 +364,48 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                     }
                     if (phase is RunPhase.Starting) phase = RunPhase.Running
                 }
-            delay(1500)
+
+            if (observingAfterFailure) {
+                runCatching { loadUpdaterHistory(client = client, envId = envId, limit = 5) }
+                    .onSuccess { records ->
+                        val newRecords = newUpdaterHistoryRecords(baselineHistoryIds, records)
+                        if (newRecords.isNotEmpty()) {
+                            observedServerStart = true
+                            postFailureEvidence = postFailureEvidence?.copy(
+                                observedServerStart = true,
+                                successfulPostStartHistoryProbe = true,
+                            )
+                        } else {
+                            postFailureEvidence = postFailureEvidence?.copy(successfulPostStartHistoryProbe = true)
+                        }
+                        if (newRecords.any { record -> record.hasTerminalUpdaterEvidence() }) {
+                            logUpdaterDebug(
+                                "Updater history reached terminal evidence after interrupted response " +
+                                    "envId=${envId.rawValue} ids=${newRecords.joinToString { it.id }}",
+                            )
+                            phase = updaterRunPollingCompletedPhase()
+                            runJob.cancel()
+                            break
+                        }
+                    }
+                    .onFailure { error -> logUpdaterError("Polling history failed envId=${envId.rawValue}", error) }
+
+                postFailurePollsRemaining--
+                if (postFailurePollsRemaining <= 0) {
+                    val error = postFailureError
+                    val evidence = postFailureEvidence
+                    if (error != null && evidence != null) {
+                        logUpdaterDebug("Updater post-failure observation timed out envId=${envId.rawValue} evidence=$evidence")
+                        phase = updaterRunFailurePhase(error, evidence = evidence)
+                    } else {
+                        phase = RunPhase.Failed("Updater observation timed out.")
+                    }
+                    runJob.cancel()
+                    break
+                }
+            }
+
+            delay(UpdaterPollDelayMillis)
         }
     }
 
