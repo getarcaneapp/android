@@ -136,7 +136,7 @@ internal fun hasNewUpdaterHistoryRecord(baselineIds: Set<String>?, observedIds: 
 internal fun shouldContinuePollingAfterRunFailure(
     observedServerStart: Boolean,
     latestStatus: UpdaterRunStatusSnapshot?,
-): Boolean = observedServerStart && latestStatus?.hasActiveWork == true
+): Boolean = observedServerStart || latestStatus?.hasActiveWork == true
 
 internal suspend fun runUpdaterRequestCatching(block: suspend () -> UpdaterResult): Result<UpdaterResult> =
     try {
@@ -269,6 +269,11 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                         )
                         if (shouldContinuePollingAfterRunFailure(finalServerStartEvidence, finalStatusSnapshot)) {
                             requestFailureHandled = true
+                            observedServerStart = finalServerStartEvidence
+                            logUpdaterDebug(
+                                "Updater run response failed after server evidence; continuing status polling " +
+                                    "envId=${envId.rawValue} finalStatus=$finalStatusSnapshot",
+                            )
                             RunPhase.Running
                         } else {
                             updaterRunFailurePhase(error, evidence = evidence)

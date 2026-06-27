@@ -156,7 +156,7 @@ class UpdaterRunScreenTest {
     }
 
     @Test
-    fun interruptedRequestDoesNotContinuePollingWithoutActiveWork() {
+    fun interruptedRequestContinuesPollingAfterServerStartEvenWhenLatestStatusIsInactive() {
         val inactiveStatus = UpdaterRunStatusSnapshot(
             updatingContainers = 0,
             updatingProjects = 0,
@@ -164,6 +164,18 @@ class UpdaterRunScreenTest {
             projectIds = emptyList(),
         )
 
-        assertEquals(false, shouldContinuePollingAfterRunFailure(observedServerStart = true, latestStatus = inactiveStatus))
+        assertEquals(true, shouldContinuePollingAfterRunFailure(observedServerStart = true, latestStatus = inactiveStatus))
+    }
+
+    @Test
+    fun interruptedRequestDoesNotContinuePollingWithoutServerEvidenceOrActiveWork() {
+        val inactiveStatus = UpdaterRunStatusSnapshot(
+            updatingContainers = 0,
+            updatingProjects = 0,
+            containerIds = emptyList(),
+            projectIds = emptyList(),
+        )
+
+        assertEquals(false, shouldContinuePollingAfterRunFailure(observedServerStart = false, latestStatus = inactiveStatus))
     }
 }
