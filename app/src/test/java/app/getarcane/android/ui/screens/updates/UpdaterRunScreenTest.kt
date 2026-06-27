@@ -40,10 +40,11 @@ class UpdaterRunScreenTest {
         )
 
         assertTrue(phase is RunPhase.OutcomeUnknown)
+        assertEquals("Updater Response Interrupted", (phase as RunPhase.OutcomeUnknown).title)
         assertEquals(
             "The updater started on the server, but the final response was interrupted. " +
                 "Refresh Updates or open Updater History to review the results.",
-            (phase as RunPhase.OutcomeUnknown).message,
+            phase.message,
         )
     }
 
@@ -59,10 +60,11 @@ class UpdaterRunScreenTest {
         )
 
         assertTrue(phase is RunPhase.OutcomeUnknown)
+        assertEquals("Updater Response Interrupted", (phase as RunPhase.OutcomeUnknown).title)
         assertEquals(
             "The updater request was interrupted, but Android could still reach the server. " +
                 "Refresh Updates or open Updater History to review the results.",
-            (phase as RunPhase.OutcomeUnknown).message,
+            phase.message,
         )
     }
 
@@ -123,10 +125,11 @@ class UpdaterRunScreenTest {
         val phase = updaterRunPollingCompletedPhase()
 
         assertTrue(phase is RunPhase.OutcomeUnknown)
+        assertEquals("Updater Finished", (phase as RunPhase.OutcomeUnknown).title)
         assertEquals(
             "The updater is no longer reporting active work. Refresh Updates or open Updater History " +
                 "to review the results.",
-            (phase as RunPhase.OutcomeUnknown).message,
+            phase.message,
         )
     }
 
@@ -156,7 +159,7 @@ class UpdaterRunScreenTest {
     }
 
     @Test
-    fun interruptedRequestContinuesPollingAfterServerStartEvenWhenLatestStatusIsInactive() {
+    fun interruptedRequestDoesNotContinuePollingWhenLatestStatusIsInactive() {
         val inactiveStatus = UpdaterRunStatusSnapshot(
             updatingContainers = 0,
             updatingProjects = 0,
@@ -164,7 +167,7 @@ class UpdaterRunScreenTest {
             projectIds = emptyList(),
         )
 
-        assertEquals(true, shouldContinuePollingAfterRunFailure(observedServerStart = true, latestStatus = inactiveStatus))
+        assertEquals(false, shouldContinuePollingAfterRunFailure(observedServerStart = true, latestStatus = inactiveStatus))
     }
 
     @Test

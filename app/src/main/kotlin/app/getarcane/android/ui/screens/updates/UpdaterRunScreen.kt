@@ -86,7 +86,7 @@ internal sealed interface RunPhase {
     data object Starting : RunPhase
     data object Running : RunPhase
     data class Completed(val result: UpdaterResult) : RunPhase
-    data class OutcomeUnknown(val message: String) : RunPhase
+    data class OutcomeUnknown(val title: String, val message: String) : RunPhase
     data class Failed(val message: String) : RunPhase
 }
 
@@ -111,14 +111,16 @@ internal fun updaterRunFailurePhase(error: Throwable, observedServerStart: Boole
 
 internal fun updaterRunFailurePhase(error: Throwable, evidence: UpdaterRunEvidence): RunPhase =
     if (evidence.shouldAvoidConnectivityFailure && error is ArcaneError.Transport) {
+        val message = if (evidence.observedServerStart) {
+            "The updater started on the server, but the final response was interrupted. " +
+                "Refresh Updates or open Updater History to review the results."
+        } else {
+            "The updater request was interrupted, but Android could still reach the server. " +
+                "Refresh Updates or open Updater History to review the results."
+        }
         RunPhase.OutcomeUnknown(
-            if (evidence.observedServerStart) {
-                "The updater started on the server, but the final response was interrupted. " +
-                    "Refresh Updates or open Updater History to review the results."
-            } else {
-                "The updater request was interrupted, but Android could still reach the server. " +
-                    "Refresh Updates or open Updater History to review the results."
-            },
+            title = "Updater Response Interrupted",
+            message = message,
         )
     } else {
         RunPhase.Failed(friendlyErrorMessage(error))
@@ -126,7 +128,8 @@ internal fun updaterRunFailurePhase(error: Throwable, evidence: UpdaterRunEviden
 
 internal fun updaterRunPollingCompletedPhase(): RunPhase =
     RunPhase.OutcomeUnknown(
-        "The updater is no longer reporting active work. Refresh Updates or open Updater History " +
+        title = "Updater Finished",
+        message = "The updater is no longer reporting active work. Refresh Updates or open Updater History " +
             "to review the results.",
     )
 
@@ -136,7 +139,7 @@ internal fun hasNewUpdaterHistoryRecord(baselineIds: Set<String>?, observedIds: 
 internal fun shouldContinuePollingAfterRunFailure(
     observedServerStart: Boolean,
     latestStatus: UpdaterRunStatusSnapshot?,
-): Boolean = observedServerStart || latestStatus?.hasActiveWork == true
+): Boolean = observedServerStart && latestStatus?.hasActiveWork == true
 
 internal suspend fun runUpdaterRequestCatching(block: suspend () -> UpdaterResult): Result<UpdaterResult> =
     try {
@@ -152,6 +155,14 @@ private fun logUpdaterDebug(message: String) {
 
 private fun logUpdaterError(message: String, error: Throwable) {
     Log.e(
+        UpdaterRunLogTag,
+        "$message type=${error::class.qualifiedName} message=${error.message}",
+        error,
+    )
+}
+
+private fun logUpdaterWarning(message: String, error: Throwable) {
+    Log.w(
         UpdaterRunLogTag,
         "$message type=${error::class.qualifiedName} message=${error.message}",
         error,
@@ -261,13 +272,17 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                         RunPhase.Completed(result)
                     },
                     onFailure = { error ->
-                        logUpdaterError(
-                            "Updater run failed envId=${envId.rawValue} evidence=$evidence " +
-                                "finalStatus=$finalStatusSnapshot finalStatusStart=$finalStatusStartEvidence " +
-                                "finalHistoryStart=$finalHistoryStartEvidence",
-                            error,
-                        )
-                        if (shouldContinuePollingAfterRunFailure(finalServerStartEvidence, finalStatusSnapshot)) {
+                        val canContinuePolling = shouldContinuePollingAfterRunFailure(finalServerStartEvidence, finalStatusSnapshot)
+                        val handledInterruptedTransport = evidence.shouldAvoidConnectivityFailure && error is ArcaneError.Transport
+                        val diagnosticMessage =
+                            "envId=${envId.rawValue} evidence=$evidence finalStatus=$finalStatusSnapshot " +
+                                "finalStatusStart=$finalStatusStartEvidence finalHistoryStart=$finalHistoryStartEvidence"
+                        if (handledInterruptedTransport) {
+                            logUpdaterWarning("Updater run response interrupted $diagnosticMessage", error)
+                        } else {
+                            logUpdaterError("Updater run failed $diagnosticMessage", error)
+                        }
+                        if (canContinuePolling) {
                             requestFailureHandled = true
                             observedServerStart = finalServerStartEvidence
                             logUpdaterDebug(
@@ -368,7 +383,7 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                             }
                         }
                     }
-                    is RunPhase.OutcomeUnknown -> ContentUnavailable("Updater Started", Icons.Filled.Warning, p.message)
+                    is RunPhase.OutcomeUnknown -> ContentUnavailable(p.title, Icons.Filled.Warning, p.message)
                     is RunPhase.Failed -> ContentUnavailable("Updater Failed", Icons.Filled.Warning, p.message)
                 }
             }
