@@ -332,63 +332,67 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
             }
 
             val observingAfterFailure = postFailureError != null
-            runCatching { client.updater.status(envId = envId) }
-                .onSuccess {
-                    postFailureEvidence = postFailureEvidence?.copy(successfulPostStartStatusProbe = true)
-                }
-                .onFailure { error -> logUpdaterError("Polling status failed envId=${envId.rawValue}", error) }
-                .getOrNull()
-                ?.let { status ->
-                    liveStatus = status
-                    val snapshot = UpdaterRunStatusSnapshot.from(status)
-                    if (snapshot.isNewActiveWorkComparedTo(baselineSnapshot)) {
-                        if (!observedServerStart) {
-                            logUpdaterDebug("Observed server start envId=${envId.rawValue} snapshot=$snapshot baseline=$baselineSnapshot")
-                        }
-                        observedServerStart = true
+            val statusResult = runCatching { client.updater.status(envId = envId) }
+            if (statusResult.isSuccess) {
+                postFailureEvidence = postFailureEvidence?.copy(successfulPostStartStatusProbe = true)
+            } else {
+                statusResult.exceptionOrNull()?.let { error -> logUpdaterError("Polling status failed envId=${envId.rawValue}", error) }
+            }
+
+            val status = statusResult.getOrNull()
+            if (status != null) {
+                liveStatus = status
+                val snapshot = UpdaterRunStatusSnapshot.from(status)
+                if (snapshot.isNewActiveWorkComparedTo(baselineSnapshot)) {
+                    if (!observedServerStart) {
+                        logUpdaterDebug("Observed server start envId=${envId.rawValue} snapshot=$snapshot baseline=$baselineSnapshot")
                     }
-                    if (observingAfterFailure) {
-                        if (snapshot.hasActiveWork) {
-                            observedActiveStatusAfterFailure = true
-                        } else if (observedActiveStatusAfterFailure) {
-                            logUpdaterDebug("Updater status became inactive after post-failure active work envId=${envId.rawValue} snapshot=$snapshot")
-                            phase = updaterRunPollingCompletedPhase()
-                            runJob.cancel()
-                            break
-                        }
-                    } else if (observedServerStart && !snapshot.hasActiveWork) {
-                        logUpdaterDebug("Updater status became inactive after observed start envId=${envId.rawValue} snapshot=$snapshot")
+                    observedServerStart = true
+                }
+                if (observingAfterFailure) {
+                    if (snapshot.hasActiveWork) {
+                        observedActiveStatusAfterFailure = true
+                    } else if (observedActiveStatusAfterFailure) {
+                        logUpdaterDebug("Updater status became inactive after post-failure active work envId=${envId.rawValue} snapshot=$snapshot")
                         phase = updaterRunPollingCompletedPhase()
                         runJob.cancel()
                         break
                     }
-                    if (phase is RunPhase.Starting) phase = RunPhase.Running
+                } else if (observedServerStart && !snapshot.hasActiveWork) {
+                    logUpdaterDebug("Updater status became inactive after observed start envId=${envId.rawValue} snapshot=$snapshot")
+                    phase = updaterRunPollingCompletedPhase()
+                    runJob.cancel()
+                    break
                 }
+                if (phase is RunPhase.Starting) phase = RunPhase.Running
+            }
 
             if (observingAfterFailure) {
-                runCatching { loadUpdaterHistory(client = client, envId = envId, limit = 5) }
-                    .onSuccess { records ->
-                        val newRecords = newUpdaterHistoryRecords(baselineHistoryIds, records)
-                        if (newRecords.isNotEmpty()) {
-                            observedServerStart = true
-                            postFailureEvidence = postFailureEvidence?.copy(
-                                observedServerStart = true,
-                                successfulPostStartHistoryProbe = true,
-                            )
-                        } else {
-                            postFailureEvidence = postFailureEvidence?.copy(successfulPostStartHistoryProbe = true)
-                        }
-                        if (newRecords.any { record -> record.hasTerminalUpdaterEvidence() }) {
-                            logUpdaterDebug(
-                                "Updater history reached terminal evidence after interrupted response " +
-                                    "envId=${envId.rawValue} ids=${newRecords.joinToString { it.id }}",
-                            )
-                            phase = updaterRunPollingCompletedPhase()
-                            runJob.cancel()
-                            break
-                        }
+                val historyResult = runCatching { loadUpdaterHistory(client = client, envId = envId, limit = 5) }
+                historyResult.exceptionOrNull()?.let { error -> logUpdaterError("Polling history failed envId=${envId.rawValue}", error) }
+
+                val records = historyResult.getOrNull()
+                if (records != null) {
+                    val newRecords = newUpdaterHistoryRecords(baselineHistoryIds, records)
+                    if (newRecords.isNotEmpty()) {
+                        observedServerStart = true
+                        postFailureEvidence = postFailureEvidence?.copy(
+                            observedServerStart = true,
+                            successfulPostStartHistoryProbe = true,
+                        )
+                    } else {
+                        postFailureEvidence = postFailureEvidence?.copy(successfulPostStartHistoryProbe = true)
                     }
-                    .onFailure { error -> logUpdaterError("Polling history failed envId=${envId.rawValue}", error) }
+                    if (newRecords.any { record -> record.hasTerminalUpdaterEvidence() }) {
+                        logUpdaterDebug(
+                            "Updater history reached terminal evidence after interrupted response " +
+                                "envId=${envId.rawValue} ids=${newRecords.joinToString { it.id }}",
+                        )
+                        phase = updaterRunPollingCompletedPhase()
+                        runJob.cancel()
+                        break
+                    }
+                }
 
                 postFailurePollsRemaining--
                 if (postFailurePollsRemaining <= 0) {
