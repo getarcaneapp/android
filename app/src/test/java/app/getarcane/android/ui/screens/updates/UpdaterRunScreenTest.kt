@@ -49,6 +49,26 @@ class UpdaterRunScreenTest {
     }
 
     @Test
+    fun cancellationFailureAfterServerEvidenceShowsUnknownOutcome() {
+        val phase = updaterRunFailurePhase(
+            CancellationException("request timed out"),
+            evidence = UpdaterRunEvidence(
+                observedServerStart = true,
+                successfulPostStartStatusProbe = true,
+                successfulPostStartHistoryProbe = true,
+            ),
+        )
+
+        assertTrue(phase is RunPhase.OutcomeUnknown)
+        assertEquals("Updater Response Interrupted", (phase as RunPhase.OutcomeUnknown).title)
+        assertEquals(
+            "The updater started on the server, but the final response was interrupted. " +
+                "Refresh Updates or open Updater History to review the results.",
+            phase.message,
+        )
+    }
+
+    @Test
     fun transportFailureAfterSuccessfulPostStartProbeAvoidsConnectivityFailureCopy() {
         val phase = updaterRunFailurePhase(
             ArcaneError.Transport("timeout"),
@@ -147,38 +167,100 @@ class UpdaterRunScreenTest {
     }
 
     @Test
-    fun interruptedRequestContinuesPollingWhileWorkIsStillActive() {
-        val activeStatus = UpdaterRunStatusSnapshot(
-            updatingContainers = 2,
-            updatingProjects = 0,
-            containerIds = listOf("container-a", "container-b"),
-            projectIds = emptyList(),
+    fun interruptedRequestContinuesObservationAfterNewHistoryEvenWhenFinalStatusInactive() {
+        val evidence = UpdaterRunEvidence(
+            observedServerStart = true,
+            successfulPostStartStatusProbe = true,
+            successfulPostStartHistoryProbe = true,
         )
 
-        assertEquals(true, shouldContinuePollingAfterRunFailure(observedServerStart = true, latestStatus = activeStatus))
+        assertEquals(true, shouldObserveAfterRunFailure(ArcaneError.Transport("timeout"), evidence))
     }
 
     @Test
-    fun interruptedRequestDoesNotContinuePollingWhenLatestStatusIsInactive() {
-        val inactiveStatus = UpdaterRunStatusSnapshot(
-            updatingContainers = 0,
-            updatingProjects = 0,
-            containerIds = emptyList(),
-            projectIds = emptyList(),
+    fun requestCancellationAfterServerEvidenceContinuesObservation() {
+        val evidence = UpdaterRunEvidence(
+            observedServerStart = true,
+            successfulPostStartStatusProbe = true,
+            successfulPostStartHistoryProbe = true,
         )
 
-        assertEquals(false, shouldContinuePollingAfterRunFailure(observedServerStart = true, latestStatus = inactiveStatus))
+        assertEquals(true, shouldObserveAfterRunFailure(CancellationException("request timed out"), evidence))
     }
 
     @Test
-    fun interruptedRequestDoesNotContinuePollingWithoutServerEvidenceOrActiveWork() {
-        val inactiveStatus = UpdaterRunStatusSnapshot(
-            updatingContainers = 0,
-            updatingProjects = 0,
-            containerIds = emptyList(),
-            projectIds = emptyList(),
+    fun interruptedRequestAfterOnlySuccessfulProbeContinuesBoundedObservation() {
+        val evidence = UpdaterRunEvidence(
+            observedServerStart = false,
+            successfulPostStartStatusProbe = true,
+            successfulPostStartHistoryProbe = false,
         )
 
-        assertEquals(false, shouldContinuePollingAfterRunFailure(observedServerStart = false, latestStatus = inactiveStatus))
+        assertEquals(true, shouldObserveAfterRunFailure(ArcaneError.Transport("timeout"), evidence))
     }
+
+    @Test
+    fun nonInterruptedFailureDoesNotEnterObservation() {
+        val evidence = UpdaterRunEvidence(
+            observedServerStart = true,
+            successfulPostStartStatusProbe = true,
+            successfulPostStartHistoryProbe = true,
+        )
+
+        assertEquals(false, shouldObserveAfterRunFailure(ArcaneError.Decoding("bad payload"), evidence))
+    }
+
+    @Test
+    fun interruptedRequestWithoutServerEvidenceDoesNotEnterObservation() {
+        val evidence = UpdaterRunEvidence(
+            observedServerStart = false,
+            successfulPostStartStatusProbe = false,
+            successfulPostStartHistoryProbe = false,
+        )
+
+        assertEquals(false, shouldObserveAfterRunFailure(ArcaneError.Transport("timeout"), evidence))
+    }
+
+    @Test
+    fun terminalNewHistoryRecordCompletesObservation() {
+        val record = updaterHistoryRecord(id = "history-created-by-run", endTime = kotlinx.datetime.Instant.parse("2026-06-19T18:01:00Z"))
+
+        assertEquals(true, record.hasTerminalUpdaterEvidence())
+    }
+
+    @Test
+    fun newNonTerminalHistoryRecordDoesNotCompleteObservationImmediately() {
+        val record = updaterHistoryRecord(id = "history-created-by-run")
+
+        assertEquals(false, record.hasTerminalUpdaterEvidence())
+    }
+
+    @Test
+    fun newHistoryRecordsOnlyIncludesRecordsMissingFromBaseline() {
+        val baseline = setOf("history-before-run")
+        val before = updaterHistoryRecord(id = "history-before-run")
+        val after = updaterHistoryRecord(id = "history-created-by-run")
+
+        assertEquals(listOf(after), newUpdaterHistoryRecords(baseline, listOf(before, after)))
+    }
+
+    private fun updaterHistoryRecord(
+        id: String,
+        status: String = "running",
+        endTime: kotlinx.datetime.Instant? = null,
+        updateApplied: Boolean = false,
+        error: String? = null,
+    ): UpdaterHistoryRecord =
+        UpdaterHistoryRecord(
+            id = id,
+            resourceId = "container-1",
+            resourceType = "container",
+            resourceName = "web",
+            status = status,
+            startTime = kotlinx.datetime.Instant.parse("2026-06-19T18:00:00Z"),
+            endTime = endTime,
+            updateAvailable = false,
+            updateApplied = updateApplied,
+            error = error,
+        )
 }
