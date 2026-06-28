@@ -258,7 +258,7 @@ class UpdaterRunScreenTest {
     }
 
     @Test
-    fun itemErrorTakesPrecedenceOverSuccessfulFlags() {
+    fun appliedItemWinsOverNonFatalErrorText() {
         val status = updaterRunItemStatus(
             error = "image digest unchanged after pull",
             updateApplied = true,
@@ -266,7 +266,19 @@ class UpdaterRunScreenTest {
             status = "updated",
         )
 
-        assertEquals(UpdaterRunItemStatus.Failed, status)
+        assertEquals(UpdaterRunItemStatus.Updated, status)
+    }
+
+    @Test
+    fun unchangedDigestMessageWithoutAppliedUpdateIsSkipped() {
+        val status = updaterRunItemStatus(
+            error = "image digest unchanged after pull",
+            updateApplied = false,
+            updateAvailable = false,
+            status = "unknown",
+        )
+
+        assertEquals(UpdaterRunItemStatus.Skipped, status)
     }
 
 
