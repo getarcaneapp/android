@@ -725,8 +725,7 @@ private fun itemStatusText(item: UpdaterResourceResult): String =
         UpdaterRunItemStatus.Updated -> "Updated"
         UpdaterRunItemStatus.Available -> "Available"
         UpdaterRunItemStatus.Skipped,
-        UpdaterRunItemStatus.Other,
-        -> item.status.replaceFirstChar { it.uppercase() }
+        UpdaterRunItemStatus.Other -> item.status.replaceFirstChar { it.uppercase() }
     }
 
 private fun itemStatusTint(item: UpdaterResourceResult): Color =
