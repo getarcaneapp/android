@@ -222,6 +222,55 @@ class UpdaterRunScreenTest {
     }
 
     @Test
+    fun summaryUsesItemFailuresWhenServerAggregateMissesThem() {
+        val summary = updaterRunSummary(
+            checked = 1,
+            updated = 0,
+            skipped = 0,
+            failed = 0,
+            duration = "1s",
+            itemStatuses = listOf(UpdaterRunItemStatus.Failed),
+        )
+
+        assertEquals(1, summary.checked)
+        assertEquals(0, summary.updated)
+        assertEquals(0, summary.skipped)
+        assertEquals(1, summary.failed)
+        assertEquals(false, summary.success)
+    }
+
+    @Test
+    fun summaryFallsBackToServerAggregateWhenNoItemsAreReturned() {
+        val summary = updaterRunSummary(
+            checked = 3,
+            updated = 2,
+            skipped = 0,
+            failed = 1,
+            duration = "5s",
+            itemStatuses = emptyList(),
+        )
+
+        assertEquals(3, summary.checked)
+        assertEquals(2, summary.updated)
+        assertEquals(0, summary.skipped)
+        assertEquals(1, summary.failed)
+        assertEquals(false, summary.success)
+    }
+
+    @Test
+    fun itemErrorTakesPrecedenceOverSuccessfulFlags() {
+        val status = updaterRunItemStatus(
+            error = "image digest unchanged after pull",
+            updateApplied = true,
+            updateAvailable = false,
+            status = "updated",
+        )
+
+        assertEquals(UpdaterRunItemStatus.Failed, status)
+    }
+
+
+    @Test
     fun terminalNewHistoryRecordCompletesObservation() {
         val record = updaterHistoryRecord(id = "history-created-by-run", endTime = kotlinx.datetime.Instant.parse("2026-06-19T18:01:00Z"))
 
