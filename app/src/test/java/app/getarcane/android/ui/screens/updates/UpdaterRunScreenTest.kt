@@ -275,7 +275,7 @@ class UpdaterRunScreenTest {
             error = "image digest unchanged after pull",
             updateApplied = false,
             updateAvailable = false,
-            status = "unknown",
+            status = "failed",
         )
 
         assertEquals(UpdaterRunItemStatus.Skipped, status)
