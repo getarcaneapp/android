@@ -199,13 +199,13 @@ internal fun updaterRunItemStatus(
     status: String,
 ): UpdaterRunItemStatus {
     if (updateApplied == true) return UpdaterRunItemStatus.Updated
+    if (isUnchangedDigestMessage(error)) return UpdaterRunItemStatus.Skipped
 
     return when (status.lowercase()) {
         "updated", "success" -> UpdaterRunItemStatus.Updated
         "skipped", "ignored", "up_to_date" -> UpdaterRunItemStatus.Skipped
         "failed", "error" -> UpdaterRunItemStatus.Failed
         else -> when {
-            isUnchangedDigestMessage(error) -> UpdaterRunItemStatus.Skipped
             !error.isNullOrEmpty() -> UpdaterRunItemStatus.Failed
             updateAvailable == true -> UpdaterRunItemStatus.Available
             else -> UpdaterRunItemStatus.Other
