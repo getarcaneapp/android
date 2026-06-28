@@ -111,6 +111,24 @@ internal data class UpdaterRunEvidence(
     val shouldAvoidConnectivityFailure: Boolean = observedServerStart || hasReachabilityEvidence
 }
 
+internal enum class UpdaterRunItemStatus {
+    Failed,
+    Updated,
+    Skipped,
+    Available,
+    Other,
+}
+
+internal data class UpdaterRunSummary(
+    val checked: Int,
+    val updated: Int,
+    val skipped: Int,
+    val failed: Int,
+    val duration: String,
+) {
+    val success: Boolean = failed == 0
+}
+
 internal fun updaterRunFailurePhase(error: Throwable, observedServerStart: Boolean): RunPhase =
     updaterRunFailurePhase(
         error = error,
@@ -173,6 +191,68 @@ internal suspend fun runUpdaterRequestCatching(block: suspend () -> UpdaterResul
         if (error is CancellationException && !coroutineContext.isActive) throw error
         Result.failure(error)
     }
+
+internal fun updaterRunItemStatus(
+    error: String?,
+    updateApplied: Boolean?,
+    updateAvailable: Boolean?,
+    status: String,
+): UpdaterRunItemStatus {
+    if (!error.isNullOrEmpty()) return UpdaterRunItemStatus.Failed
+    if (updateApplied == true) return UpdaterRunItemStatus.Updated
+    if (updateAvailable == true) return UpdaterRunItemStatus.Available
+    return when (status.lowercase()) {
+        "failed", "error" -> UpdaterRunItemStatus.Failed
+        "updated", "success" -> UpdaterRunItemStatus.Updated
+        "skipped", "ignored", "up_to_date" -> UpdaterRunItemStatus.Skipped
+        else -> UpdaterRunItemStatus.Other
+    }
+}
+
+internal fun updaterRunSummary(
+    checked: Int,
+    updated: Int,
+    skipped: Int,
+    failed: Int,
+    duration: String,
+    itemStatuses: List<UpdaterRunItemStatus>,
+): UpdaterRunSummary {
+    if (itemStatuses.isEmpty()) {
+        return UpdaterRunSummary(
+            checked = checked,
+            updated = updated,
+            skipped = skipped,
+            failed = failed,
+            duration = duration,
+        )
+    }
+
+    return UpdaterRunSummary(
+        checked = maxOf(checked, itemStatuses.size),
+        updated = itemStatuses.count { it == UpdaterRunItemStatus.Updated },
+        skipped = itemStatuses.count { it == UpdaterRunItemStatus.Skipped },
+        failed = itemStatuses.count { it == UpdaterRunItemStatus.Failed },
+        duration = duration,
+    )
+}
+
+internal fun updaterRunSummary(result: UpdaterResult): UpdaterRunSummary =
+    updaterRunSummary(
+        checked = result.checked,
+        updated = result.updated,
+        skipped = result.skipped,
+        failed = result.failed,
+        duration = result.duration,
+        itemStatuses = result.items.map(::updaterRunItemStatus),
+    )
+
+private fun updaterRunItemStatus(item: UpdaterResourceResult): UpdaterRunItemStatus =
+    updaterRunItemStatus(
+        error = item.error,
+        updateApplied = item.updateApplied,
+        updateAvailable = item.updateAvailable,
+        status = item.status,
+    )
 
 private fun logUpdaterDebug(message: String) {
     Log.d(UpdaterRunLogTag, message)
@@ -443,24 +523,24 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                     }
                     is RunPhase.Completed -> {
                         val result = p.result
-                        val success = result.failed == 0
+                        val summary = updaterRunSummary(result)
                         Hero(
-                            icon = if (success) Icons.Filled.CheckCircle else Icons.Filled.Warning,
-                            tint = if (success) ArcaneGreen else ArcaneOrange,
-                            title = if (success) "Completed" else "Completed with Issues",
-                            subtitle = completedSubtitle(result),
+                            icon = if (summary.success) Icons.Filled.CheckCircle else Icons.Filled.Warning,
+                            tint = if (summary.success) ArcaneGreen else ArcaneOrange,
+                            title = if (summary.success) "Completed" else "Completed with Issues",
+                            subtitle = completedSubtitle(summary),
                             spinning = false,
                             showSpinner = false,
                         )
                         CountersCard("Summary", Icons.Filled.BarChart, ArcanePurple) {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    CounterTile("Checked", result.checked, Icons.Filled.Search, ArcaneBlue, Modifier.weight(1f))
-                                    CounterTile("Updated", result.updated, Icons.Filled.CheckCircle, ArcaneGreen, Modifier.weight(1f))
+                                    CounterTile("Checked", summary.checked, Icons.Filled.Search, ArcaneBlue, Modifier.weight(1f))
+                                    CounterTile("Updated", summary.updated, Icons.Filled.CheckCircle, ArcaneGreen, Modifier.weight(1f))
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    CounterTile("Skipped", result.skipped, Icons.Filled.RemoveCircle, ArcaneGray, Modifier.weight(1f))
-                                    CounterTile("Failed", result.failed, Icons.Filled.Cancel, ArcaneRed, Modifier.weight(1f))
+                                    CounterTile("Skipped", summary.skipped, Icons.Filled.RemoveCircle, ArcaneGray, Modifier.weight(1f))
+                                    CounterTile("Failed", summary.failed, Icons.Filled.Cancel, ArcaneRed, Modifier.weight(1f))
                                 }
                             }
                         }
@@ -492,12 +572,12 @@ private fun runningSubtitle(status: UpdaterStatus?, environmentName: String): St
     return if (parts.isEmpty()) "Checking for updates" else parts.joinToString(" · ") + " in progress"
 }
 
-private fun completedSubtitle(result: UpdaterResult): String {
+private fun completedSubtitle(summary: UpdaterRunSummary): String {
     val parts = buildList {
-        add("${result.updated} updated")
-        if (result.failed > 0) add("${result.failed} failed")
-        if (result.skipped > 0) add("${result.skipped} skipped")
-        add("in ${result.duration}")
+        add("${summary.updated} updated")
+        if (summary.failed > 0) add("${summary.failed} failed")
+        if (summary.skipped > 0) add("${summary.skipped} skipped")
+        add("in ${summary.duration}")
     }
     return parts.joinToString(" · ")
 }
@@ -639,24 +719,24 @@ private fun typeTint(type: String): Color = when (type.lowercase()) {
     else -> ArcaneGray
 }
 
-private fun itemStatusText(item: UpdaterResourceResult): String {
-    if (!item.error.isNullOrEmpty()) return "Failed"
-    if (item.updateApplied == true) return "Updated"
-    if (item.updateAvailable == true) return "Available"
-    return item.status.replaceFirstChar { it.uppercase() }
-}
-
-private fun itemStatusTint(item: UpdaterResourceResult): Color {
-    if (!item.error.isNullOrEmpty()) return ArcaneRed
-    if (item.updateApplied == true) return ArcaneGreen
-    if (item.updateAvailable == true) return ArcaneOrange
-    return when (item.status.lowercase()) {
-        "skipped", "ignored", "up_to_date" -> ArcaneGray
-        "failed", "error" -> ArcaneRed
-        "updated", "success" -> ArcaneGreen
-        else -> ArcaneBlue
+private fun itemStatusText(item: UpdaterResourceResult): String =
+    when (updaterRunItemStatus(item)) {
+        UpdaterRunItemStatus.Failed -> "Failed"
+        UpdaterRunItemStatus.Updated -> "Updated"
+        UpdaterRunItemStatus.Available -> "Available"
+        UpdaterRunItemStatus.Skipped,
+        UpdaterRunItemStatus.Other,
+        -> item.status.replaceFirstChar { it.uppercase() }
     }
-}
+
+private fun itemStatusTint(item: UpdaterResourceResult): Color =
+    when (updaterRunItemStatus(item)) {
+        UpdaterRunItemStatus.Failed -> ArcaneRed
+        UpdaterRunItemStatus.Updated -> ArcaneGreen
+        UpdaterRunItemStatus.Available -> ArcaneOrange
+        UpdaterRunItemStatus.Skipped -> ArcaneGray
+        UpdaterRunItemStatus.Other -> ArcaneBlue
+    }
 
 private fun imageChange(item: UpdaterResourceResult): String? {
     val oldVersions = item.oldImages ?: emptyMap()
