@@ -198,16 +198,23 @@ internal fun updaterRunItemStatus(
     updateAvailable: Boolean?,
     status: String,
 ): UpdaterRunItemStatus {
-    if (!error.isNullOrEmpty()) return UpdaterRunItemStatus.Failed
     if (updateApplied == true) return UpdaterRunItemStatus.Updated
-    if (updateAvailable == true) return UpdaterRunItemStatus.Available
+
     return when (status.lowercase()) {
-        "failed", "error" -> UpdaterRunItemStatus.Failed
         "updated", "success" -> UpdaterRunItemStatus.Updated
         "skipped", "ignored", "up_to_date" -> UpdaterRunItemStatus.Skipped
-        else -> UpdaterRunItemStatus.Other
+        "failed", "error" -> UpdaterRunItemStatus.Failed
+        else -> when {
+            isUnchangedDigestMessage(error) -> UpdaterRunItemStatus.Skipped
+            !error.isNullOrEmpty() -> UpdaterRunItemStatus.Failed
+            updateAvailable == true -> UpdaterRunItemStatus.Available
+            else -> UpdaterRunItemStatus.Other
+        }
     }
 }
+
+internal fun isUnchangedDigestMessage(message: String?): Boolean =
+    message?.contains("digest unchanged after pull", ignoreCase = true) == true
 
 internal fun updaterRunSummary(
     checked: Int,
