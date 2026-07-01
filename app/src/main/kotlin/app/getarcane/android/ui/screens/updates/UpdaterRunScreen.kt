@@ -163,6 +163,16 @@ internal fun updaterRunPollingCompletedPhase(): RunPhase =
             "to review the results.",
     )
 
+internal fun updaterRunInterruptedObservationCompletedPhase(
+    error: Throwable?,
+    evidence: UpdaterRunEvidence?,
+): RunPhase =
+    if (error != null && evidence != null) {
+        updaterRunFailurePhase(error, evidence = evidence)
+    } else {
+        updaterRunPollingCompletedPhase()
+    }
+
 internal fun hasNewUpdaterHistoryRecord(baselineIds: Set<String>?, observedIds: Set<String>): Boolean =
     baselineIds != null && observedIds.any { id -> id !in baselineIds }
 
@@ -441,7 +451,10 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                         observedActiveStatusAfterFailure = true
                     } else if (observedActiveStatusAfterFailure) {
                         logUpdaterDebug("Updater status became inactive after post-failure active work envId=${envId.rawValue} snapshot=$snapshot")
-                        phase = updaterRunPollingCompletedPhase()
+                        phase = updaterRunInterruptedObservationCompletedPhase(
+                            error = postFailureError,
+                            evidence = postFailureEvidence,
+                        )
                         runJob.cancel()
                         break
                     }
@@ -475,7 +488,10 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                             "Updater history reached terminal evidence after interrupted response " +
                                 "envId=${envId.rawValue} ids=${newRecords.joinToString { it.id }}",
                         )
-                        phase = updaterRunPollingCompletedPhase()
+                        phase = updaterRunInterruptedObservationCompletedPhase(
+                            error = postFailureError,
+                            evidence = postFailureEvidence,
+                        )
                         runJob.cancel()
                         break
                     }
