@@ -154,6 +154,37 @@ class UpdaterRunScreenTest {
     }
 
     @Test
+    fun interruptedObservationCompletionUsesResponseInterruptedOutcome() {
+        val phase = updaterRunInterruptedObservationCompletedPhase(
+            error = ArcaneError.Transport("timeout"),
+            evidence = UpdaterRunEvidence(
+                observedServerStart = true,
+                successfulPostStartStatusProbe = true,
+                successfulPostStartHistoryProbe = true,
+            ),
+        )
+
+        assertTrue(phase is RunPhase.OutcomeUnknown)
+        assertEquals("Updater Response Interrupted", (phase as RunPhase.OutcomeUnknown).title)
+        assertEquals(
+            "The updater started on the server, but the final response was interrupted. " +
+                "Refresh Updates or open Updater History to review the results.",
+            phase.message,
+        )
+    }
+
+    @Test
+    fun interruptedObservationCompletionWithoutErrorFallsBackToPollingOutcome() {
+        val phase = updaterRunInterruptedObservationCompletedPhase(
+            error = null,
+            evidence = null,
+        )
+
+        assertTrue(phase is RunPhase.OutcomeUnknown)
+        assertEquals("Updater Finished", (phase as RunPhase.OutcomeUnknown).title)
+    }
+
+    @Test
     fun newHistoryRecordIsServerStartEvidence() {
         val baseline = setOf("history-before-run")
         val observed = setOf("history-before-run", "history-created-by-run")
