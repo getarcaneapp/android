@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -104,7 +105,9 @@ fun MainTabView() {
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                windowInsets = WindowInsets(0, 0, 0, 0),
+            ) {
                 visible.forEach { tab ->
                     NavBarItem(
                         icon = tab.icon,

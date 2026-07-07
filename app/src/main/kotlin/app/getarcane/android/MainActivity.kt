@@ -1,8 +1,10 @@
 package app.getarcane.android
 
 import android.content.Intent
+import android.graphics.Color.TRANSPARENT
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,7 +31,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleOidcRedirectIntent(intent)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            navigationBarStyle = SystemBarStyle.auto(
+                lightScrim = TRANSPARENT,
+                darkScrim = TRANSPARENT,
+            ),
+        )
         setContent {
             val context = LocalContext.current
             val manager = remember { arcaneManager }
