@@ -34,15 +34,14 @@ class NavTabsStore(context: Context) {
         }
     }
 
-    /** The (up to [SLOTS]) tabs to show, filtered by permissions/server version and padded with defaults. */
+    /** The [SLOTS] tabs to show, filtered by current availability and padded with defaults. */
     fun visibleTabs(isAdmin: Boolean, supportsV2: Boolean): List<AppTab> {
-        fun allowed(tab: AppTab) = (!tab.requiresAdmin || isAdmin) && (!tab.requiresV2 || supportsV2)
-        val result = pinned.filter(::allowed).toMutableList()
-        for (fallback in AppTab.defaults) {
-            if (result.size >= SLOTS) break
-            if (fallback !in result && allowed(fallback)) result.add(fallback)
+        val normalized = normalizedPinnedBottomTabs(pinned)
+        if (normalized != pinned) {
+            pinned = normalized
+            persist(normalized)
         }
-        return result.take(SLOTS)
+        return visibleBottomTabs(normalized, isAdmin, supportsV2)
     }
 
     fun swap(slot: Int, replacement: AppTab) {
@@ -50,7 +49,7 @@ class NavTabsStore(context: Context) {
         if (slot in updated.indices) {
             updated[slot] = replacement
             pinned = updated
-            scope.launch { store.edit { it[key] = updated.joinToString(",") { t -> t.id } } }
+            persist(updated)
         }
     }
 
@@ -59,7 +58,45 @@ class NavTabsStore(context: Context) {
         scope.launch { store.edit { it.remove(key) } }
     }
 
+    private fun persist(tabs: List<AppTab>) {
+        scope.launch { store.edit { it[key] = tabs.joinToString(",") { tab -> tab.id } } }
+    }
+
     companion object {
         const val SLOTS = 4
     }
+}
+
+internal fun normalizedPinnedBottomTabs(
+    pinned: List<AppTab>,
+): List<AppTab> {
+    val result = pinned
+        .filter { it.canPinToBottomBar }
+        .distinct()
+        .toMutableList()
+
+    for (fallback in AppTab.defaults) {
+        if (result.size >= NavTabsStore.SLOTS) break
+        if (fallback !in result && fallback.canPinToBottomBar) result.add(fallback)
+    }
+
+    return result.take(NavTabsStore.SLOTS)
+}
+
+internal fun visibleBottomTabs(
+    pinned: List<AppTab>,
+    isAdmin: Boolean,
+    supportsV2: Boolean,
+): List<AppTab> {
+    fun allowed(tab: AppTab) = tab.isAvailableForBottomBar(isAdmin, supportsV2)
+    val result = pinned
+        .filter(::allowed)
+        .toMutableList()
+
+    for (fallback in AppTab.defaults) {
+        if (result.size >= NavTabsStore.SLOTS) break
+        if (fallback !in result && allowed(fallback)) result.add(fallback)
+    }
+
+    return result.take(NavTabsStore.SLOTS)
 }
