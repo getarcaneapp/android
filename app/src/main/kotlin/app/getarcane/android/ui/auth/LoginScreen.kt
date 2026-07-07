@@ -1,3 +1,6 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@file:Suppress("DEPRECATION")
+
 package app.getarcane.android.ui.auth
 
 import androidx.compose.foundation.Image
@@ -45,27 +48,37 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.AutofillNode
+import androidx.compose.ui.autofill.AutofillType
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalAutofill
+import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -315,6 +328,7 @@ private fun CredentialsFields(
                 placeholder = "Username",
                 imeAction = ImeAction.Next,
                 keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
+                autofillTypes = listOf(AutofillType.Username),
             )
             HorizontalDivider(Modifier.padding(start = 16.dp))
             FieldRow(
@@ -327,6 +341,7 @@ private fun CredentialsFields(
                 keyboardActions = KeyboardActions(onGo = { onSubmit() }),
                 visualTransformation = PasswordVisualTransformation(),
                 textFieldModifier = Modifier.focusRequester(passwordFocus),
+                autofillTypes = listOf(AutofillType.Password),
             )
         }
     }
@@ -482,6 +497,7 @@ private fun FieldRow(
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     textFieldModifier: Modifier = Modifier,
+    autofillTypes: List<AutofillType> = emptyList(),
 ) {
     val brand = MaterialTheme.colorScheme.primary
     Column(
@@ -506,7 +522,9 @@ private fun FieldRow(
             ),
             keyboardActions = keyboardActions,
             visualTransformation = visualTransformation,
-            modifier = textFieldModifier.fillMaxWidth(),
+            modifier = textFieldModifier
+                .fillMaxWidth()
+                .autofill(autofillTypes, onValueChange),
             decorationBox = { inner ->
                 if (value.isEmpty()) {
                     Text(
@@ -519,6 +537,40 @@ private fun FieldRow(
             },
         )
     }
+}
+
+private fun Modifier.autofill(
+    autofillTypes: List<AutofillType>,
+    onFill: (String) -> Unit,
+): Modifier = composed {
+    if (autofillTypes.isEmpty()) return@composed this
+
+    val autofill = LocalAutofill.current
+    val autofillTree = LocalAutofillTree.current
+    val currentOnFill by rememberUpdatedState(onFill)
+    val autofillNode = remember(autofillTypes) {
+        AutofillNode(
+            autofillTypes = autofillTypes,
+            onFill = { currentOnFill(it) },
+        )
+    }
+
+    DisposableEffect(autofillTree, autofillNode) {
+        autofillTree += autofillNode
+        onDispose {
+            autofillTree.children.remove(autofillNode.id)
+        }
+    }
+
+    this
+        .onGloballyPositioned { autofillNode.boundingBox = it.boundsInWindow() }
+        .onFocusChanged { focusState ->
+            if (focusState.isFocused) {
+                autofill?.requestAutofillForNode(autofillNode)
+            } else {
+                autofill?.cancelAutofillForNode(autofillNode)
+            }
+        }
 }
 
 @Composable
