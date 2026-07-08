@@ -1,0 +1,5 @@
+Arcane Mobile is the official Android companion for Arcane.
+
+Connect to your Arcane manager or agent and manage Docker environments from your phone. Browse and operate containers, images, volumes, networks, Compose projects, activity history, updates, settings, and administration surfaces.
+
+An Arcane server is required.

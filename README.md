@@ -42,6 +42,35 @@ Open the project in **Android Studio** (Quail Feature Drop or later) and let it 
 ./gradlew :app:installDebug
 ```
 
+Run the same checks used by CI with:
+
+```sh
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+```
+
+Release APK signing is optional for local builds. To sign a release APK, provide:
+
+```sh
+ARCANE_RELEASE_STORE_FILE=/path/to/arcane-release.jks
+ARCANE_RELEASE_STORE_PASSWORD=...
+ARCANE_RELEASE_KEY_ALIAS=...
+ARCANE_RELEASE_KEY_PASSWORD=...
+./gradlew :app:assembleRelease
+```
+
+GitHub Actions builds and uploads a debug APK for pull requests and branch pushes.
+For tags matching `v*`, it also builds a signed release APK and attaches it to the
+GitHub Release when signing secrets are configured. Tags without signing secrets
+still build and upload the debug APK artifact. Configure these repository secrets
+before cutting a signed release tag:
+
+- `ARCANE_RELEASE_KEYSTORE_BASE64`
+- `ARCANE_RELEASE_STORE_PASSWORD`
+- `ARCANE_RELEASE_KEY_ALIAS`
+- `ARCANE_RELEASE_KEY_PASSWORD`
+
+Fastlane/F-Droid metadata lives under `fastlane/metadata/android/en-US/`.
+
 ### Android Studio run configuration
 
 Open the repository root (the directory containing `settings.gradle.kts`) in

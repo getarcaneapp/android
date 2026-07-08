@@ -8,6 +8,16 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+val releaseStoreFile = providers.environmentVariable("ARCANE_RELEASE_STORE_FILE")
+val releaseStorePassword = providers.environmentVariable("ARCANE_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("ARCANE_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("ARCANE_RELEASE_KEY_PASSWORD")
+val hasReleaseSigning =
+    releaseStoreFile.isPresent &&
+        releaseStorePassword.isPresent &&
+        releaseKeyAlias.isPresent &&
+        releaseKeyPassword.isPresent
+
 android {
     namespace = "app.getarcane.android"
     compileSdk = 35
@@ -21,8 +31,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile.get())
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
