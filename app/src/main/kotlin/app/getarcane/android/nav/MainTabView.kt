@@ -70,6 +70,14 @@ import app.getarcane.sdk.models.user.isGlobalAdmin
 
 private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
 
+private sealed interface DashboardOpenTarget {
+    val id: String
+
+    data class Container(override val id: String) : DashboardOpenTarget
+    data class Project(override val id: String) : DashboardOpenTarget
+    data class Volume(override val id: String) : DashboardOpenTarget
+}
+
 /**
  * Bottom-nav shell: 4 swappable tabs + Settings. Tapping selects; long-pressing a tab opens the
  * [TabSwapSheet] to replace it. Port of iOS `MainTabView` + tab-swap gesture.
@@ -88,6 +96,7 @@ fun MainTabView() {
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
+    var dashboardOpenTarget by remember { mutableStateOf<DashboardOpenTarget?>(null) }
 
     if (selected == null && selectionStore.hasLoaded) {
         selected = MainTabSelection.restore(
@@ -113,6 +122,17 @@ fun MainTabView() {
             selectionStore.select(normalizedSelection)
         }
     }
+    val hostedResourceTabId = when (dashboardOpenTarget) {
+        is DashboardOpenTarget.Container -> AppTab.Containers.id
+        is DashboardOpenTarget.Project -> AppTab.Projects.id
+        is DashboardOpenTarget.Volume -> AppTab.Volumes.id
+        null -> null
+    }
+    val bottomBarSelectedTabId = MainTabSelection.bottomBarSelectedTabId(
+        selectedTabId = normalizedSelection,
+        hostedResourceTabId = hostedResourceTabId,
+        visibleTabs = visible,
+    )
 
     val rootBackAction = MainBackNavigation.resolve(normalizedSelection)
     BackHandler(enabled = rootBackAction == MainBackNavigation.Action.SwitchToDashboard) {
@@ -123,9 +143,13 @@ fun MainTabView() {
     }
 
     fun selectOrPopToRoot(tabId: String) {
-        if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
+        if (dashboardOpenTarget != null && normalizedSelection == AppTab.Dashboard.id && tabId == AppTab.Dashboard.id) {
+            dashboardOpenTarget = null
+        } else if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
+            dashboardOpenTarget = null
             popToRootSignals[tabId] = (popToRootSignals[tabId] ?: 0) + 1
         } else {
+            dashboardOpenTarget = null
             selected = tabId
         }
     }
@@ -137,7 +161,7 @@ fun MainTabView() {
                     NavBarItem(
                         icon = tab.icon,
                         label = tab.tabBarTitle,
-                        selected = normalizedSelection == tab.id,
+                        selected = bottomBarSelectedTabId == tab.id,
                         onClick = { selectOrPopToRoot(tab.id) },
                         onLongClick = { swapTarget = tab },
                     )
@@ -145,7 +169,7 @@ fun MainTabView() {
                 NavBarItem(
                     icon = Icons.Filled.Settings,
                     label = "Settings",
-                    selected = normalizedSelection == SETTINGS_ID,
+                    selected = bottomBarSelectedTabId == SETTINGS_ID,
                     onClick = { selectOrPopToRoot(SETTINGS_ID) },
                     onLongClick = null,
                 )
@@ -161,6 +185,19 @@ fun MainTabView() {
                     normalizedSelection,
                     popToRootSignal = popToRootSignal,
                     onSelectTab = { selected = it },
+                    dashboardOpenTarget = dashboardOpenTarget,
+                    onOpenContainer = { id ->
+                        dashboardOpenTarget = DashboardOpenTarget.Container(id = id)
+                    },
+                    onOpenProject = { id ->
+                        dashboardOpenTarget = DashboardOpenTarget.Project(id = id)
+                    },
+                    onOpenVolume = { name ->
+                        dashboardOpenTarget = DashboardOpenTarget.Volume(id = name)
+                    },
+                    onDashboardBack = {
+                        dashboardOpenTarget = null
+                    },
                 )
             }
         }
@@ -224,13 +261,57 @@ private fun RowScope.NavBarItem(
 }
 
 @Composable
-private fun TabContent(tabId: String, popToRootSignal: Int, onSelectTab: (String) -> Unit) {
+private fun TabContent(
+    tabId: String,
+    popToRootSignal: Int,
+    onSelectTab: (String) -> Unit,
+    dashboardOpenTarget: DashboardOpenTarget?,
+    onOpenContainer: (String) -> Unit,
+    onOpenProject: (String) -> Unit,
+    onOpenVolume: (String) -> Unit,
+    onDashboardBack: () -> Unit,
+) {
     when (tabId) {
         SETTINGS_ID -> SettingsScreen(popToRootSignal = popToRootSignal)
-        AppTab.Dashboard.id -> DashboardScreen(onOpenTab = onSelectTab)
-        AppTab.Containers.id -> ContainersScreen(popToRootSignal = popToRootSignal)
+        AppTab.Dashboard.id -> {
+            when (val target = dashboardOpenTarget) {
+                is DashboardOpenTarget.Container -> key(target) {
+                    ContainersScreen(
+                        dashboardContainerId = target.id,
+                        onDashboardBack = onDashboardBack,
+                    )
+                }
+                is DashboardOpenTarget.Project -> key(target) {
+                    ProjectsScreen(
+                        dashboardProjectId = target.id,
+                        onDashboardBack = onDashboardBack,
+                    )
+                }
+                is DashboardOpenTarget.Volume -> key(target) {
+                    VolumesScreen(
+                        dashboardVolumeName = target.id,
+                        onDashboardBack = onDashboardBack,
+                    )
+                }
+                null -> DashboardScreen(
+                    onOpenTab = onSelectTab,
+                    onOpenContainer = onOpenContainer,
+                    onOpenProject = onOpenProject,
+                    onOpenVolume = onOpenVolume,
+                )
+            }
+        }
+        AppTab.Containers.id -> {
+            ContainersScreen(
+                popToRootSignal = popToRootSignal,
+            )
+        }
         AppTab.Images.id -> ImagesScreen(popToRootSignal = popToRootSignal)
-        AppTab.Projects.id -> ProjectsScreen(popToRootSignal = popToRootSignal)
+        AppTab.Projects.id -> {
+            ProjectsScreen(
+                popToRootSignal = popToRootSignal,
+            )
+        }
         AppTab.Volumes.id -> VolumesScreen(popToRootSignal = popToRootSignal)
         AppTab.Networks.id -> NetworksScreen(popToRootSignal = popToRootSignal)
         AppTab.Ports.id -> PortsScreen(popToRootSignal = popToRootSignal)
