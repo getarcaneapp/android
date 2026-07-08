@@ -121,6 +121,16 @@ fun MainTabView() {
             selectionStore.select(normalizedSelection)
         }
     }
+    val hostedResourceTabId = when (dashboardOpenTarget) {
+        is DashboardOpenTarget.Container -> AppTab.Containers.id
+        is DashboardOpenTarget.Project -> AppTab.Projects.id
+        null -> null
+    }
+    val bottomBarSelectedTabId = MainTabSelection.bottomBarSelectedTabId(
+        selectedTabId = normalizedSelection,
+        hostedResourceTabId = hostedResourceTabId,
+        visibleTabs = visible,
+    )
 
     val rootBackAction = MainBackNavigation.resolve(normalizedSelection)
     BackHandler(enabled = rootBackAction == MainBackNavigation.Action.SwitchToDashboard) {
@@ -149,7 +159,7 @@ fun MainTabView() {
                     NavBarItem(
                         icon = tab.icon,
                         label = tab.tabBarTitle,
-                        selected = normalizedSelection == tab.id,
+                        selected = bottomBarSelectedTabId == tab.id,
                         onClick = { selectOrPopToRoot(tab.id) },
                         onLongClick = { swapTarget = tab },
                     )
@@ -157,7 +167,7 @@ fun MainTabView() {
                 NavBarItem(
                     icon = Icons.Filled.Settings,
                     label = "Settings",
-                    selected = normalizedSelection == SETTINGS_ID,
+                    selected = bottomBarSelectedTabId == SETTINGS_ID,
                     onClick = { selectOrPopToRoot(SETTINGS_ID) },
                     onLongClick = null,
                 )
