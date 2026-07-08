@@ -63,6 +63,7 @@ import androidx.navigation.navArgument
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.nav.PopToRootOnSignal
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.components.SkeletonListLoadingView
@@ -82,8 +83,9 @@ import kotlinx.datetime.toLocalDateTime
 
 /** Events tab with its own nested back stack (list -> detail). */
 @Composable
-fun EventsScreen() {
+fun EventsScreen(popToRootSignal: Int = 0) {
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     // Hold the loaded events here so the detail screen can resolve by ID without re-fetching
     // (the list endpoint is the only source — there is no per-event GET).
     var loaded by remember { mutableStateOf<List<Event>>(emptyList()) }

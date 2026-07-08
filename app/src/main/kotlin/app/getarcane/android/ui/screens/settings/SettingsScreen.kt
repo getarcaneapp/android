@@ -26,6 +26,7 @@ import androidx.navigation.compose.rememberNavController
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.nav.AppTab
 import app.getarcane.android.nav.NavTabsStore
+import app.getarcane.android.nav.PopToRootOnSignal
 import app.getarcane.android.nav.TabSection
 import app.getarcane.android.ui.screens.DashboardScreen
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
@@ -92,8 +93,9 @@ private object SettingsRoutes {
  * iOS `SettingsView` navigation stack; the entry composable is `SettingsScreen()` (no args).
  */
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(popToRootSignal: Int = 0) {
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = SettingsRoutes.ROOT)
     NavHost(navController = nav, startDestination = SettingsRoutes.ROOT) {
         composable(SettingsRoutes.ROOT) { SettingsRoot(nav) }
         AppTab.entries.forEach { tab ->

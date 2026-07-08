@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -85,6 +86,7 @@ fun MainTabView() {
     val visible = tabsStore.visibleTabs(isAdmin, supportsV2)
 
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
 
     if (selected == null && selectionStore.hasLoaded) {
@@ -120,6 +122,14 @@ fun MainTabView() {
         selected = AppTab.Dashboard.id
     }
 
+    fun selectOrPopToRoot(tabId: String) {
+        if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
+            popToRootSignals[tabId] = (popToRootSignals[tabId] ?: 0) + 1
+        } else {
+            selected = tabId
+        }
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar {
@@ -128,7 +138,7 @@ fun MainTabView() {
                         icon = tab.icon,
                         label = tab.tabBarTitle,
                         selected = normalizedSelection == tab.id,
-                        onClick = { selected = tab.id },
+                        onClick = { selectOrPopToRoot(tab.id) },
                         onLongClick = { swapTarget = tab },
                     )
                 }
@@ -136,7 +146,7 @@ fun MainTabView() {
                     icon = Icons.Filled.Settings,
                     label = "Settings",
                     selected = normalizedSelection == SETTINGS_ID,
-                    onClick = { selected = SETTINGS_ID },
+                    onClick = { selectOrPopToRoot(SETTINGS_ID) },
                     onLongClick = null,
                 )
             }
@@ -145,8 +155,13 @@ fun MainTabView() {
         Box(Modifier.fillMaxSize().padding(padding)) {
             val tab = AppTab.byId(normalizedSelection)
             val envKey = if (tab?.isEnvironmentScoped == true) manager.activeEnvironmentId.rawValue else ""
+            val popToRootSignal = popToRootSignals[normalizedSelection] ?: 0
             key(normalizedSelection, envKey) {
-                TabContent(normalizedSelection, onSelectTab = { selected = it })
+                TabContent(
+                    normalizedSelection,
+                    popToRootSignal = popToRootSignal,
+                    onSelectTab = { selected = it },
+                )
             }
         }
     }
@@ -209,20 +224,20 @@ private fun RowScope.NavBarItem(
 }
 
 @Composable
-private fun TabContent(tabId: String, onSelectTab: (String) -> Unit) {
+private fun TabContent(tabId: String, popToRootSignal: Int, onSelectTab: (String) -> Unit) {
     when (tabId) {
-        SETTINGS_ID -> SettingsScreen()
+        SETTINGS_ID -> SettingsScreen(popToRootSignal = popToRootSignal)
         AppTab.Dashboard.id -> DashboardScreen(onOpenTab = onSelectTab)
-        AppTab.Containers.id -> ContainersScreen()
-        AppTab.Images.id -> ImagesScreen()
-        AppTab.Projects.id -> ProjectsScreen()
-        AppTab.Volumes.id -> VolumesScreen()
-        AppTab.Networks.id -> NetworksScreen()
-        AppTab.Ports.id -> PortsScreen()
-        AppTab.Events.id -> EventsScreen()
-        AppTab.Jobs.id -> JobsScreen()
-        AppTab.Activities.id -> ActivitiesTab()
-        AppTab.Updates.id -> UpdatesScreen()
+        AppTab.Containers.id -> ContainersScreen(popToRootSignal = popToRootSignal)
+        AppTab.Images.id -> ImagesScreen(popToRootSignal = popToRootSignal)
+        AppTab.Projects.id -> ProjectsScreen(popToRootSignal = popToRootSignal)
+        AppTab.Volumes.id -> VolumesScreen(popToRootSignal = popToRootSignal)
+        AppTab.Networks.id -> NetworksScreen(popToRootSignal = popToRootSignal)
+        AppTab.Ports.id -> PortsScreen(popToRootSignal = popToRootSignal)
+        AppTab.Events.id -> EventsScreen(popToRootSignal = popToRootSignal)
+        AppTab.Jobs.id -> JobsScreen(popToRootSignal = popToRootSignal)
+        AppTab.Activities.id -> ActivitiesTab(popToRootSignal = popToRootSignal)
+        AppTab.Updates.id -> UpdatesScreen(popToRootSignal = popToRootSignal)
         AppTab.Swarm.id -> SwarmScreen()
         AppTab.GitOps.id -> GitOpsScreen()
         AppTab.GitRepositories.id -> GitRepositoriesScreen()

@@ -29,6 +29,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.nav.PopToRootOnSignal
 import app.getarcane.android.ui.components.StatusBadge
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.environment.Environment
@@ -38,10 +39,11 @@ import app.getarcane.sdk.models.environment.Environment
  * image-update results plus actions to run the updater or view history for a picked environment.
  */
 @Composable
-fun UpdatesScreen() {
+fun UpdatesScreen(popToRootSignal: Int = 0) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "updates")
     var environments by remember { mutableStateOf<List<Environment>>(emptyList()) }
     var pickerMode by remember { mutableStateOf<PickerMode?>(null) }
 

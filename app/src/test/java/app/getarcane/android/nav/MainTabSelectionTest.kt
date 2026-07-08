@@ -1,6 +1,8 @@
 package app.getarcane.android.nav
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MainTabSelectionTest {
@@ -59,6 +61,26 @@ class MainTabSelectionTest {
                 visibleTabs = defaultVisibleTabs,
                 isAdmin = false,
                 supportsV2 = true,
+            ),
+        )
+    }
+
+    @Test
+    fun reTappingSelectedTabShouldPopToRoot() {
+        assertTrue(
+            MainTabSelection.shouldPopToRootOnTap(
+                selectedTabId = AppTab.Images.id,
+                tappedTabId = AppTab.Images.id,
+            ),
+        )
+    }
+
+    @Test
+    fun tappingDifferentTabShouldNotPopToRoot() {
+        assertFalse(
+            MainTabSelection.shouldPopToRootOnTap(
+                selectedTabId = AppTab.Images.id,
+                tappedTabId = AppTab.Projects.id,
             ),
         )
     }

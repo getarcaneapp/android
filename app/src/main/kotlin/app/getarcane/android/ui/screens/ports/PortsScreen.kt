@@ -4,14 +4,16 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import app.getarcane.android.nav.PopToRootOnSignal
 
 /**
  * Ports tab with its own nested back stack (list -> mapping detail). Mirrors the iOS `PortsView`
  * NavigationStack, which pushes a PortMappingDetailView per row.
  */
 @Composable
-fun PortsScreen() {
+fun PortsScreen(popToRootSignal: Int = 0) {
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
             PortListScreen(onOpen = { id -> nav.navigate("detail/$id") })

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import app.getarcane.android.nav.PopToRootOnSignal
 import app.getarcane.android.ui.screens.settings.registries.TemplateRegistriesScreen
 
 /**
@@ -11,8 +12,9 @@ import app.getarcane.android.ui.screens.settings.registries.TemplateRegistriesSc
  * Mirrors the iOS `NavigationStack` rooted at `ProjectsView`.
  */
 @Composable
-fun ProjectsScreen() {
+fun ProjectsScreen(popToRootSignal: Int = 0) {
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
             ProjectListScreen(

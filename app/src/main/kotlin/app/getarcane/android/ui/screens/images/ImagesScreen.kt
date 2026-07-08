@@ -10,6 +10,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import app.getarcane.android.nav.PopToRootOnSignal
 import app.getarcane.sdk.models.image.ImageSummary
 
 /**
@@ -18,8 +19,9 @@ import app.getarcane.sdk.models.image.ImageSummary
  * Mirrors the iOS `ImagesView` navigation graph.
  */
 @Composable
-fun ImagesScreen() {
+fun ImagesScreen(popToRootSignal: Int = 0) {
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     // The list endpoint is the only source for the full set of images; keep the last-loaded
     // list here so the Updates screen can derive its tagged-ref set without re-fetching.
     var loadedImages by remember { mutableStateOf<List<ImageSummary>>(emptyList()) }
