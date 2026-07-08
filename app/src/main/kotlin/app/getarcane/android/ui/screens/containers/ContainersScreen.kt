@@ -1,7 +1,14 @@
 package app.getarcane.android.ui.screens.containers
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -19,17 +26,25 @@ fun ContainersScreen(
     onOpenContainerConsumed: () -> Unit = {},
 ) {
     val nav = rememberNavController()
+    var pendingExternalOpen by remember(openContainerSignal) {
+        mutableStateOf(openContainerId != null)
+    }
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     LaunchedEffect(openContainerSignal) {
         val id = openContainerId ?: return@LaunchedEffect
         nav.navigate("detail/$id") {
             popUpTo("list")
         }
+        pendingExternalOpen = false
         onOpenContainerConsumed()
     }
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
-            ContainerListScreen(onOpen = { id -> nav.navigate("detail/$id") })
+            if (pendingExternalOpen) {
+                Box(Modifier.fillMaxSize())
+            } else {
+                ContainerListScreen(onOpen = { id -> nav.navigate("detail/$id") })
+            }
         }
         composable("detail/{id}") { entry ->
             ContainerDetailScreen(
