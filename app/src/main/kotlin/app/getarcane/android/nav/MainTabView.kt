@@ -75,6 +75,7 @@ private sealed interface DashboardOpenTarget {
 
     data class Container(override val id: String) : DashboardOpenTarget
     data class Project(override val id: String) : DashboardOpenTarget
+    data class Volume(override val id: String) : DashboardOpenTarget
 }
 
 /**
@@ -124,6 +125,7 @@ fun MainTabView() {
     val hostedResourceTabId = when (dashboardOpenTarget) {
         is DashboardOpenTarget.Container -> AppTab.Containers.id
         is DashboardOpenTarget.Project -> AppTab.Projects.id
+        is DashboardOpenTarget.Volume -> AppTab.Volumes.id
         null -> null
     }
     val bottomBarSelectedTabId = MainTabSelection.bottomBarSelectedTabId(
@@ -189,6 +191,9 @@ fun MainTabView() {
                     },
                     onOpenProject = { id ->
                         dashboardOpenTarget = DashboardOpenTarget.Project(id = id)
+                    },
+                    onOpenVolume = { name ->
+                        dashboardOpenTarget = DashboardOpenTarget.Volume(id = name)
                     },
                     onDashboardBack = {
                         dashboardOpenTarget = null
@@ -263,6 +268,7 @@ private fun TabContent(
     dashboardOpenTarget: DashboardOpenTarget?,
     onOpenContainer: (String) -> Unit,
     onOpenProject: (String) -> Unit,
+    onOpenVolume: (String) -> Unit,
     onDashboardBack: () -> Unit,
 ) {
     when (tabId) {
@@ -281,10 +287,17 @@ private fun TabContent(
                         onDashboardBack = onDashboardBack,
                     )
                 }
+                is DashboardOpenTarget.Volume -> key(target) {
+                    VolumesScreen(
+                        dashboardVolumeName = target.id,
+                        onDashboardBack = onDashboardBack,
+                    )
+                }
                 null -> DashboardScreen(
                     onOpenTab = onSelectTab,
                     onOpenContainer = onOpenContainer,
                     onOpenProject = onOpenProject,
+                    onOpenVolume = onOpenVolume,
                 )
             }
         }

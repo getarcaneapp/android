@@ -114,6 +114,7 @@ fun DashboardScreen(
     onOpenTab: ((String) -> Unit)? = null,
     onOpenContainer: ((String) -> Unit)? = null,
     onOpenProject: ((String) -> Unit)? = null,
+    onOpenVolume: ((String) -> Unit)? = null,
 ) {
     val manager = LocalArcaneManager.current
     val client = manager.client
@@ -267,6 +268,7 @@ fun DashboardScreen(
                         refreshToken = refreshKey,
                         onOpenContainer = { id -> onOpenContainer?.invoke(id) ?: onOpenTab?.invoke(AppTab.Containers.id) },
                         onOpenProject = { id -> onOpenProject?.invoke(id) ?: onOpenTab?.invoke(AppTab.Projects.id) },
+                        onOpenVolume = { name -> onOpenVolume?.invoke(name) ?: onOpenTab?.invoke(AppTab.Volumes.id) },
                         onMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
                     )
                 }
