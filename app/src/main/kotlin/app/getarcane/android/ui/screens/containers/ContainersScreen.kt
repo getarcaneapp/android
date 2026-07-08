@@ -1,18 +1,17 @@
 package app.getarcane.android.ui.screens.containers
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import app.getarcane.android.nav.PopToRootOnSignal
+import app.getarcane.android.nav.popToRootOrReplace
+import app.getarcane.android.nav.replaceBackStackWith
 
 /**
  * Containers tab with its own nested back stack (list -> detail -> {logs, terminal, inspect}).
@@ -24,32 +23,42 @@ fun ContainersScreen(
     openContainerId: String? = null,
     openContainerSignal: Int = 0,
     onOpenContainerConsumed: () -> Unit = {},
+    onDashboardBack: () -> Unit = {},
 ) {
     val nav = rememberNavController()
-    var pendingExternalOpen by remember(openContainerSignal) {
-        mutableStateOf(openContainerId != null)
+    var dashboardOpenedContainerId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(popToRootSignal) {
+        if (popToRootSignal > 0) {
+            dashboardOpenedContainerId = null
+            nav.popToRootOrReplace(rootRoute = "list", fallbackPopUpToRoute = "detail/{id}")
+        }
     }
-    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     LaunchedEffect(openContainerSignal) {
         val id = openContainerId ?: return@LaunchedEffect
-        nav.navigate("detail/$id") {
-            popUpTo("list")
-        }
-        pendingExternalOpen = false
+        dashboardOpenedContainerId = id
+        nav.replaceBackStackWith("detail/$id")
         onOpenContainerConsumed()
     }
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
-            if (pendingExternalOpen) {
-                Box(Modifier.fillMaxSize())
-            } else {
-                ContainerListScreen(onOpen = { id -> nav.navigate("detail/$id") })
-            }
+            ContainerListScreen(onOpen = { id -> nav.navigate("detail/$id") })
         }
         composable("detail/{id}") { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            BackHandler(enabled = dashboardOpenedContainerId == id) {
+                dashboardOpenedContainerId = null
+                onDashboardBack()
+            }
             ContainerDetailScreen(
-                id = entry.arguments?.getString("id").orEmpty(),
-                onBack = { nav.popBackStack() },
+                id = id,
+                onBack = {
+                    if (dashboardOpenedContainerId == id) {
+                        dashboardOpenedContainerId = null
+                        onDashboardBack()
+                    } else {
+                        nav.popBackStack()
+                    }
+                },
                 onLogs = { id -> nav.navigate("logs/$id") },
                 onTerminal = { id -> nav.navigate("terminal/$id") },
                 onInspect = { id -> nav.navigate("inspect/$id") },

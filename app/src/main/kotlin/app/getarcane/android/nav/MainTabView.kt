@@ -185,6 +185,10 @@ fun MainTabView() {
                             dashboardOpenTarget = null
                         }
                     },
+                    onDashboardBack = {
+                        dashboardOpenTarget = null
+                        selected = AppTab.Dashboard.id
+                    },
                 )
             }
         }
@@ -256,6 +260,7 @@ private fun TabContent(
     onOpenContainer: (String) -> Unit,
     onOpenProject: (String) -> Unit,
     onDashboardOpenConsumed: (DashboardOpenTarget) -> Unit,
+    onDashboardBack: () -> Unit,
 ) {
     when (tabId) {
         SETTINGS_ID -> SettingsScreen(popToRootSignal = popToRootSignal)
@@ -273,6 +278,7 @@ private fun TabContent(
                 onOpenContainerConsumed = {
                     if (target != null) onDashboardOpenConsumed(target)
                 },
+                onDashboardBack = onDashboardBack,
             )
         }
         AppTab.Images.id -> ImagesScreen(popToRootSignal = popToRootSignal)
@@ -285,6 +291,7 @@ private fun TabContent(
                 onOpenProjectConsumed = {
                     if (target != null) onDashboardOpenConsumed(target)
                 },
+                onDashboardBack = onDashboardBack,
             )
         }
         AppTab.Volumes.id -> VolumesScreen(popToRootSignal = popToRootSignal)
