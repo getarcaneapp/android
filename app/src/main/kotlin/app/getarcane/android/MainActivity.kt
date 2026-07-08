@@ -1,6 +1,7 @@
 package app.getarcane.android
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -30,6 +31,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         handleOidcRedirectIntent(intent)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Keep the gesture/3-button navigation area from getting a system-imposed contrast scrim.
+            window.isNavigationBarContrastEnforced = false
+        }
         setContent {
             val context = LocalContext.current
             val manager = remember { arcaneManager }
