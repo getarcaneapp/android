@@ -54,8 +54,7 @@ fun TabSwapSheet(
         tab.section == section &&
             tab !in pinnedSet &&
             tab != current &&
-            (isAdmin || !tab.requiresAdmin) &&
-            (supportsV2 || !tab.requiresV2)
+            tab.isAvailableForBottomBar(isAdmin, supportsV2)
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {

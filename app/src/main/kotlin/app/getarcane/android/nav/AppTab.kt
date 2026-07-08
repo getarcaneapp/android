@@ -87,6 +87,40 @@ enum class AppTab(
     SystemSettings("systemSettings", "System Settings", "System", Icons.Filled.Dns, ArcaneGray, TabSection.Administration, requiresAdmin = true),
     ;
 
+    val canPinToBottomBar: Boolean
+        get() = when (this) {
+            Dashboard,
+            Containers,
+            Images,
+            Projects,
+            Volumes,
+            Networks,
+            Ports,
+            Updates,
+            Activities,
+            Events,
+            Swarm -> true
+            GitRepositories,
+            GitOps,
+            ContainerRegistries,
+            TemplateRegistries,
+            Builds,
+            Jobs,
+            Users,
+            ApiKeys,
+            Notifications,
+            Webhooks,
+            SystemSettings,
+            Authentication,
+            Roles,
+            OidcRoleMappings -> false
+        }
+
+    fun isAvailableForBottomBar(isAdmin: Boolean, supportsV2: Boolean): Boolean =
+        canPinToBottomBar &&
+            (!requiresAdmin || isAdmin) &&
+            (!requiresV2 || supportsV2)
+
     companion object {
         val defaults: List<AppTab> = listOf(Dashboard, Containers, Images, Projects)
         fun byId(id: String): AppTab? = entries.firstOrNull { it.id == id }
