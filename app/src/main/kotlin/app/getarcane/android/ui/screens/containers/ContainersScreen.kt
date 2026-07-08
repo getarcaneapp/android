@@ -1,6 +1,7 @@
 package app.getarcane.android.ui.screens.containers
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -11,9 +12,21 @@ import app.getarcane.android.nav.PopToRootOnSignal
  * Mirrors the iOS NavigationStack + sheets/fullScreenCover.
  */
 @Composable
-fun ContainersScreen(popToRootSignal: Int = 0) {
+fun ContainersScreen(
+    popToRootSignal: Int = 0,
+    openContainerId: String? = null,
+    openContainerSignal: Int = 0,
+    onOpenContainerConsumed: () -> Unit = {},
+) {
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
+    LaunchedEffect(openContainerSignal) {
+        val id = openContainerId ?: return@LaunchedEffect
+        nav.navigate("detail/$id") {
+            popUpTo("list")
+        }
+        onOpenContainerConsumed()
+    }
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
             ContainerListScreen(onOpen = { id -> nav.navigate("detail/$id") })

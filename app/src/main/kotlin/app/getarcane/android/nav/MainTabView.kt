@@ -70,6 +70,14 @@ import app.getarcane.sdk.models.user.isGlobalAdmin
 
 private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
 
+private sealed interface DashboardOpenTarget {
+    val id: String
+    val nonce: Int
+
+    data class Container(override val id: String, override val nonce: Int) : DashboardOpenTarget
+    data class Project(override val id: String, override val nonce: Int) : DashboardOpenTarget
+}
+
 /**
  * Bottom-nav shell: 4 swappable tabs + Settings. Tapping selects; long-pressing a tab opens the
  * [TabSwapSheet] to replace it. Port of iOS `MainTabView` + tab-swap gesture.
@@ -88,6 +96,8 @@ fun MainTabView() {
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
+    var dashboardOpenTarget by remember { mutableStateOf<DashboardOpenTarget?>(null) }
+    var dashboardOpenNonce by remember { mutableStateOf(0) }
 
     if (selected == null && selectionStore.hasLoaded) {
         selected = MainTabSelection.restore(
@@ -161,6 +171,20 @@ fun MainTabView() {
                     normalizedSelection,
                     popToRootSignal = popToRootSignal,
                     onSelectTab = { selected = it },
+                    dashboardOpenTarget = dashboardOpenTarget,
+                    onOpenContainer = { id ->
+                        dashboardOpenTarget = DashboardOpenTarget.Container(id = id, nonce = ++dashboardOpenNonce)
+                        selected = AppTab.Containers.id
+                    },
+                    onOpenProject = { id ->
+                        dashboardOpenTarget = DashboardOpenTarget.Project(id = id, nonce = ++dashboardOpenNonce)
+                        selected = AppTab.Projects.id
+                    },
+                    onDashboardOpenConsumed = { target ->
+                        if (dashboardOpenTarget == target) {
+                            dashboardOpenTarget = null
+                        }
+                    },
                 )
             }
         }
@@ -224,13 +248,45 @@ private fun RowScope.NavBarItem(
 }
 
 @Composable
-private fun TabContent(tabId: String, popToRootSignal: Int, onSelectTab: (String) -> Unit) {
+private fun TabContent(
+    tabId: String,
+    popToRootSignal: Int,
+    onSelectTab: (String) -> Unit,
+    dashboardOpenTarget: DashboardOpenTarget?,
+    onOpenContainer: (String) -> Unit,
+    onOpenProject: (String) -> Unit,
+    onDashboardOpenConsumed: (DashboardOpenTarget) -> Unit,
+) {
     when (tabId) {
         SETTINGS_ID -> SettingsScreen(popToRootSignal = popToRootSignal)
-        AppTab.Dashboard.id -> DashboardScreen(onOpenTab = onSelectTab)
-        AppTab.Containers.id -> ContainersScreen(popToRootSignal = popToRootSignal)
+        AppTab.Dashboard.id -> DashboardScreen(
+            onOpenTab = onSelectTab,
+            onOpenContainer = onOpenContainer,
+            onOpenProject = onOpenProject,
+        )
+        AppTab.Containers.id -> {
+            val target = dashboardOpenTarget as? DashboardOpenTarget.Container
+            ContainersScreen(
+                popToRootSignal = popToRootSignal,
+                openContainerId = target?.id,
+                openContainerSignal = target?.nonce ?: 0,
+                onOpenContainerConsumed = {
+                    if (target != null) onDashboardOpenConsumed(target)
+                },
+            )
+        }
         AppTab.Images.id -> ImagesScreen(popToRootSignal = popToRootSignal)
-        AppTab.Projects.id -> ProjectsScreen(popToRootSignal = popToRootSignal)
+        AppTab.Projects.id -> {
+            val target = dashboardOpenTarget as? DashboardOpenTarget.Project
+            ProjectsScreen(
+                popToRootSignal = popToRootSignal,
+                openProjectId = target?.id,
+                openProjectSignal = target?.nonce ?: 0,
+                onOpenProjectConsumed = {
+                    if (target != null) onDashboardOpenConsumed(target)
+                },
+            )
+        }
         AppTab.Volumes.id -> VolumesScreen(popToRootSignal = popToRootSignal)
         AppTab.Networks.id -> NetworksScreen(popToRootSignal = popToRootSignal)
         AppTab.Ports.id -> PortsScreen(popToRootSignal = popToRootSignal)

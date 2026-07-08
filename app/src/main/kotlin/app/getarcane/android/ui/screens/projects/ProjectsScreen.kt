@@ -1,6 +1,7 @@
 package app.getarcane.android.ui.screens.projects
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -12,9 +13,21 @@ import app.getarcane.android.ui.screens.settings.registries.TemplateRegistriesSc
  * Mirrors the iOS `NavigationStack` rooted at `ProjectsView`.
  */
 @Composable
-fun ProjectsScreen(popToRootSignal: Int = 0) {
+fun ProjectsScreen(
+    popToRootSignal: Int = 0,
+    openProjectId: String? = null,
+    openProjectSignal: Int = 0,
+    onOpenProjectConsumed: () -> Unit = {},
+) {
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
+    LaunchedEffect(openProjectSignal) {
+        val id = openProjectId ?: return@LaunchedEffect
+        nav.navigate("detail/$id") {
+            popUpTo("list")
+        }
+        onOpenProjectConsumed()
+    }
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
             ProjectListScreen(
