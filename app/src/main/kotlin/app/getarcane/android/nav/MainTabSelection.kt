@@ -4,6 +4,18 @@ package app.getarcane.android.nav
 internal object MainTabSelection {
     const val SETTINGS_ID = "settings"
 
+    fun restore(
+        storedTabId: String?,
+        visibleTabs: List<AppTab>,
+        isAdmin: Boolean,
+        supportsV2: Boolean,
+    ): String = normalize(
+        selectedTabId = storedTabId ?: AppTab.Dashboard.id,
+        visibleTabs = visibleTabs,
+        isAdmin = isAdmin,
+        supportsV2 = supportsV2,
+    )
+
     fun normalize(
         selectedTabId: String,
         visibleTabs: List<AppTab>,

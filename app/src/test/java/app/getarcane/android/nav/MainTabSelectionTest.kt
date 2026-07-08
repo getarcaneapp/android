@@ -12,6 +12,58 @@ class MainTabSelectionTest {
     )
 
     @Test
+    fun restoreFallsBackToDashboardWhenNothingWasStored() {
+        assertEquals(
+            AppTab.Dashboard.id,
+            MainTabSelection.restore(
+                storedTabId = null,
+                visibleTabs = defaultVisibleTabs,
+                isAdmin = false,
+                supportsV2 = false,
+            ),
+        )
+    }
+
+    @Test
+    fun restoreKeepsStoredSelectableTab() {
+        assertEquals(
+            AppTab.Projects.id,
+            MainTabSelection.restore(
+                storedTabId = AppTab.Projects.id,
+                visibleTabs = defaultVisibleTabs,
+                isAdmin = false,
+                supportsV2 = false,
+            ),
+        )
+    }
+
+    @Test
+    fun restoreKeepsSettingsSelection() {
+        assertEquals(
+            MainTabSelection.SETTINGS_ID,
+            MainTabSelection.restore(
+                storedTabId = MainTabSelection.SETTINGS_ID,
+                visibleTabs = defaultVisibleTabs,
+                isAdmin = false,
+                supportsV2 = false,
+            ),
+        )
+    }
+
+    @Test
+    fun restoreFallsBackWhenStoredTabIsNotAllowed() {
+        assertEquals(
+            AppTab.Dashboard.id,
+            MainTabSelection.restore(
+                storedTabId = AppTab.Swarm.id,
+                visibleTabs = defaultVisibleTabs,
+                isAdmin = false,
+                supportsV2 = true,
+            ),
+        )
+    }
+
+    @Test
     fun keepsDashboardSelectedWhenItIsPinned() {
         assertEquals(
             AppTab.Dashboard.id,

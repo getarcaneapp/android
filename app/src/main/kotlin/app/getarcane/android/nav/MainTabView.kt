@@ -22,6 +22,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -77,24 +78,41 @@ fun MainTabView() {
     val manager = LocalArcaneManager.current
     val context = LocalContext.current
     val tabsStore = remember { NavTabsStore(context) }
+    val selectionStore = remember { MainTabSelectionStore(context) }
 
     val isAdmin = manager.currentUser?.isGlobalAdmin ?: false
     val supportsV2 = manager.capabilities.mode == ServerCapabilities.Mode.RBAC
     val visible = tabsStore.visibleTabs(isAdmin, supportsV2)
 
-    var selected by rememberSaveable { mutableStateOf(AppTab.Dashboard.id) }
+    var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
+
+    if (selected == null && selectionStore.hasLoaded) {
+        selected = MainTabSelection.restore(
+            storedTabId = selectionStore.selectedTabId,
+            visibleTabs = visible,
+            isAdmin = isAdmin,
+            supportsV2 = supportsV2,
+        )
+    }
+
+    val currentSelected = selected ?: AppTab.Dashboard.id
     val normalizedSelection = MainTabSelection.normalize(
-        selectedTabId = selected,
+        selectedTabId = currentSelected,
         visibleTabs = visible,
         isAdmin = isAdmin,
         supportsV2 = supportsV2,
     )
-    if (selected != normalizedSelection) {
+    if (selected != null && currentSelected != normalizedSelection) {
         selected = normalizedSelection
     }
+    LaunchedEffect(selectionStore.hasLoaded, normalizedSelection) {
+        if (selectionStore.hasLoaded) {
+            selectionStore.select(normalizedSelection)
+        }
+    }
 
-    val rootBackAction = MainBackNavigation.resolve(selected)
+    val rootBackAction = MainBackNavigation.resolve(normalizedSelection)
     BackHandler(enabled = rootBackAction == MainBackNavigation.Action.SwitchToDashboard) {
         // Register this before child content so nested NavHosts and transient UI get first chance to
         // consume Back. Once a non-Dashboard tab is at its root, system Back returns home instead of
@@ -109,7 +127,7 @@ fun MainTabView() {
                     NavBarItem(
                         icon = tab.icon,
                         label = tab.tabBarTitle,
-                        selected = selected == tab.id,
+                        selected = normalizedSelection == tab.id,
                         onClick = { selected = tab.id },
                         onLongClick = { swapTarget = tab },
                     )
@@ -117,7 +135,7 @@ fun MainTabView() {
                 NavBarItem(
                     icon = Icons.Filled.Settings,
                     label = "Settings",
-                    selected = selected == SETTINGS_ID,
+                    selected = normalizedSelection == SETTINGS_ID,
                     onClick = { selected = SETTINGS_ID },
                     onLongClick = null,
                 )
@@ -125,10 +143,10 @@ fun MainTabView() {
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            val tab = AppTab.byId(selected)
+            val tab = AppTab.byId(normalizedSelection)
             val envKey = if (tab?.isEnvironmentScoped == true) manager.activeEnvironmentId.rawValue else ""
-            key(selected, envKey) {
-                TabContent(selected, onSelectTab = { selected = it })
+            key(normalizedSelection, envKey) {
+                TabContent(normalizedSelection, onSelectTab = { selected = it })
             }
         }
     }
