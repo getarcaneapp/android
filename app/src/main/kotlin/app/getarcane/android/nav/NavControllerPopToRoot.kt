@@ -13,15 +13,6 @@ internal fun NavHostController.PopToRootOnSignal(signal: Int, rootRoute: String)
     }
 }
 
-internal fun NavHostController.replaceBackStackWith(route: String) {
-    navigate(route) {
-        popUpTo(graph.startDestinationId) {
-            inclusive = true
-        }
-        launchSingleTop = true
-    }
-}
-
 internal fun NavHostController.popToRootOrReplace(rootRoute: String, fallbackPopUpToRoute: String) {
     if (currentDestination?.route == rootRoute) return
     if (popBackStack(rootRoute, inclusive = false)) return

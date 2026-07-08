@@ -3,15 +3,10 @@ package app.getarcane.android.ui.screens.containers
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.getarcane.android.nav.popToRootOrReplace
-import app.getarcane.android.nav.replaceBackStackWith
 
 /**
  * Containers tab with its own nested back stack (list -> detail -> {logs, terminal, inspect}).
@@ -20,45 +15,35 @@ import app.getarcane.android.nav.replaceBackStackWith
 @Composable
 fun ContainersScreen(
     popToRootSignal: Int = 0,
-    openContainerId: String? = null,
-    openContainerSignal: Int = 0,
-    onOpenContainerConsumed: () -> Unit = {},
+    dashboardContainerId: String? = null,
     onDashboardBack: () -> Unit = {},
 ) {
     val nav = rememberNavController()
-    var dashboardOpenedContainerId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(popToRootSignal) {
         if (popToRootSignal > 0) {
-            dashboardOpenedContainerId = null
             nav.popToRootOrReplace(rootRoute = "list", fallbackPopUpToRoute = "detail/{id}")
         }
     }
-    LaunchedEffect(openContainerSignal) {
-        val id = openContainerId ?: return@LaunchedEffect
-        dashboardOpenedContainerId = id
-        nav.replaceBackStackWith("detail/$id")
-        onOpenContainerConsumed()
-    }
-    NavHost(navController = nav, startDestination = "list") {
+    NavHost(navController = nav, startDestination = if (dashboardContainerId == null) "list" else "dashboard-detail") {
         composable("list") {
             ContainerListScreen(onOpen = { id -> nav.navigate("detail/$id") })
         }
-        composable("detail/{id}") { entry ->
-            val id = entry.arguments?.getString("id").orEmpty()
-            BackHandler(enabled = dashboardOpenedContainerId == id) {
-                dashboardOpenedContainerId = null
-                onDashboardBack()
-            }
+        composable("dashboard-detail") {
+            val id = dashboardContainerId ?: return@composable
+            BackHandler(onBack = onDashboardBack)
             ContainerDetailScreen(
                 id = id,
-                onBack = {
-                    if (dashboardOpenedContainerId == id) {
-                        dashboardOpenedContainerId = null
-                        onDashboardBack()
-                    } else {
-                        nav.popBackStack()
-                    }
-                },
+                onBack = onDashboardBack,
+                onLogs = { id -> nav.navigate("logs/$id") },
+                onTerminal = { id -> nav.navigate("terminal/$id") },
+                onInspect = { id -> nav.navigate("inspect/$id") },
+            )
+        }
+        composable("detail/{id}") { entry ->
+            val id = entry.arguments?.getString("id").orEmpty()
+            ContainerDetailScreen(
+                id = id,
+                onBack = { nav.popBackStack() },
                 onLogs = { id -> nav.navigate("logs/$id") },
                 onTerminal = { id -> nav.navigate("terminal/$id") },
                 onInspect = { id -> nav.navigate("inspect/$id") },

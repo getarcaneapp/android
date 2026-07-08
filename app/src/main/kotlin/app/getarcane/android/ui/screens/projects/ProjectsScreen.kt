@@ -3,15 +3,10 @@ package app.getarcane.android.ui.screens.projects
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.getarcane.android.nav.popToRootOrReplace
-import app.getarcane.android.nav.replaceBackStackWith
 import app.getarcane.android.ui.screens.settings.registries.TemplateRegistriesScreen
 
 /**
@@ -21,26 +16,16 @@ import app.getarcane.android.ui.screens.settings.registries.TemplateRegistriesSc
 @Composable
 fun ProjectsScreen(
     popToRootSignal: Int = 0,
-    openProjectId: String? = null,
-    openProjectSignal: Int = 0,
-    onOpenProjectConsumed: () -> Unit = {},
+    dashboardProjectId: String? = null,
     onDashboardBack: () -> Unit = {},
 ) {
     val nav = rememberNavController()
-    var dashboardOpenedProjectId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(popToRootSignal) {
         if (popToRootSignal > 0) {
-            dashboardOpenedProjectId = null
             nav.popToRootOrReplace(rootRoute = "list", fallbackPopUpToRoute = "detail/{id}")
         }
     }
-    LaunchedEffect(openProjectSignal) {
-        val id = openProjectId ?: return@LaunchedEffect
-        dashboardOpenedProjectId = id
-        nav.replaceBackStackWith("detail/$id")
-        onOpenProjectConsumed()
-    }
-    NavHost(navController = nav, startDestination = "list") {
+    NavHost(navController = nav, startDestination = if (dashboardProjectId == null) "list" else "dashboard-detail") {
         composable("list") {
             ProjectListScreen(
                 onOpen = { id -> nav.navigate("detail/$id") },
@@ -55,25 +40,27 @@ fun ProjectsScreen(
                 onCancel = { nav.popBackStack() },
             )
         }
+        composable("dashboard-detail") {
+            val id = dashboardProjectId ?: return@composable
+            BackHandler(onBack = onDashboardBack)
+            ProjectDetailScreen(
+                projectId = id,
+                onBack = onDashboardBack,
+                onStream = { id, action, title ->
+                    nav.navigate("stream/$id/$action/${title.encodeArg()}")
+                },
+                onLogs = { id, title -> nav.navigate("logs/$id/${title.encodeArg()}") },
+                onCompose = { id, title -> nav.navigate("compose/$id/${title.encodeArg()}") },
+            )
+        }
         composable("templates") {
             TemplateRegistriesScreen(onBack = { nav.popBackStack() })
         }
         composable("detail/{id}") { entry ->
             val id = entry.arguments?.getString("id").orEmpty()
-            BackHandler(enabled = dashboardOpenedProjectId == id) {
-                dashboardOpenedProjectId = null
-                onDashboardBack()
-            }
             ProjectDetailScreen(
                 projectId = id,
-                onBack = {
-                    if (dashboardOpenedProjectId == id) {
-                        dashboardOpenedProjectId = null
-                        onDashboardBack()
-                    } else {
-                        nav.popBackStack()
-                    }
-                },
+                onBack = { nav.popBackStack() },
                 onStream = { id, action, title ->
                     nav.navigate("stream/$id/$action/${title.encodeArg()}")
                 },

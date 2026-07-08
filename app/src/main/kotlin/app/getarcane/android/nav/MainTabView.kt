@@ -72,10 +72,9 @@ private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
 
 private sealed interface DashboardOpenTarget {
     val id: String
-    val nonce: Int
 
-    data class Container(override val id: String, override val nonce: Int) : DashboardOpenTarget
-    data class Project(override val id: String, override val nonce: Int) : DashboardOpenTarget
+    data class Container(override val id: String) : DashboardOpenTarget
+    data class Project(override val id: String) : DashboardOpenTarget
 }
 
 /**
@@ -97,7 +96,6 @@ fun MainTabView() {
     val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
     var dashboardOpenTarget by remember { mutableStateOf<DashboardOpenTarget?>(null) }
-    var dashboardOpenNonce by remember { mutableStateOf(0) }
 
     if (selected == null && selectionStore.hasLoaded) {
         selected = MainTabSelection.restore(
@@ -133,9 +131,13 @@ fun MainTabView() {
     }
 
     fun selectOrPopToRoot(tabId: String) {
-        if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
+        if (dashboardOpenTarget != null && normalizedSelection == AppTab.Dashboard.id && tabId == AppTab.Dashboard.id) {
+            dashboardOpenTarget = null
+        } else if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
+            dashboardOpenTarget = null
             popToRootSignals[tabId] = (popToRootSignals[tabId] ?: 0) + 1
         } else {
+            dashboardOpenTarget = null
             selected = tabId
         }
     }
@@ -173,21 +175,13 @@ fun MainTabView() {
                     onSelectTab = { selected = it },
                     dashboardOpenTarget = dashboardOpenTarget,
                     onOpenContainer = { id ->
-                        dashboardOpenTarget = DashboardOpenTarget.Container(id = id, nonce = ++dashboardOpenNonce)
-                        selected = AppTab.Containers.id
+                        dashboardOpenTarget = DashboardOpenTarget.Container(id = id)
                     },
                     onOpenProject = { id ->
-                        dashboardOpenTarget = DashboardOpenTarget.Project(id = id, nonce = ++dashboardOpenNonce)
-                        selected = AppTab.Projects.id
-                    },
-                    onDashboardOpenConsumed = { target ->
-                        if (dashboardOpenTarget == target) {
-                            dashboardOpenTarget = null
-                        }
+                        dashboardOpenTarget = DashboardOpenTarget.Project(id = id)
                     },
                     onDashboardBack = {
                         dashboardOpenTarget = null
-                        selected = AppTab.Dashboard.id
                     },
                 )
             }
@@ -259,39 +253,40 @@ private fun TabContent(
     dashboardOpenTarget: DashboardOpenTarget?,
     onOpenContainer: (String) -> Unit,
     onOpenProject: (String) -> Unit,
-    onDashboardOpenConsumed: (DashboardOpenTarget) -> Unit,
     onDashboardBack: () -> Unit,
 ) {
     when (tabId) {
         SETTINGS_ID -> SettingsScreen(popToRootSignal = popToRootSignal)
-        AppTab.Dashboard.id -> DashboardScreen(
-            onOpenTab = onSelectTab,
-            onOpenContainer = onOpenContainer,
-            onOpenProject = onOpenProject,
-        )
+        AppTab.Dashboard.id -> {
+            when (val target = dashboardOpenTarget) {
+                is DashboardOpenTarget.Container -> key(target) {
+                    ContainersScreen(
+                        dashboardContainerId = target.id,
+                        onDashboardBack = onDashboardBack,
+                    )
+                }
+                is DashboardOpenTarget.Project -> key(target) {
+                    ProjectsScreen(
+                        dashboardProjectId = target.id,
+                        onDashboardBack = onDashboardBack,
+                    )
+                }
+                null -> DashboardScreen(
+                    onOpenTab = onSelectTab,
+                    onOpenContainer = onOpenContainer,
+                    onOpenProject = onOpenProject,
+                )
+            }
+        }
         AppTab.Containers.id -> {
-            val target = dashboardOpenTarget as? DashboardOpenTarget.Container
             ContainersScreen(
                 popToRootSignal = popToRootSignal,
-                openContainerId = target?.id,
-                openContainerSignal = target?.nonce ?: 0,
-                onOpenContainerConsumed = {
-                    if (target != null) onDashboardOpenConsumed(target)
-                },
-                onDashboardBack = onDashboardBack,
             )
         }
         AppTab.Images.id -> ImagesScreen(popToRootSignal = popToRootSignal)
         AppTab.Projects.id -> {
-            val target = dashboardOpenTarget as? DashboardOpenTarget.Project
             ProjectsScreen(
                 popToRootSignal = popToRootSignal,
-                openProjectId = target?.id,
-                openProjectSignal = target?.nonce ?: 0,
-                onOpenProjectConsumed = {
-                    if (target != null) onDashboardOpenConsumed(target)
-                },
-                onDashboardBack = onDashboardBack,
             )
         }
         AppTab.Volumes.id -> VolumesScreen(popToRootSignal = popToRootSignal)
