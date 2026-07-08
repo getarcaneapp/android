@@ -22,12 +22,14 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,10 +62,7 @@ import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.nav.AppTab
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
-import app.getarcane.android.ui.screens.activities.displayTitle
 import app.getarcane.android.ui.screens.activities.sortTime
-import app.getarcane.android.ui.screens.activities.statusTint
-import app.getarcane.android.ui.screens.activities.subtitle
 import app.getarcane.android.ui.screens.settings.FormErrorRow
 import app.getarcane.android.ui.screens.settings.FormSuccessRow
 import app.getarcane.android.ui.screens.settings.LabeledPicker
@@ -106,6 +105,18 @@ private data class DashTotals(
     val images: Int,
     val volumes: Int,
     val updates: Int,
+    val stopped: Int,
+)
+
+private enum class NeedsAttentionSeverity { Critical, Warning }
+
+private data class NeedsAttentionItem(
+    val id: String,
+    val title: String,
+    val count: Int,
+    val icon: ImageVector,
+    val severity: NeedsAttentionSeverity,
+    val action: () -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -156,6 +167,7 @@ fun DashboardScreen(
                             ic?.totalImages ?: 0,
                             vc?.total ?: 0,
                             us?.imagesWithUpdates ?: 0,
+                            ((sc?.totalContainers ?: 0) - (sc?.runningContainers ?: 0)).coerceAtLeast(0),
                         )
                     }
                 }.awaitAll()
@@ -166,6 +178,7 @@ fun DashboardScreen(
                     images = rows.sumOf { it[2] },
                     volumes = rows.sumOf { it[3] },
                     updates = rows.sumOf { it[4] },
+                    stopped = rows.sumOf { it[5] },
                 )
             }
         }.getOrNull()
@@ -255,12 +268,20 @@ fun DashboardScreen(
                         }
                     }
                 }
-                if (supportsActivities && failedActivities.isNotEmpty()) {
+                val attentionItems = buildNeedsAttentionItems(
+                    environments = environments,
+                    totals = totals,
+                    failedActivities = failedActivities,
+                    onOpenEnvironment = { env ->
+                        manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id)
+                    },
+                    onOpenContainers = { onOpenTab?.invoke(AppTab.Containers.id) },
+                    onOpenUpdates = { onOpenTab?.invoke(AppTab.Updates.id) },
+                    onOpenActivities = { showActivities = true },
+                )
+                if (attentionItems.isNotEmpty()) {
                     item {
-                        DashboardFailedWorkCard(
-                            activities = failedActivities,
-                            onOpen = { showActivities = true },
-                        )
+                        NeedsAttentionSection(items = attentionItems)
                     }
                 }
                 item {
@@ -307,65 +328,56 @@ fun DashboardScreen(
     }
 }
 
-/**
- * Card surfacing recent failed background activities. Tapping the card (or a row) opens the
- * Activity Center. Port of iOS `DashboardFailedWorkCard`.
- */
 @Composable
-private fun DashboardFailedWorkCard(activities: List<Activity>, onOpen: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(Modifier.size(32.dp).background(ArcaneRed, CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Warning, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Failed Work", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    val n = activities.size
-                    Text(
-                        "$n failure${if (n == 1) "" else "s"} need attention",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                activities.take(3).forEach { activity ->
-                    DashboardFailedWorkRow(activity = activity, onClick = onOpen)
+private fun NeedsAttentionSection(items: List<NeedsAttentionItem>) {
+    Card(Modifier.fillMaxWidth()) {
+        Column {
+            Text(
+                "Needs Attention",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 4.dp),
+            )
+            items.forEachIndexed { index, item ->
+                NeedsAttentionRow(item = item)
+                if (index < items.lastIndex) {
+                    HorizontalDivider(Modifier.padding(start = 54.dp))
                 }
             }
+            Box(Modifier.size(1.dp))
         }
     }
 }
 
 @Composable
-private fun DashboardFailedWorkRow(activity: Activity, onClick: () -> Unit) {
-    val tint = activity.statusTint()
+private fun NeedsAttentionRow(item: NeedsAttentionItem) {
+    val tint = when (item.severity) {
+        NeedsAttentionSeverity.Critical -> ArcaneRed
+        NeedsAttentionSeverity.Warning -> ArcaneOrange
+    }
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = item.action)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.size(8.dp).background(tint, CircleShape))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                activity.displayTitle,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                activity.latestMessage.ifEmpty { activity.subtitle },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        Box(Modifier.size(28.dp).background(tint, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(item.icon, null, tint = Color.White, modifier = Modifier.size(14.dp))
         }
         Text(
-            activity.status.wire.replaceFirstChar { it.uppercaseChar() },
-            style = MaterialTheme.typography.labelMedium,
+            item.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "${item.count}",
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = tint,
         )
@@ -377,6 +389,73 @@ private fun DashboardFailedWorkRow(activity: Activity, onClick: () -> Unit) {
         )
     }
 }
+
+private fun buildNeedsAttentionItems(
+    environments: List<Environment>,
+    totals: DashTotals?,
+    failedActivities: List<Activity>,
+    onOpenEnvironment: (Environment) -> Unit,
+    onOpenContainers: () -> Unit,
+    onOpenUpdates: () -> Unit,
+    onOpenActivities: () -> Unit,
+): List<NeedsAttentionItem> {
+    val items = mutableListOf<NeedsAttentionItem>()
+
+    val offline = environments.filter { it.needsAttention }
+    offline.firstOrNull()?.let { first ->
+        items += NeedsAttentionItem(
+            id = "offline-environments",
+            title = if (offline.size == 1) "${first.displayName} unreachable" else "Environments unreachable",
+            count = offline.size,
+            icon = Icons.Filled.Warning,
+            severity = NeedsAttentionSeverity.Critical,
+            action = { onOpenEnvironment(first) },
+        )
+    }
+
+    val stopped = totals?.stopped ?: 0
+    if (stopped > 0) {
+        items += NeedsAttentionItem(
+            id = "stopped-containers",
+            title = "Stopped containers",
+            count = stopped,
+            icon = Icons.Filled.StopCircle,
+            severity = NeedsAttentionSeverity.Warning,
+            action = onOpenContainers,
+        )
+    }
+
+    val updates = totals?.updates ?: 0
+    if (updates > 0) {
+        items += NeedsAttentionItem(
+            id = "image-updates",
+            title = "Image updates available",
+            count = updates,
+            icon = Icons.Filled.Autorenew,
+            severity = NeedsAttentionSeverity.Warning,
+            action = onOpenUpdates,
+        )
+    }
+
+    if (failedActivities.isNotEmpty()) {
+        items += NeedsAttentionItem(
+            id = "failed-activities",
+            title = "Failed activities",
+            count = failedActivities.size,
+            icon = Icons.Filled.Warning,
+            severity = NeedsAttentionSeverity.Critical,
+            action = onOpenActivities,
+        )
+    }
+
+    return items
+}
+
+private val Environment.displayName: String
+    get() = name?.takeIf { it.isNotBlank() } ?: id
+
+private val Environment.needsAttention: Boolean
+    get() = status.lowercase(Locale.US) in setOf("offline", "error", "failed", "unhealthy", "unreachable")
 
 @Composable
 private fun DashboardTile(
