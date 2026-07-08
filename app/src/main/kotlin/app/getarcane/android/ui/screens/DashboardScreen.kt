@@ -441,7 +441,7 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
             errorMessage = null
             resultMessage = null
             try {
-                resultMessage = formatPruneResult(client.system.prune(request, envId))
+                resultMessage = formatSystemPruneResult(client.system.prune(request, envId))
                 onComplete()
             } catch (e: Throwable) {
                 errorMessage = friendlyErrorMessage(e)
@@ -577,15 +577,27 @@ private val PruneBuildCacheMode.label: String
         PruneBuildCacheMode.OLDER_THAN -> "Older than..."
     }
 
-private fun formatPruneResult(result: PruneAllResult): String {
+internal fun formatSystemPruneResult(result: PruneAllResult): String {
     val parts = buildList {
         result.containersPruned?.size?.takeIf { it > 0 }?.let { add("$it container${if (it == 1) "" else "s"}") }
         result.imagesDeleted?.size?.takeIf { it > 0 }?.let { add("$it image${if (it == 1) "" else "s"}") }
         result.volumesDeleted?.size?.takeIf { it > 0 }?.let { add("$it volume${if (it == 1) "" else "s"}") }
         result.networksDeleted?.size?.takeIf { it > 0 }?.let { add("$it network${if (it == 1) "" else "s"}") }
+        result.buildCacheSpaceReclaimed?.takeIf { it > 0 }?.let { add("build cache") }
     }
-    val summary = if (parts.isEmpty()) "No resources pruned." else "Pruned ${parts.joinToString(", ")}."
-    val reclaimed = result.spaceReclaimed.takeIf { it > 0 }?.let { " Freed ${formatBytes(it)}." }.orEmpty()
+    val reclaimedBytes = result.spaceReclaimed.takeIf { it > 0 }
+        ?: listOfNotNull(
+            result.containerSpaceReclaimed,
+            result.imageSpaceReclaimed,
+            result.volumeSpaceReclaimed,
+            result.buildCacheSpaceReclaimed,
+        ).sum().takeIf { it > 0 }
+    val summary = when {
+        parts.isNotEmpty() -> "Pruned ${parts.joinToString(", ")}."
+        reclaimedBytes != null -> "Pruned resources."
+        else -> "No resources pruned."
+    }
+    val reclaimed = reclaimedBytes?.let { " Freed ${formatBytes(it)}." }.orEmpty()
     val errors = result.errors?.takeIf { it.isNotEmpty() }?.joinToString(prefix = " Errors: ")
     return summary + reclaimed + (errors ?: "")
 }
