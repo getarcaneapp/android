@@ -1,0 +1,105 @@
+name: Android
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "fix/**"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    env:
+      HAS_RELEASE_SIGNING: ${{ secrets.ARCANE_RELEASE_KEYSTORE_BASE64 != '' && secrets.ARCANE_RELEASE_STORE_PASSWORD != '' && secrets.ARCANE_RELEASE_KEY_ALIAS != '' && secrets.ARCANE_RELEASE_KEY_PASSWORD != '' }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
+      - name: Run unit tests
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon :app:assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arcane-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Decode release keystore
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_RELEASE_SIGNING == 'true'
+        env:
+          ARCANE_RELEASE_KEYSTORE_BASE64: ${{ secrets.ARCANE_RELEASE_KEYSTORE_BASE64 }}
+          ARCANE_RELEASE_STORE_PASSWORD: ${{ secrets.ARCANE_RELEASE_STORE_PASSWORD }}
+          ARCANE_RELEASE_KEY_ALIAS: ${{ secrets.ARCANE_RELEASE_KEY_ALIAS }}
+          ARCANE_RELEASE_KEY_PASSWORD: ${{ secrets.ARCANE_RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$ARCANE_RELEASE_KEYSTORE_BASE64"
+          test -n "$ARCANE_RELEASE_STORE_PASSWORD"
+          test -n "$ARCANE_RELEASE_KEY_ALIAS"
+          test -n "$ARCANE_RELEASE_KEY_PASSWORD"
+          echo "$ARCANE_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/arcane-release.jks"
+
+      - name: Build signed release APK
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_RELEASE_SIGNING == 'true'
+        env:
+          ARCANE_RELEASE_STORE_FILE: ${{ runner.temp }}/arcane-release.jks
+          ARCANE_RELEASE_STORE_PASSWORD: ${{ secrets.ARCANE_RELEASE_STORE_PASSWORD }}
+          ARCANE_RELEASE_KEY_ALIAS: ${{ secrets.ARCANE_RELEASE_KEY_ALIAS }}
+          ARCANE_RELEASE_KEY_PASSWORD: ${{ secrets.ARCANE_RELEASE_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon :app:assembleRelease
+
+      - name: Verify signed release APK
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_RELEASE_SIGNING == 'true'
+        run: |
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          "$apksigner" verify --verbose app/build/outputs/apk/release/*-release.apk
+          cp app/build/outputs/apk/release/*-release.apk "Arcane-${GITHUB_REF_NAME}.apk"
+
+      - name: Upload signed release APK
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_RELEASE_SIGNING == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Arcane-release-signed-apk
+          path: Arcane-${{ github.ref_name }}.apk
+          if-no-files-found: error
+
+      - name: Attach signed APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_RELEASE_SIGNING == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Arcane-${{ github.ref_name }}.apk
+          fail_on_unmatched_files: true
+
+      - name: Skip signed release APK
+        if: startsWith(github.ref, 'refs/tags/v') && env.HAS_RELEASE_SIGNING != 'true'
+        run: echo "Release signing secrets are not configured; debug APK artifact was uploaded."
