@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -64,6 +65,34 @@ class NavTabsStore(context: Context) {
 
     companion object {
         const val SLOTS = 4
+    }
+}
+
+/** Persists the last selected top-level tab so app relaunch restores where the user left off. */
+class MainTabSelectionStore(context: Context) {
+    private val store = context.applicationContext.navTabsDataStore
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val key = stringPreferencesKey("last_selected")
+
+    var hasLoaded by mutableStateOf(false); private set
+    var selectedTabId by mutableStateOf<String?>(null); private set
+
+    init {
+        scope.launch {
+            try {
+                selectedTabId = store.data.map { it[key] }.first()
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+            } finally {
+                hasLoaded = true
+            }
+        }
+    }
+
+    fun select(tabId: String) {
+        if (selectedTabId == tabId) return
+        selectedTabId = tabId
+        scope.launch { store.edit { it[key] = tabId } }
     }
 }
 
