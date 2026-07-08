@@ -4,14 +4,16 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import app.getarcane.android.nav.PopToRootOnSignal
 
 /**
  * Containers tab with its own nested back stack (list -> detail -> {logs, terminal, inspect}).
  * Mirrors the iOS NavigationStack + sheets/fullScreenCover.
  */
 @Composable
-fun ContainersScreen() {
+fun ContainersScreen(popToRootSignal: Int = 0) {
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
             ContainerListScreen(onOpen = { id -> nav.navigate("detail/$id") })

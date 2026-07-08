@@ -4,14 +4,16 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import app.getarcane.android.nav.PopToRootOnSignal
 
 /**
  * Activities tab entry: a nested back stack (list -> detail). The list is the tab root (no back
  * arrow); the detail is pushed and pops back. Mirrors the iOS Activity Center surface.
  */
 @Composable
-fun ActivitiesTab(onClose: (() -> Unit)? = null) {
+fun ActivitiesTab(onClose: (() -> Unit)? = null, popToRootSignal: Int = 0) {
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
             ActivitiesScreen(

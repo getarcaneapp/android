@@ -27,6 +27,9 @@ internal object MainTabSelection {
         visibleTabs.firstOrNull()?.id ?: AppTab.Dashboard.id
     }
 
+    fun shouldPopToRootOnTap(selectedTabId: String, tappedTabId: String): Boolean =
+        selectedTabId == tappedTabId
+
     private fun isSelectable(
         tabId: String,
         isAdmin: Boolean,

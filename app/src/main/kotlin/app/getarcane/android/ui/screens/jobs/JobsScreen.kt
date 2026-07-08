@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import app.getarcane.android.nav.PopToRootOnSignal
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneIndigo
 
@@ -30,8 +31,9 @@ import app.getarcane.android.ui.theme.ArcaneIndigo
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun JobsScreen() {
+fun JobsScreen(popToRootSignal: Int = 0) {
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "menu")
     NavHost(navController = nav, startDestination = "menu") {
         composable("menu") {
             Scaffold(topBar = { TopAppBar(title = { Text("Jobs") }) }) { padding ->

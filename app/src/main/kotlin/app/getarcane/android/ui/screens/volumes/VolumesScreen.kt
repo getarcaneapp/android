@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import app.getarcane.android.nav.PopToRootOnSignal
 
 /**
  * Volumes tab with its own nested back stack (list -> detail -> browser/backups). Mirrors the iOS
@@ -11,8 +12,9 @@ import androidx.navigation.compose.rememberNavController
  * VolumeBackupsView.
  */
 @Composable
-fun VolumesScreen() {
+fun VolumesScreen(popToRootSignal: Int = 0) {
     val nav = rememberNavController()
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
             VolumeListScreen(onOpen = { name -> nav.navigate("detail/$name") })
