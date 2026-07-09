@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.getarcane.android.nav.MainTabSelectionStore
 import app.getarcane.sdk.ArcaneClient
 import app.getarcane.sdk.ArcaneConfiguration
 import app.getarcane.sdk.EnvironmentId
@@ -37,6 +38,7 @@ enum class AuthStatus { SETUP, AUTHENTICATING, LOGIN, AUTHENTICATED }
 class ArcaneClientManager(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = Prefs(appContext)
+    private val mainTabSelectionStore = MainTabSelectionStore(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val cookieJar = ArcaneCookieJar()
 
@@ -153,10 +155,11 @@ class ArcaneClientManager(context: Context) {
         val c = client ?: return
         scope.launch {
             runCatching { c.auth.logout() }
+            authStatus = AuthStatus.LOGIN
+            mainTabSelectionStore.clear()
             cookieJar.clear()
             currentUser = null
             capabilities = ServerCapabilities.UNKNOWN
-            authStatus = AuthStatus.LOGIN
             oidc = null
             refreshOidc()
         }

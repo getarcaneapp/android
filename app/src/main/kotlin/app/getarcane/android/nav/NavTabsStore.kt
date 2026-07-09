@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 private val Context.navTabsDataStore: DataStore<Preferences> by preferencesDataStore(name = "arcane_tabs")
+internal val lastSelectedMainTabKey = stringPreferencesKey("last_selected")
 
 /** Persists the 4 swappable bottom-nav tabs (Settings is always the 5th). Port of iOS `NavTabsStore`. */
 class NavTabsStore(context: Context) {
@@ -69,10 +70,14 @@ class NavTabsStore(context: Context) {
 }
 
 /** Persists the last selected top-level tab so app relaunch restores where the user left off. */
-class MainTabSelectionStore(context: Context) {
-    private val store = context.applicationContext.navTabsDataStore
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val key = stringPreferencesKey("last_selected")
+class MainTabSelectionStore internal constructor(
+    private val store: DataStore<Preferences>,
+    private val scope: CoroutineScope,
+) {
+    constructor(context: Context) : this(
+        context.applicationContext.navTabsDataStore,
+        CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    )
 
     var hasLoaded by mutableStateOf(false); private set
     var selectedTabId by mutableStateOf<String?>(null); private set
@@ -80,7 +85,7 @@ class MainTabSelectionStore(context: Context) {
     init {
         scope.launch {
             try {
-                selectedTabId = store.data.map { it[key] }.first()
+                selectedTabId = store.data.map { it[lastSelectedMainTabKey] }.first()
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
             } finally {
@@ -92,7 +97,12 @@ class MainTabSelectionStore(context: Context) {
     fun select(tabId: String) {
         if (selectedTabId == tabId) return
         selectedTabId = tabId
-        scope.launch { store.edit { it[key] = tabId } }
+        scope.launch { store.edit { it[lastSelectedMainTabKey] = tabId } }
+    }
+
+    suspend fun clear() {
+        selectedTabId = null
+        store.edit { it.remove(lastSelectedMainTabKey) }
     }
 }
 
