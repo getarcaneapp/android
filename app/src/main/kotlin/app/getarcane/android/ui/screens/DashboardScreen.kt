@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.ArrowCircleUp
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
@@ -145,6 +146,7 @@ fun DashboardScreen(
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
     var showActivities by remember { mutableStateOf(false) }
+    var showUpdateAll by remember { mutableStateOf(false) }
     var pruneEnvironmentId by remember { mutableStateOf<EnvironmentId?>(null) }
     val statsHistory = remember { mutableStateMapOf<String, DashboardStatsSeries>() }
     val enabledEnvironmentIds = environments
@@ -333,7 +335,21 @@ fun DashboardScreen(
                     )
                 }
                 item {
-                    Text("Environments", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Environments", style = MaterialTheme.typography.titleMedium)
+                        if (shouldShowUpdateAllAction(isAdmin)) {
+                            Button(onClick = { showUpdateAll = true }) {
+                                Icon(Icons.Filled.ArrowCircleUp, contentDescription = null)
+                                Text("  Update All")
+                            }
+                        }
+                    }
                 }
                 items(environments, key = { it.id }) { env ->
                     EnvironmentDashboardCard(
@@ -374,6 +390,22 @@ fun DashboardScreen(
         ) {
             Surface(modifier = Modifier.fillMaxSize()) {
                 ActivitiesTab(onClose = { showActivities = false })
+            }
+        }
+    }
+
+    if (showUpdateAll) {
+        Dialog(
+            onDismissRequest = { showUpdateAll = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                UpdateAllEnvironmentsDialog(
+                    environmentCount = environments.size,
+                    onDismiss = { showUpdateAll = false },
+                    onMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
+                    onComplete = { refreshKey++ },
+                )
             }
         }
     }
