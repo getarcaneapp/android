@@ -216,11 +216,6 @@ fun MainTabView() {
                     onOpenEnvironment = { id ->
                         dashboardOpenTarget = DashboardOpenTarget.Environment(id = id)
                     },
-                    onOpenUpgrade = {
-                        dashboardOpenTarget = null
-                        settingsInitialDestination = SettingsInitialDestination.Upgrade
-                        selected = SETTINGS_ID
-                    },
                     onDashboardBack = {
                         dashboardOpenTarget = null
                     },
@@ -300,7 +295,6 @@ private fun TabContent(
     onOpenProject: (String) -> Unit,
     onOpenVolume: (String) -> Unit,
     onOpenEnvironment: (String) -> Unit,
-    onOpenUpgrade: () -> Unit,
     onDashboardBack: () -> Unit,
     settingsInitialDestination: SettingsInitialDestination,
     onSettingsInitialDestinationHandled: () -> Unit,
@@ -343,7 +337,6 @@ private fun TabContent(
                     onOpenProject = onOpenProject,
                     onOpenVolume = onOpenVolume,
                     onOpenEnvironmentDetails = onOpenEnvironment,
-                    onOpenUpgrade = onOpenUpgrade,
                 )
             }
         }

@@ -131,7 +131,6 @@ fun DashboardScreen(
     onOpenProject: ((String) -> Unit)? = null,
     onOpenVolume: ((String) -> Unit)? = null,
     onOpenEnvironmentDetails: ((String) -> Unit)? = null,
-    onOpenUpgrade: (() -> Unit)? = null,
 ) {
     val manager = LocalArcaneManager.current
     val client = manager.client
@@ -354,10 +353,6 @@ fun DashboardScreen(
                                 EnvironmentCardAction.Sync -> {
                                     refreshKey++
                                     scope.launch { snackbar.showSnackbar("Refreshing ${env.name ?: env.id}") }
-                                }
-                                EnvironmentCardAction.UpgradeArcane -> {
-                                    manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id)
-                                    onOpenUpgrade?.invoke()
                                 }
                                 EnvironmentCardAction.SystemPrune -> {
                                     pruneEnvironmentId = EnvironmentId(env.id)
