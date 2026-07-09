@@ -64,7 +64,6 @@ import app.getarcane.android.nav.AppTab
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
 import app.getarcane.android.ui.screens.activities.sortTime
 import app.getarcane.android.ui.screens.settings.FormErrorRow
-import app.getarcane.android.ui.screens.settings.FormSuccessRow
 import app.getarcane.android.ui.screens.settings.LabeledPicker
 import app.getarcane.android.ui.screens.settings.LabeledTextField
 import app.getarcane.android.ui.screens.settings.SettingsSectionHeader
@@ -130,6 +129,8 @@ fun DashboardScreen(
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
 
     val supportsActivities = manager.capabilities.supportsActivities
 
@@ -213,6 +214,7 @@ fun DashboardScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = { Text("Dashboard") },
@@ -323,7 +325,11 @@ fun DashboardScreen(
         SystemPruneSheet(
             envId = envId,
             onDismiss = { showPrune = false },
-            onComplete = { refreshKey++ },
+            onComplete = { message ->
+                showPrune = false
+                refreshKey++
+                scope.launch { snackbar.showSnackbar(message) }
+            },
         )
     }
 }
@@ -492,7 +498,7 @@ private fun DashboardTile(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComplete: () -> Unit) {
+private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComplete: (String) -> Unit) {
     val manager = LocalArcaneManager.current
     val scope = rememberCoroutineScope()
 
@@ -505,9 +511,28 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
     var networkUntil by remember { mutableStateOf("") }
     var buildCacheMode by remember { mutableStateOf(PruneBuildCacheMode.NONE) }
     var buildCacheUntil by remember { mutableStateOf("") }
+    var loadingDefaults by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
-    var resultMessage by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(envId.rawValue) {
+        val client = manager.client ?: return@LaunchedEffect
+        loadingDefaults = true
+        try {
+            val defaults = client.settings.getSettings(envId).associate { it.key to it.value }
+            parsePruneContainerMode(defaults["pruneContainerMode"])?.let { containerMode = it }
+            defaults["pruneContainerUntil"]?.takeIf { it.isNotBlank() }?.let { containerUntil = it }
+            parsePruneImageMode(defaults["pruneImageMode"])?.let { imageMode = it }
+            defaults["pruneImageUntil"]?.takeIf { it.isNotBlank() }?.let { imageUntil = it }
+            parsePruneVolumeMode(defaults["pruneVolumeMode"])?.let { volumeMode = it }
+            parsePruneNetworkMode(defaults["pruneNetworkMode"])?.let { networkMode = it }
+            defaults["pruneNetworkUntil"]?.takeIf { it.isNotBlank() }?.let { networkUntil = it }
+            parsePruneBuildCacheMode(defaults["pruneBuildCacheMode"])?.let { buildCacheMode = it }
+            defaults["pruneBuildCacheUntil"]?.takeIf { it.isNotBlank() }?.let { buildCacheUntil = it }
+        } finally {
+            loadingDefaults = false
+        }
+    }
 
     val selectedCount = listOf(
         containerMode != PruneContainerMode.NONE,
@@ -537,10 +562,8 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
         scope.launch {
             submitting = true
             errorMessage = null
-            resultMessage = null
             try {
-                resultMessage = formatPruneResult(client.system.prune(request, envId))
-                onComplete()
+                onComplete(formatSystemPruneResult(client.system.prune(request, envId)))
             } catch (e: Throwable) {
                 errorMessage = friendlyErrorMessage(e)
             } finally {
@@ -561,8 +584,8 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
                             }
                         },
                         actions = {
-                            TextButton(onClick = { runPrune() }, enabled = selectedCount > 0 && !submitting) {
-                                if (submitting) {
+                            TextButton(onClick = { runPrune() }, enabled = selectedCount > 0 && !submitting && !loadingDefaults) {
+                                if (submitting || loadingDefaults) {
                                     CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                                 } else {
                                     Text(if (selectedCount > 0) "Prune ($selectedCount)" else "Prune")
@@ -617,19 +640,20 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
                         item { LabeledTextField("Older than", buildCacheUntil, { buildCacheUntil = it }, placeholder = "24h") }
                     }
 
-                    resultMessage?.let { msg ->
-                        item { FormSuccessRow(msg) }
-                    }
                     errorMessage?.let { msg ->
                         item { FormErrorRow(msg) }
                     }
                     item {
                         Button(
                             onClick = { runPrune() },
-                            enabled = selectedCount > 0 && !submitting,
+                            enabled = selectedCount > 0 && !submitting && !loadingDefaults,
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                         ) {
-                            Text(if (selectedCount > 0) "Prune ($selectedCount)" else "Prune")
+                            if (submitting || loadingDefaults) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            } else {
+                                Text(if (selectedCount > 0) "Prune ($selectedCount)" else "Prune")
+                            }
                         }
                     }
                 }
@@ -637,6 +661,21 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
         }
     }
 }
+
+private fun parsePruneContainerMode(value: String?): PruneContainerMode? =
+    PruneContainerMode.entries.firstOrNull { it.wire == value }
+
+private fun parsePruneImageMode(value: String?): PruneImageMode? =
+    PruneImageMode.entries.firstOrNull { it.wire == value }
+
+private fun parsePruneVolumeMode(value: String?): PruneVolumeMode? =
+    PruneVolumeMode.entries.firstOrNull { it.wire == value }
+
+private fun parsePruneNetworkMode(value: String?): PruneNetworkMode? =
+    PruneNetworkMode.entries.firstOrNull { it.wire == value }
+
+private fun parsePruneBuildCacheMode(value: String?): PruneBuildCacheMode? =
+    PruneBuildCacheMode.entries.firstOrNull { it.wire == value }
 
 private val PruneContainerMode.label: String
     get() = when (this) {
@@ -675,15 +714,27 @@ private val PruneBuildCacheMode.label: String
         PruneBuildCacheMode.OLDER_THAN -> "Older than..."
     }
 
-private fun formatPruneResult(result: PruneAllResult): String {
+internal fun formatSystemPruneResult(result: PruneAllResult): String {
     val parts = buildList {
         result.containersPruned?.size?.takeIf { it > 0 }?.let { add("$it container${if (it == 1) "" else "s"}") }
         result.imagesDeleted?.size?.takeIf { it > 0 }?.let { add("$it image${if (it == 1) "" else "s"}") }
         result.volumesDeleted?.size?.takeIf { it > 0 }?.let { add("$it volume${if (it == 1) "" else "s"}") }
         result.networksDeleted?.size?.takeIf { it > 0 }?.let { add("$it network${if (it == 1) "" else "s"}") }
+        result.buildCacheSpaceReclaimed?.takeIf { it > 0 }?.let { add("build cache") }
     }
-    val summary = if (parts.isEmpty()) "No resources pruned." else "Pruned ${parts.joinToString(", ")}."
-    val reclaimed = result.spaceReclaimed.takeIf { it > 0 }?.let { " Freed ${formatBytes(it)}." }.orEmpty()
+    val reclaimedBytes = result.spaceReclaimed.takeIf { it > 0 }
+        ?: listOfNotNull(
+            result.containerSpaceReclaimed,
+            result.imageSpaceReclaimed,
+            result.volumeSpaceReclaimed,
+            result.buildCacheSpaceReclaimed,
+        ).sum().takeIf { it > 0 }
+    val summary = when {
+        parts.isNotEmpty() -> "Pruned ${parts.joinToString(", ")}."
+        reclaimedBytes != null -> "Pruned resources."
+        else -> "No resources pruned."
+    }
+    val reclaimed = reclaimedBytes?.let { " Freed ${formatBytes(it)}." }.orEmpty()
     val errors = result.errors?.takeIf { it.isNotEmpty() }?.joinToString(prefix = " Errors: ")
     return summary + reclaimed + (errors ?: "")
 }
