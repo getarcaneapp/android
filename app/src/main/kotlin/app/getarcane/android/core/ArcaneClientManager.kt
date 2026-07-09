@@ -155,11 +155,11 @@ class ArcaneClientManager(context: Context) {
         val c = client ?: return
         scope.launch {
             runCatching { c.auth.logout() }
+            authStatus = AuthStatus.LOGIN
             mainTabSelectionStore.clear()
             cookieJar.clear()
             currentUser = null
             capabilities = ServerCapabilities.UNKNOWN
-            authStatus = AuthStatus.LOGIN
             oidc = null
             refreshOidc()
         }
