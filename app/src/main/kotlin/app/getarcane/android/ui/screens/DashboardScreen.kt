@@ -91,6 +91,7 @@ import app.getarcane.sdk.models.system.PruneNetworkMode
 import app.getarcane.sdk.models.system.PruneNetworksOptions
 import app.getarcane.sdk.models.system.PruneVolumeMode
 import app.getarcane.sdk.models.system.PruneVolumesOptions
+import app.getarcane.sdk.models.user.isGlobalAdmin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -129,12 +130,15 @@ fun DashboardScreen(
     onOpenContainer: ((String) -> Unit)? = null,
     onOpenProject: ((String) -> Unit)? = null,
     onOpenVolume: ((String) -> Unit)? = null,
+    onOpenEnvironmentDetails: ((String) -> Unit)? = null,
+    onOpenUpgrade: (() -> Unit)? = null,
 ) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
 
     val supportsActivities = manager.capabilities.supportsActivities
+    val isAdmin = manager.currentUser?.isGlobalAdmin ?: false
 
     var environments by remember { mutableStateOf<List<Environment>>(emptyList()) }
     var totals by remember { mutableStateOf<DashTotals?>(null) }
@@ -142,7 +146,7 @@ fun DashboardScreen(
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
     var showActivities by remember { mutableStateOf(false) }
-    var showPrune by remember { mutableStateOf(false) }
+    var pruneEnvironmentId by remember { mutableStateOf<EnvironmentId?>(null) }
     val statsHistory = remember { mutableStateMapOf<String, DashboardStatsSeries>() }
     val enabledEnvironmentIds = environments
         .filter { it.enabled }
@@ -258,7 +262,7 @@ fun DashboardScreen(
                             Icon(Icons.Filled.History, contentDescription = "Activity Center")
                         }
                     }
-                    IconButton(onClick = { showPrune = true }) {
+                    IconButton(onClick = { pruneEnvironmentId = envId }) {
                         Icon(Icons.Filled.Delete, contentDescription = "System Prune", tint = ArcaneRed)
                     }
                 },
@@ -336,7 +340,30 @@ fun DashboardScreen(
                     EnvironmentDashboardCard(
                         env = env,
                         statsSeries = statsHistory[env.id],
+                        refreshToken = refreshKey,
                         onSelect = { manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id) },
+                        actions = environmentCardActions(isAdmin = isAdmin),
+                        onAction = { action ->
+                            when (action) {
+                                EnvironmentCardAction.UseEnvironment -> {
+                                    manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id)
+                                }
+                                EnvironmentCardAction.ViewSystemDetails -> {
+                                    onOpenEnvironmentDetails?.invoke(env.id)
+                                }
+                                EnvironmentCardAction.Sync -> {
+                                    refreshKey++
+                                    scope.launch { snackbar.showSnackbar("Refreshing ${env.name ?: env.id}") }
+                                }
+                                EnvironmentCardAction.UpgradeArcane -> {
+                                    manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id)
+                                    onOpenUpgrade?.invoke()
+                                }
+                                EnvironmentCardAction.SystemPrune -> {
+                                    pruneEnvironmentId = EnvironmentId(env.id)
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -356,10 +383,10 @@ fun DashboardScreen(
         }
     }
 
-    if (showPrune) {
+    pruneEnvironmentId?.let { pruneEnvId ->
         SystemPruneSheet(
-            envId = envId,
-            onDismiss = { showPrune = false },
+            envId = pruneEnvId,
+            onDismiss = { pruneEnvironmentId = null },
             onComplete = { refreshKey++ },
         )
     }
