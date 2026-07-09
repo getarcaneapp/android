@@ -48,6 +48,7 @@ import app.getarcane.android.ui.screens.events.EventsScreen
 import app.getarcane.android.ui.screens.gitops.GitOpsScreen
 import app.getarcane.android.ui.screens.gitops.GitRepositoriesScreen
 import app.getarcane.android.ui.screens.images.ImagesScreen
+import app.getarcane.android.ui.screens.images.ImagesInitialDestination
 import app.getarcane.android.ui.screens.jobs.JobsScreen
 import app.getarcane.android.ui.screens.networks.NetworksScreen
 import app.getarcane.android.ui.screens.ports.PortsScreen
@@ -80,6 +81,9 @@ private sealed interface DashboardOpenTarget {
     data class Project(override val id: String) : DashboardOpenTarget
     data class Volume(override val id: String) : DashboardOpenTarget
     data class Environment(override val id: String) : DashboardOpenTarget
+    data object ImageVulnerabilities : DashboardOpenTarget {
+        override val id: String = "image-vulnerabilities"
+    }
 }
 
 /**
@@ -101,6 +105,7 @@ fun MainTabView() {
     val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
     var dashboardOpenTarget by remember { mutableStateOf<DashboardOpenTarget?>(null) }
+    var imagesInitialDestination by remember { mutableStateOf(ImagesInitialDestination.List) }
     var settingsInitialDestination by remember { mutableStateOf(SettingsInitialDestination.Root) }
 
     if (selected == null && selectionStore.hasLoaded) {
@@ -132,6 +137,7 @@ fun MainTabView() {
         is DashboardOpenTarget.Project -> AppTab.Projects.id
         is DashboardOpenTarget.Volume -> AppTab.Volumes.id
         is DashboardOpenTarget.Environment -> null
+        DashboardOpenTarget.ImageVulnerabilities -> null
         null -> null
     }
     val bottomBarSelectedTabId = MainTabSelection.bottomBarSelectedTabId(
@@ -223,6 +229,17 @@ fun MainTabView() {
                     onSettingsInitialDestinationHandled = {
                         settingsInitialDestination = SettingsInitialDestination.Root
                     },
+                    imagesInitialDestination = imagesInitialDestination,
+                    onImagesInitialDestinationHandled = {
+                        imagesInitialDestination = ImagesInitialDestination.List
+                    },
+                    onOpenImageVulnerabilities = {
+                        dashboardOpenTarget = DashboardOpenTarget.ImageVulnerabilities
+                    },
+                    onOpenApiKeys = {
+                        dashboardOpenTarget = null
+                        selected = AppTab.ApiKeys.id
+                    },
                 )
             }
         }
@@ -298,6 +315,10 @@ private fun TabContent(
     onDashboardBack: () -> Unit,
     settingsInitialDestination: SettingsInitialDestination,
     onSettingsInitialDestinationHandled: () -> Unit,
+    imagesInitialDestination: ImagesInitialDestination,
+    onImagesInitialDestinationHandled: () -> Unit,
+    onOpenImageVulnerabilities: () -> Unit,
+    onOpenApiKeys: () -> Unit,
 ) {
     when (tabId) {
         SETTINGS_ID -> SettingsScreen(
@@ -331,12 +352,21 @@ private fun TabContent(
                         onBack = onDashboardBack,
                     )
                 }
+                DashboardOpenTarget.ImageVulnerabilities -> key(target) {
+                    ImagesScreen(
+                        initialDestination = ImagesInitialDestination.Vulnerabilities,
+                        onInitialDestinationHandled = {},
+                        onInitialDestinationBack = onDashboardBack,
+                    )
+                }
                 null -> DashboardScreen(
                     onOpenTab = onSelectTab,
                     onOpenContainer = onOpenContainer,
                     onOpenProject = onOpenProject,
                     onOpenVolume = onOpenVolume,
                     onOpenEnvironmentDetails = onOpenEnvironment,
+                    onOpenImageVulnerabilities = onOpenImageVulnerabilities,
+                    onOpenApiKeys = onOpenApiKeys,
                 )
             }
         }
@@ -345,7 +375,11 @@ private fun TabContent(
                 popToRootSignal = popToRootSignal,
             )
         }
-        AppTab.Images.id -> ImagesScreen(popToRootSignal = popToRootSignal)
+        AppTab.Images.id -> ImagesScreen(
+            popToRootSignal = popToRootSignal,
+            initialDestination = imagesInitialDestination,
+            onInitialDestinationHandled = onImagesInitialDestinationHandled,
+        )
         AppTab.Projects.id -> {
             ProjectsScreen(
                 popToRootSignal = popToRootSignal,

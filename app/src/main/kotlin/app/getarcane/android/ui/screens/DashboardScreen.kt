@@ -23,8 +23,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -61,6 +63,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.ArcaneDashboardStreamClient
+import app.getarcane.android.core.DashboardActionItemKind
+import app.getarcane.android.core.DashboardActionItemSeverity
+import app.getarcane.android.core.DashboardEnvironmentStreamState
 import app.getarcane.android.core.DashboardStreamStore
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
@@ -106,7 +111,7 @@ import java.util.Date
 import java.util.Locale
 
 /** Cross-environment totals for the overview tiles. */
-private data class DashTotals(
+internal data class DashTotals(
     val running: Int,
     val total: Int,
     val images: Int,
@@ -115,9 +120,9 @@ private data class DashTotals(
     val stopped: Int,
 )
 
-private enum class NeedsAttentionSeverity { Critical, Warning }
+internal enum class NeedsAttentionSeverity { Critical, Warning }
 
-private data class NeedsAttentionItem(
+internal data class NeedsAttentionItem(
     val id: String,
     val title: String,
     val count: Int,
@@ -134,6 +139,8 @@ fun DashboardScreen(
     onOpenProject: ((String) -> Unit)? = null,
     onOpenVolume: ((String) -> Unit)? = null,
     onOpenEnvironmentDetails: ((String) -> Unit)? = null,
+    onOpenImageVulnerabilities: (() -> Unit)? = null,
+    onOpenApiKeys: (() -> Unit)? = null,
 ) {
     val manager = LocalArcaneManager.current
     val client = manager.client
@@ -345,6 +352,7 @@ fun DashboardScreen(
                 }
                 val attentionItems = buildNeedsAttentionItems(
                     environments = environments,
+                    streamStates = streamStore.statesByEnvironmentId,
                     totals = totals,
                     failedActivities = failedActivities,
                     onOpenEnvironment = { env ->
@@ -352,6 +360,13 @@ fun DashboardScreen(
                     },
                     onOpenContainers = { onOpenTab?.invoke(AppTab.Containers.id) },
                     onOpenUpdates = { onOpenTab?.invoke(AppTab.Updates.id) },
+                    onOpenVulnerabilities = { target ->
+                        manager.setActiveEnvironment(EnvironmentId(target.id), target.name)
+                        onOpenImageVulnerabilities?.invoke() ?: onOpenTab?.invoke(AppTab.Images.id)
+                    },
+                    onOpenApiKeys = {
+                        onOpenApiKeys?.invoke() ?: onOpenTab?.invoke(AppTab.ApiKeys.id)
+                    },
                     onOpenActivities = { showActivities = true },
                 )
                 if (attentionItems.isNotEmpty()) {
@@ -544,16 +559,20 @@ private fun DashboardStreamFailedBanner(onRetry: () -> Unit) {
     }
 }
 
-private fun buildNeedsAttentionItems(
+internal fun buildNeedsAttentionItems(
     environments: List<Environment>,
+    streamStates: Map<String, DashboardEnvironmentStreamState>,
     totals: DashTotals?,
     failedActivities: List<Activity>,
     onOpenEnvironment: (Environment) -> Unit,
     onOpenContainers: () -> Unit,
     onOpenUpdates: () -> Unit,
+    onOpenVulnerabilities: (DashboardActionTargetEnvironment) -> Unit,
+    onOpenApiKeys: () -> Unit,
     onOpenActivities: () -> Unit,
 ): List<NeedsAttentionItem> {
     val items = mutableListOf<NeedsAttentionItem>()
+    val streamActionItems = aggregateStreamActionItems(streamStates)
 
     val offline = environments.filter { it.needsAttention }
     offline.firstOrNull()?.let { first ->
@@ -579,6 +598,26 @@ private fun buildNeedsAttentionItems(
         )
     }
 
+    val vulnerabilityItems = streamActionItems.vulnerabilities
+    for (vulnerabilityItem in vulnerabilityItems) {
+        items += NeedsAttentionItem(
+            id = "vulnerabilities-${vulnerabilityItem.environment.id}",
+            title = if (vulnerabilityItems.size == 1) {
+                "Actionable vulnerabilities"
+            } else {
+                "${vulnerabilityItem.environment.name} vulnerabilities"
+            },
+            count = vulnerabilityItem.count,
+            icon = Icons.Filled.Security,
+            severity = if (vulnerabilityItem.isCritical) {
+                NeedsAttentionSeverity.Critical
+            } else {
+                NeedsAttentionSeverity.Warning
+            },
+            action = { onOpenVulnerabilities(vulnerabilityItem.environment) },
+        )
+    }
+
     val updates = totals?.updates ?: 0
     if (updates > 0) {
         items += NeedsAttentionItem(
@@ -588,6 +627,17 @@ private fun buildNeedsAttentionItems(
             icon = Icons.Filled.Autorenew,
             severity = NeedsAttentionSeverity.Warning,
             action = onOpenUpdates,
+        )
+    }
+
+    if (streamActionItems.expiringKeys > 0) {
+        items += NeedsAttentionItem(
+            id = "expiring-keys",
+            title = "API keys expiring soon",
+            count = streamActionItems.expiringKeys,
+            icon = Icons.Filled.VpnKey,
+            severity = NeedsAttentionSeverity.Warning,
+            action = onOpenApiKeys,
         )
     }
 
@@ -603,6 +653,60 @@ private fun buildNeedsAttentionItems(
     }
 
     return items
+}
+
+internal data class DashboardActionTargetEnvironment(
+    val id: String,
+    val name: String,
+)
+
+private data class DashboardStreamActionItemSummary(
+    val vulnerabilities: List<DashboardVulnerabilityActionItem> = emptyList(),
+    val expiringKeys: Int = 0,
+)
+
+private data class DashboardVulnerabilityActionItem(
+    val environment: DashboardActionTargetEnvironment,
+    val count: Int,
+    val isCritical: Boolean,
+)
+
+private fun aggregateStreamActionItems(
+    streamStates: Map<String, DashboardEnvironmentStreamState>,
+): DashboardStreamActionItemSummary {
+    val vulnerabilities = mutableListOf<DashboardVulnerabilityActionItem>()
+    var expiringKeys = 0
+
+    for (state in streamStates.values) {
+        if (!state.hasLoaded || state.streamError) continue
+        for (item in state.snapshot?.actionItems?.items.orEmpty()) {
+            if (item.count <= 0) continue
+            when (item.itemKind) {
+                DashboardActionItemKind.ActionableVulnerabilities -> {
+                    vulnerabilities += DashboardVulnerabilityActionItem(
+                        environment = DashboardActionTargetEnvironment(
+                            id = state.id,
+                            name = state.name,
+                        ),
+                        count = item.count,
+                        isCritical = item.itemSeverity == DashboardActionItemSeverity.Critical,
+                    )
+                }
+                DashboardActionItemKind.ExpiringKeys -> {
+                    expiringKeys += item.count
+                }
+                DashboardActionItemKind.StoppedContainers,
+                DashboardActionItemKind.ImageUpdates,
+                DashboardActionItemKind.Unknown,
+                -> Unit
+            }
+        }
+    }
+
+    return DashboardStreamActionItemSummary(
+        vulnerabilities = vulnerabilities,
+        expiringKeys = expiringKeys,
+    )
 }
 
 private val Environment.displayName: String
