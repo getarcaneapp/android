@@ -44,6 +44,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -90,9 +91,11 @@ import app.getarcane.sdk.models.system.PruneNetworkMode
 import app.getarcane.sdk.models.system.PruneNetworksOptions
 import app.getarcane.sdk.models.system.PruneVolumeMode
 import app.getarcane.sdk.models.system.PruneVolumesOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -140,8 +143,42 @@ fun DashboardScreen(
     var refreshKey by remember { mutableStateOf(0) }
     var showActivities by remember { mutableStateOf(false) }
     var showPrune by remember { mutableStateOf(false) }
+    val statsHistory = remember { mutableStateMapOf<String, DashboardStatsSeries>() }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(client, environments.map { it.id }) {
+        if (client == null) return@LaunchedEffect
+
+        val enabledIds = environments
+            .filter { it.enabled }
+            .map { it.id }
+
+        statsHistory.keys
+            .filterNot { it in enabledIds }
+            .forEach { statsHistory.remove(it) }
+
+        coroutineScope {
+            enabledIds
+                .take(DashboardStatsMaxStreams)
+                .forEachIndexed { index, id ->
+                    launch {
+                        delay(150L * (index + 1))
+                        val env = EnvironmentId(id)
+                        runCatching {
+                            client.system.statsStream(env).collect { stats ->
+                                statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).append(stats)
+                            }
+                        }.onFailure { error ->
+                            if (error is CancellationException) throw error
+                            statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).copy(
+                                error = "Live stats unavailable: ${friendlyErrorMessage(error)}",
+                            )
+                        }
+                    }
+                }
+        }
+    }
 
     LaunchedEffect(refreshKey) {
         if (client == null) return@LaunchedEffect
@@ -299,6 +336,7 @@ fun DashboardScreen(
                 items(environments, key = { it.id }) { env ->
                     EnvironmentDashboardCard(
                         env = env,
+                        statsSeries = statsHistory[env.id],
                         onSelect = { manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id) },
                     )
                 }
