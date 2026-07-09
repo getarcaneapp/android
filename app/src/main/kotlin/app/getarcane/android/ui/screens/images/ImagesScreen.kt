@@ -1,5 +1,6 @@
 package app.getarcane.android.ui.screens.images
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,16 +30,18 @@ fun ImagesScreen(
     popToRootSignal: Int = 0,
     initialDestination: ImagesInitialDestination = ImagesInitialDestination.List,
     onInitialDestinationHandled: () -> Unit = {},
+    onInitialDestinationBack: (() -> Unit)? = null,
 ) {
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
+    var initialVulnerabilitiesActive by remember { mutableStateOf(false) }
     LaunchedEffect(initialDestination) {
         when (initialDestination) {
             ImagesInitialDestination.List -> Unit
             ImagesInitialDestination.Vulnerabilities -> nav.navigate("vulnerabilities") {
                 popUpTo("list")
                 launchSingleTop = true
-            }
+            }.also { initialVulnerabilitiesActive = true }
         }
         if (initialDestination != ImagesInitialDestination.List) {
             onInitialDestinationHandled()
@@ -99,7 +102,22 @@ fun ImagesScreen(
             ImageUpdatesScreen(images = loadedImages, onBack = { nav.popBackStack() })
         }
         composable("vulnerabilities") {
-            AllVulnerabilitiesScreen(onBack = { nav.popBackStack() })
+            val returnToInitialSource = {
+                initialVulnerabilitiesActive = false
+                onInitialDestinationBack?.invoke()
+            }
+            BackHandler(enabled = initialVulnerabilitiesActive && onInitialDestinationBack != null) {
+                returnToInitialSource()
+            }
+            AllVulnerabilitiesScreen(
+                onBack = {
+                    if (initialVulnerabilitiesActive && onInitialDestinationBack != null) {
+                        returnToInitialSource()
+                    } else {
+                        nav.popBackStack()
+                    }
+                },
+            )
         }
     }
 }
