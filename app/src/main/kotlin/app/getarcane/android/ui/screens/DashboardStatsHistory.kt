@@ -26,6 +26,9 @@ fun DashboardStatsSeries.append(stats: SystemStats): DashboardStatsSeries {
     )
 }
 
+fun DashboardStatsSeries.reconnecting(): DashboardStatsSeries =
+    copy(error = null)
+
 fun diskPercent(stats: SystemStats?): Double? {
     val usage = stats?.diskUsage ?: return null
     val total = stats.diskTotal ?: return null

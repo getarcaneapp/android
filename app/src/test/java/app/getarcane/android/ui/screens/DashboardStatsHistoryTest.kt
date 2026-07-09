@@ -31,6 +31,22 @@ class DashboardStatsHistoryTest {
     }
 
     @Test
+    fun reconnectingKeepsHistoryAndClearsError() {
+        val latest = stats(cpu = 12.0)
+        val series = DashboardStatsSeries(
+            cpu = listOf(10.0, 12.0),
+            memory = listOf(40.0, 42.0),
+            latest = latest,
+            error = "Live stats unavailable",
+        ).reconnecting()
+
+        assertEquals(listOf(10.0, 12.0), series.cpu)
+        assertEquals(listOf(40.0, 42.0), series.memory)
+        assertEquals(latest, series.latest)
+        assertNull(series.error)
+    }
+
+    @Test
     fun diskPercentUsesReportedUsageAndTotal() {
         assertEquals(25.0, diskPercent(stats(diskUsage = 25, diskTotal = 100))!!, 0.0)
         assertNull(diskPercent(stats(diskUsage = null, diskTotal = 100)))
