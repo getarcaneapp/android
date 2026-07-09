@@ -165,7 +165,6 @@ fun DashboardPinnedSection(
                             is DashboardPinnedItem.Volume ->
                                 pinned.unpin(item.value.id, PinnedItemsStore.Kind.VOLUME, envId)
                         }
-                        onMessage("Unpinned ${item.title}")
                     },
                     onOpen = {
                         when (item) {
