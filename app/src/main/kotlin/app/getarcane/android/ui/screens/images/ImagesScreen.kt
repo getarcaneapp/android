@@ -1,6 +1,7 @@
 package app.getarcane.android.ui.screens.images
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -13,15 +14,36 @@ import androidx.navigation.navArgument
 import app.getarcane.android.nav.PopToRootOnSignal
 import app.getarcane.sdk.models.image.ImageSummary
 
+enum class ImagesInitialDestination {
+    List,
+    Vulnerabilities,
+}
+
 /**
  * Images tab with its own nested back stack:
  * list -> detail -> (vulnerabilities), plus list -> updates / all-vulnerabilities.
  * Mirrors the iOS `ImagesView` navigation graph.
  */
 @Composable
-fun ImagesScreen(popToRootSignal: Int = 0) {
+fun ImagesScreen(
+    popToRootSignal: Int = 0,
+    initialDestination: ImagesInitialDestination = ImagesInitialDestination.List,
+    onInitialDestinationHandled: () -> Unit = {},
+) {
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
+    LaunchedEffect(initialDestination) {
+        when (initialDestination) {
+            ImagesInitialDestination.List -> Unit
+            ImagesInitialDestination.Vulnerabilities -> nav.navigate("vulnerabilities") {
+                popUpTo("list")
+                launchSingleTop = true
+            }
+        }
+        if (initialDestination != ImagesInitialDestination.List) {
+            onInitialDestinationHandled()
+        }
+    }
     // The list endpoint is the only source for the full set of images; keep the last-loaded
     // list here so the Updates screen can derive its tagged-ref set without re-fetching.
     var loadedImages by remember { mutableStateOf<List<ImageSummary>>(emptyList()) }
