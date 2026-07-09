@@ -159,7 +159,7 @@ fun DashboardScreen(
         .map { it.id }
     val snackbar = remember { SnackbarHostState() }
 
-    LaunchedEffect(client, enabledEnvironmentIds) {
+    LaunchedEffect(client, enabledEnvironmentIds, refreshKey) {
         if (client == null) return@LaunchedEffect
 
         statsHistory.keys
@@ -173,6 +173,7 @@ fun DashboardScreen(
                     launch {
                         delay(150L * (index + 1))
                         val env = EnvironmentId(id)
+                        statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).reconnecting()
                         runCatching {
                             client.system.statsStream(env).collect { stats ->
                                 statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).append(stats)
