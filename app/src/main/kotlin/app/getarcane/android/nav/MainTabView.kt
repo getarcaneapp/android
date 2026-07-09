@@ -43,6 +43,7 @@ import app.getarcane.android.ui.screens.DashboardScreen
 import app.getarcane.android.ui.screens.PlaceholderScreen
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
 import app.getarcane.android.ui.screens.containers.ContainersScreen
+import app.getarcane.android.ui.screens.environments.EnvironmentDetailScreen
 import app.getarcane.android.ui.screens.events.EventsScreen
 import app.getarcane.android.ui.screens.gitops.GitOpsScreen
 import app.getarcane.android.ui.screens.gitops.GitRepositoriesScreen
@@ -52,6 +53,7 @@ import app.getarcane.android.ui.screens.networks.NetworksScreen
 import app.getarcane.android.ui.screens.ports.PortsScreen
 import app.getarcane.android.ui.screens.projects.ProjectsScreen
 import app.getarcane.android.ui.screens.settings.SettingsScreen
+import app.getarcane.android.ui.screens.settings.SettingsInitialDestination
 import app.getarcane.android.ui.screens.settings.ApiKeysScreen
 import app.getarcane.android.ui.screens.settings.UsersScreen
 import app.getarcane.android.ui.screens.settings.notifications.NotificationSettingsScreen
@@ -77,6 +79,7 @@ private sealed interface DashboardOpenTarget {
     data class Container(override val id: String) : DashboardOpenTarget
     data class Project(override val id: String) : DashboardOpenTarget
     data class Volume(override val id: String) : DashboardOpenTarget
+    data class Environment(override val id: String) : DashboardOpenTarget
 }
 
 /**
@@ -98,6 +101,7 @@ fun MainTabView() {
     val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
     var dashboardOpenTarget by remember { mutableStateOf<DashboardOpenTarget?>(null) }
+    var settingsInitialDestination by remember { mutableStateOf(SettingsInitialDestination.Root) }
 
     if (selected == null && selectionStore.hasLoaded) {
         selected = MainTabSelection.restore(
@@ -127,6 +131,7 @@ fun MainTabView() {
         is DashboardOpenTarget.Container -> AppTab.Containers.id
         is DashboardOpenTarget.Project -> AppTab.Projects.id
         is DashboardOpenTarget.Volume -> AppTab.Volumes.id
+        is DashboardOpenTarget.Environment -> null
         null -> null
     }
     val bottomBarSelectedTabId = MainTabSelection.bottomBarSelectedTabId(
@@ -135,12 +140,19 @@ fun MainTabView() {
         visibleTabs = visible,
     )
 
-    val rootBackAction = MainBackNavigation.resolve(normalizedSelection)
+    val rootBackAction = MainBackNavigation.resolve(
+        selectedTabId = normalizedSelection,
+        hasDashboardOpenTarget = dashboardOpenTarget != null,
+    )
     BackHandler(enabled = rootBackAction == MainBackNavigation.Action.SwitchToDashboard) {
         // Register this before child content so nested NavHosts and transient UI get first chance to
-        // consume Back. Once a non-Dashboard tab is at its root, system Back returns home instead of
-        // exiting the Activity from a resource/settings tab dead end.
-        selected = AppTab.Dashboard.id
+        // consume Back. Dashboard-hosted details clear back to the Dashboard, and non-Dashboard
+        // tab roots return home instead of exiting the Activity from a resource/settings tab dead end.
+        if (dashboardOpenTarget != null) {
+            dashboardOpenTarget = null
+        } else {
+            selected = AppTab.Dashboard.id
+        }
     }
 
     fun selectOrPopToRoot(tabId: String) {
@@ -201,8 +213,20 @@ fun MainTabView() {
                     onOpenVolume = { name ->
                         dashboardOpenTarget = DashboardOpenTarget.Volume(id = name)
                     },
+                    onOpenEnvironment = { id ->
+                        dashboardOpenTarget = DashboardOpenTarget.Environment(id = id)
+                    },
+                    onOpenUpgrade = {
+                        dashboardOpenTarget = null
+                        settingsInitialDestination = SettingsInitialDestination.Upgrade
+                        selected = SETTINGS_ID
+                    },
                     onDashboardBack = {
                         dashboardOpenTarget = null
+                    },
+                    settingsInitialDestination = settingsInitialDestination,
+                    onSettingsInitialDestinationHandled = {
+                        settingsInitialDestination = SettingsInitialDestination.Root
                     },
                 )
             }
@@ -275,10 +299,18 @@ private fun TabContent(
     onOpenContainer: (String) -> Unit,
     onOpenProject: (String) -> Unit,
     onOpenVolume: (String) -> Unit,
+    onOpenEnvironment: (String) -> Unit,
+    onOpenUpgrade: () -> Unit,
     onDashboardBack: () -> Unit,
+    settingsInitialDestination: SettingsInitialDestination,
+    onSettingsInitialDestinationHandled: () -> Unit,
 ) {
     when (tabId) {
-        SETTINGS_ID -> SettingsScreen(popToRootSignal = popToRootSignal)
+        SETTINGS_ID -> SettingsScreen(
+            popToRootSignal = popToRootSignal,
+            initialDestination = settingsInitialDestination,
+            onInitialDestinationHandled = onSettingsInitialDestinationHandled,
+        )
         AppTab.Dashboard.id -> {
             when (val target = dashboardOpenTarget) {
                 is DashboardOpenTarget.Container -> key(target) {
@@ -299,11 +331,19 @@ private fun TabContent(
                         onDashboardBack = onDashboardBack,
                     )
                 }
+                is DashboardOpenTarget.Environment -> key(target) {
+                    EnvironmentDetailScreen(
+                        id = target.id,
+                        onBack = onDashboardBack,
+                    )
+                }
                 null -> DashboardScreen(
                     onOpenTab = onSelectTab,
                     onOpenContainer = onOpenContainer,
                     onOpenProject = onOpenProject,
                     onOpenVolume = onOpenVolume,
+                    onOpenEnvironmentDetails = onOpenEnvironment,
+                    onOpenUpgrade = onOpenUpgrade,
                 )
             }
         }

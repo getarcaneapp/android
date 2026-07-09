@@ -13,6 +13,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -88,14 +89,35 @@ private object SettingsRoutes {
     const val UPGRADE = "upgrade"
 }
 
+enum class SettingsInitialDestination {
+    Root,
+    Upgrade,
+}
+
 /**
  * The Settings tab. A self-contained nested [NavHost] over the whole settings hierarchy. Port of the
  * iOS `SettingsView` navigation stack; the entry composable is `SettingsScreen()` (no args).
  */
 @Composable
-fun SettingsScreen(popToRootSignal: Int = 0) {
+fun SettingsScreen(
+    popToRootSignal: Int = 0,
+    initialDestination: SettingsInitialDestination = SettingsInitialDestination.Root,
+    onInitialDestinationHandled: () -> Unit = {},
+) {
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = SettingsRoutes.ROOT)
+    LaunchedEffect(initialDestination) {
+        when (initialDestination) {
+            SettingsInitialDestination.Root -> Unit
+            SettingsInitialDestination.Upgrade -> nav.navigate(SettingsRoutes.UPGRADE) {
+                popUpTo(SettingsRoutes.ROOT)
+                launchSingleTop = true
+            }
+        }
+        if (initialDestination != SettingsInitialDestination.Root) {
+            onInitialDestinationHandled()
+        }
+    }
     NavHost(navController = nav, startDestination = SettingsRoutes.ROOT) {
         composable(SettingsRoutes.ROOT) { SettingsRoot(nav) }
         AppTab.entries.forEach { tab ->

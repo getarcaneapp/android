@@ -2,7 +2,10 @@ package app.getarcane.android.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,13 +14,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowCircleUp
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -48,13 +57,35 @@ import app.getarcane.sdk.models.base.intValue
 import app.getarcane.sdk.models.system.DockerInfo
 import kotlin.math.roundToInt
 
+enum class EnvironmentCardAction(val label: String) {
+    UseEnvironment("Use Environment"),
+    ViewSystemDetails("View System Details"),
+    Sync("Sync"),
+    UpgradeArcane("Upgrade Arcane"),
+    SystemPrune("System Prune"),
+}
+
+fun environmentCardActions(isAdmin: Boolean): List<EnvironmentCardAction> =
+    buildList {
+        add(EnvironmentCardAction.UseEnvironment)
+        add(EnvironmentCardAction.ViewSystemDetails)
+        add(EnvironmentCardAction.Sync)
+        if (isAdmin) {
+            add(EnvironmentCardAction.UpgradeArcane)
+            add(EnvironmentCardAction.SystemPrune)
+        }
+    }
+
 /** Per-environment dashboard card with live CPU/Mem/Disk rings. Port of iOS `EnvironmentDashboardCard`. */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EnvironmentDashboardCard(
     env: app.getarcane.sdk.models.environment.Environment,
     statsSeries: DashboardStatsSeries?,
+    refreshToken: Int = 0,
     onSelect: () -> Unit,
+    actions: List<EnvironmentCardAction> = environmentCardActions(isAdmin = false),
+    onAction: (EnvironmentCardAction) -> Unit = {},
 ) {
     val manager = LocalArcaneManager.current
     val client = manager.client
@@ -62,8 +93,9 @@ fun EnvironmentDashboardCard(
     val isActive = manager.activeEnvironmentId.rawValue == env.id
 
     var dockerInfo by remember(env.id) { mutableStateOf<DockerInfo?>(null) }
+    var showMenu by remember { mutableStateOf(false) }
 
-    LaunchedEffect(env.id) {
+    LaunchedEffect(env.id, refreshToken) {
         dockerInfo = runCatching { client?.system?.dockerInfo(envId) }.getOrNull()
     }
 
@@ -73,26 +105,55 @@ fun EnvironmentDashboardCard(
     val diskPct = diskPercent(stats)
 
     Card(
-        onClick = onSelect,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onSelect,
+                onLongClick = { showMenu = true },
+            ),
         shape = RoundedCornerShape(20.dp),
         border = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null,
         colors = CardDefaults.cardColors(),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // Header
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(
-                        if (isActive) Icons.Filled.CheckCircle else Icons.Filled.Dns,
-                        null,
-                        modifier = Modifier.size(16.dp),
-                        tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    )
-                    Text(env.name ?: env.id, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(
+                            if (isActive) Icons.Filled.CheckCircle else Icons.Filled.Dns,
+                            null,
+                            modifier = Modifier.size(16.dp),
+                            tint = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(env.name ?: env.id, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    dockerInfo?.serverVersion?.let {
+                        Text("Docker $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-                dockerInfo?.serverVersion?.let {
-                    Text("Docker $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "Environment actions")
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                    ) {
+                        actions.forEach { action ->
+                            DropdownMenuItem(
+                                text = { Text(action.label) },
+                                leadingIcon = { Icon(action.icon, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    onAction(action)
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
@@ -144,6 +205,15 @@ fun EnvironmentDashboardCard(
         }
     }
 }
+
+private val EnvironmentCardAction.icon: androidx.compose.ui.graphics.vector.ImageVector
+    get() = when (this) {
+        EnvironmentCardAction.UseEnvironment -> Icons.Filled.CheckCircle
+        EnvironmentCardAction.ViewSystemDetails -> Icons.Filled.Dns
+        EnvironmentCardAction.Sync -> Icons.Filled.Sync
+        EnvironmentCardAction.UpgradeArcane -> Icons.Filled.ArrowCircleUp
+        EnvironmentCardAction.SystemPrune -> Icons.Filled.Delete
+    }
 
 @Composable
 private fun SparklineMetric(
