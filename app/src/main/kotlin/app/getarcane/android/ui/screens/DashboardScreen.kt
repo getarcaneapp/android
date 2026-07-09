@@ -441,7 +441,10 @@ fun DashboardScreen(
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             Surface(modifier = Modifier.fillMaxSize()) {
-                ActivitiesTab(onClose = { showActivities = false })
+                ActivitiesTab(
+                    onClose = { showActivities = false },
+                    onHistoryCleared = { refreshKey++ },
+                )
             }
         }
     }
@@ -504,7 +507,7 @@ internal fun failedActivityBadgeText(count: Int): String =
 
 internal fun activityCenterButtonContentDescription(failedCount: Int): String =
     if (failedCount > 0) {
-        "Activity Center, $failedCount failed ${if (failedCount == 1) "activity" else "activities"} need attention"
+        "Activity Center, $failedCount failed ${if (failedCount == 1) "activity needs" else "activities need"} attention"
     } else {
         "Activity Center"
     }
