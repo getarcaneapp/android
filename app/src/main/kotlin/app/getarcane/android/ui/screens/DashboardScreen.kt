@@ -7,8 +7,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -285,7 +287,7 @@ fun DashboardScreen(
                 actions = {
                     if (supportsActivities) {
                         IconButton(onClick = { showActivities = true }) {
-                            Icon(Icons.Filled.History, contentDescription = "Activity Center")
+                            ActivityCenterToolbarIcon(failedCount = failedActivities.size)
                         }
                     }
                     IconButton(onClick = { pruneEnvironmentId = envId }) {
@@ -468,6 +470,44 @@ fun DashboardScreen(
         )
     }
 }
+
+@Composable
+private fun ActivityCenterToolbarIcon(failedCount: Int) {
+    Box {
+        Icon(
+            Icons.Filled.History,
+            contentDescription = activityCenterButtonContentDescription(failedCount),
+        )
+        if (failedCount > 0) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 10.dp, y = (-8).dp)
+                    .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp),
+                shape = CircleShape,
+                color = ArcaneRed,
+                contentColor = Color.White,
+            ) {
+                Text(
+                    failedActivityBadgeText(failedCount),
+                    modifier = Modifier.padding(horizontal = if (failedCount > 9) 5.dp else 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+    }
+}
+
+internal fun failedActivityBadgeText(count: Int): String =
+    if (count > 9) "9+" else count.coerceAtLeast(0).toString()
+
+internal fun activityCenterButtonContentDescription(failedCount: Int): String =
+    if (failedCount > 0) {
+        "Activity Center, $failedCount failed ${if (failedCount == 1) "activity" else "activities"} need attention"
+    } else {
+        "Activity Center"
+    }
 
 @Composable
 private fun NeedsAttentionSection(items: List<NeedsAttentionItem>) {
