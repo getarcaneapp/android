@@ -1,7 +1,9 @@
 package app.getarcane.android.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,13 +15,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -149,6 +156,17 @@ fun DashboardPinnedSection(
                     item = item,
                     busy = runningId == item.key,
                     actionsEnabled = runningId == null,
+                    onUnpin = {
+                        when (item) {
+                            is DashboardPinnedItem.Container ->
+                                pinned.unpin(item.value.id, PinnedItemsStore.Kind.CONTAINER, envId)
+                            is DashboardPinnedItem.Project ->
+                                pinned.unpin(item.value.id, PinnedItemsStore.Kind.PROJECT, envId)
+                            is DashboardPinnedItem.Volume ->
+                                pinned.unpin(item.value.id, PinnedItemsStore.Kind.VOLUME, envId)
+                        }
+                        onMessage("Unpinned ${item.title}")
+                    },
                     onOpen = {
                         when (item) {
                             is DashboardPinnedItem.Container -> onOpenContainer(item.value.id)
@@ -199,55 +217,88 @@ fun DashboardPinnedSection(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DashboardPinnedRow(
     item: DashboardPinnedItem,
     busy: Boolean,
     actionsEnabled: Boolean,
     onOpen: () -> Unit,
+    onUnpin: () -> Unit,
     onAction: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    var menu by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.weight(1f).clickable(onClick = onOpen),
+            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 9.dp, bottom = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            DashboardPinnedIcon(item.icon, item.tint, item.isRunning)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    item.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                ResourceStatusBadge(status = item.status)
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        val actionTitle = item.actionTitle
-        if (actionTitle != null) {
-            IconButton(onClick = onAction, enabled = actionsEnabled) {
-                if (busy) {
-                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
-                } else {
-                    Icon(
-                        if (item.isRunning) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                        contentDescription = actionTitle,
-                        tint = if (item.isRunning) ArcaneRed else ArcaneGreen,
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onOpen,
+                        onLongClick = { menu = true },
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                DashboardPinnedIcon(item.icon, item.tint, item.isRunning)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        item.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    ResourceStatusBadge(status = item.status)
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            val actionTitle = item.actionTitle
+            if (actionTitle != null) {
+                IconButton(onClick = onAction, enabled = actionsEnabled) {
+                    if (busy) {
+                        CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    } else {
+                        Icon(
+                            if (item.isRunning) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                            contentDescription = actionTitle,
+                            tint = if (item.isRunning) ArcaneRed else ArcaneGreen,
+                        )
+                    }
                 }
             }
+            IconButton(onClick = { menu = true }) {
+                Icon(Icons.Filled.MoreVert, contentDescription = "Pinned item actions")
+            }
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(
+                text = { Text("Open") },
+                onClick = {
+                    menu = false
+                    onOpen()
+                },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null) },
+            )
+            DropdownMenuItem(
+                text = { Text("Unpin") },
+                onClick = {
+                    menu = false
+                    onUnpin()
+                },
+                leadingIcon = { Icon(Icons.Filled.PushPin, null) },
+            )
         }
     }
 }

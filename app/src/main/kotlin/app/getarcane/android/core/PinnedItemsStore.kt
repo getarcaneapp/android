@@ -33,6 +33,15 @@ class PinnedItemsStore(context: Context) {
         version++
     }
 
+    fun unpin(id: String, kind: Kind, envId: EnvironmentId) {
+        val key = key(kind, envId)
+        val current = (prefs.getStringSet(key, emptySet()) ?: emptySet()).toMutableSet()
+        if (current.remove(id)) {
+            prefs.edit().putStringSet(key, current).apply()
+            version++
+        }
+    }
+
     private fun key(kind: Kind, envId: EnvironmentId): String =
         "arcane.pinned.${kind.name.lowercase()}.${envId.rawValue}"
 }
