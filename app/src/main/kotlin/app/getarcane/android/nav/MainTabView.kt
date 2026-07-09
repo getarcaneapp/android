@@ -81,6 +81,9 @@ private sealed interface DashboardOpenTarget {
     data class Project(override val id: String) : DashboardOpenTarget
     data class Volume(override val id: String) : DashboardOpenTarget
     data class Environment(override val id: String) : DashboardOpenTarget
+    data object ImageVulnerabilities : DashboardOpenTarget {
+        override val id: String = "image-vulnerabilities"
+    }
 }
 
 /**
@@ -134,6 +137,7 @@ fun MainTabView() {
         is DashboardOpenTarget.Project -> AppTab.Projects.id
         is DashboardOpenTarget.Volume -> AppTab.Volumes.id
         is DashboardOpenTarget.Environment -> null
+        DashboardOpenTarget.ImageVulnerabilities -> null
         null -> null
     }
     val bottomBarSelectedTabId = MainTabSelection.bottomBarSelectedTabId(
@@ -230,9 +234,7 @@ fun MainTabView() {
                         imagesInitialDestination = ImagesInitialDestination.List
                     },
                     onOpenImageVulnerabilities = {
-                        imagesInitialDestination = ImagesInitialDestination.Vulnerabilities
-                        dashboardOpenTarget = null
-                        selected = AppTab.Images.id
+                        dashboardOpenTarget = DashboardOpenTarget.ImageVulnerabilities
                     },
                     onOpenApiKeys = {
                         dashboardOpenTarget = null
@@ -348,6 +350,13 @@ private fun TabContent(
                     EnvironmentDetailScreen(
                         id = target.id,
                         onBack = onDashboardBack,
+                    )
+                }
+                DashboardOpenTarget.ImageVulnerabilities -> key(target) {
+                    ImagesScreen(
+                        initialDestination = ImagesInitialDestination.Vulnerabilities,
+                        onInitialDestinationHandled = {},
+                        onInitialDestinationBack = onDashboardBack,
                     )
                 }
                 null -> DashboardScreen(
