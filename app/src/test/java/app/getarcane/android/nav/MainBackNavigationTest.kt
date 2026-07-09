@@ -13,6 +13,17 @@ class MainBackNavigationTest {
     }
 
     @Test
+    fun dashboardHostedDetailSwitchesBackToDashboardBeforeActivityExit() {
+        assertEquals(
+            MainBackNavigation.Action.SwitchToDashboard,
+            MainBackNavigation.resolve(
+                selectedTabId = AppTab.Dashboard.id,
+                hasDashboardOpenTarget = true,
+            ),
+        )
+    }
+
+    @Test
     fun nonDashboardTabRootSwitchesToDashboardBeforeActivityExit() {
         assertEquals(
             MainBackNavigation.Action.SwitchToDashboard,

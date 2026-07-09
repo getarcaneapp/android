@@ -140,12 +140,19 @@ fun MainTabView() {
         visibleTabs = visible,
     )
 
-    val rootBackAction = MainBackNavigation.resolve(normalizedSelection)
+    val rootBackAction = MainBackNavigation.resolve(
+        selectedTabId = normalizedSelection,
+        hasDashboardOpenTarget = dashboardOpenTarget != null,
+    )
     BackHandler(enabled = rootBackAction == MainBackNavigation.Action.SwitchToDashboard) {
         // Register this before child content so nested NavHosts and transient UI get first chance to
-        // consume Back. Once a non-Dashboard tab is at its root, system Back returns home instead of
-        // exiting the Activity from a resource/settings tab dead end.
-        selected = AppTab.Dashboard.id
+        // consume Back. Dashboard-hosted details clear back to the Dashboard, and non-Dashboard
+        // tab roots return home instead of exiting the Activity from a resource/settings tab dead end.
+        if (dashboardOpenTarget != null) {
+            dashboardOpenTarget = null
+        } else {
+            selected = AppTab.Dashboard.id
+        }
     }
 
     fun selectOrPopToRoot(tabId: String) {
