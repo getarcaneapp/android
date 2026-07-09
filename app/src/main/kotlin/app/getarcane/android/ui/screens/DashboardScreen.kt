@@ -60,6 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.getarcane.android.core.formatBytes
+import app.getarcane.android.core.ArcaneDashboardStreamClient
+import app.getarcane.android.core.DashboardStreamStore
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.nav.AppTab
@@ -149,11 +151,13 @@ fun DashboardScreen(
     var showUpdateAll by remember { mutableStateOf(false) }
     var pruneEnvironmentId by remember { mutableStateOf<EnvironmentId?>(null) }
     val statsHistory = remember { mutableStateMapOf<String, DashboardStatsSeries>() }
+    val scope = rememberCoroutineScope()
+    val streamClient = remember(client) { client?.let(::ArcaneDashboardStreamClient) }
+    val streamStore = remember(scope) { DashboardStreamStore(scope) }
     val enabledEnvironmentIds = environments
         .filter { it.enabled }
         .map { it.id }
     val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(client, enabledEnvironmentIds) {
         if (client == null) return@LaunchedEffect
@@ -182,6 +186,19 @@ fun DashboardScreen(
                     }
                 }
         }
+    }
+
+    LaunchedEffect(streamClient) {
+        streamStore.configure(streamClient)
+        if (supportsActivities) streamStore.start()
+    }
+
+    LaunchedEffect(supportsActivities) {
+        if (supportsActivities) streamStore.start() else streamStore.stop()
+    }
+
+    LaunchedEffect(environments) {
+        streamStore.reconcile(environments)
     }
 
     LaunchedEffect(refreshKey) {
@@ -273,7 +290,10 @@ fun DashboardScreen(
     ) { padding ->
         PullToRefreshBox(
             isRefreshing = loading,
-            onRefresh = { refreshKey++ },
+            onRefresh = {
+                streamStore.reconnect()
+                refreshKey++
+            },
             modifier = Modifier.padding(padding),
         ) {
             LazyColumn(
@@ -289,7 +309,16 @@ fun DashboardScreen(
                     )
                 }
                 item {
-                    val t = totals
+                    val t = streamStore.aggregate?.let { aggregate ->
+                        DashTotals(
+                            running = aggregate.runningContainers,
+                            total = aggregate.totalContainers,
+                            images = aggregate.totalImages,
+                            volumes = totals?.volumes ?: 0,
+                            updates = totals?.updates ?: 0,
+                            stopped = aggregate.stoppedContainers,
+                        )
+                    } ?: totals
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             DashboardTile("Updates", t?.let { "${it.updates}" } ?: "—", Icons.Filled.Autorenew, ArcaneGreen, Modifier.weight(1f)) {
@@ -307,6 +336,11 @@ fun DashboardScreen(
                                 onOpenTab?.invoke(AppTab.Volumes.id)
                             }
                         }
+                    }
+                }
+                if (streamStore.streamFailed && !streamStore.streamUnsupported) {
+                    item {
+                        DashboardStreamFailedBanner(onRetry = { streamStore.retry() })
                     }
                 }
                 val attentionItems = buildNeedsAttentionItems(
@@ -478,6 +512,35 @@ private fun NeedsAttentionRow(item: NeedsAttentionItem) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier.size(18.dp),
         )
+    }
+}
+
+@Composable
+private fun DashboardStreamFailedBanner(onRetry: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                Icons.Filled.Warning,
+                contentDescription = null,
+                tint = ArcaneOrange,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                "Live counts paused",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onRetry) {
+                Text("Retry")
+            }
+        }
     }
 }
 
