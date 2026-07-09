@@ -32,15 +32,7 @@ class DashboardStreamStoreTest {
             assertNull(store.aggregate)
 
             store.applyForTest(errorEvent("edge"))
-            assertEquals(
-                DashboardStreamAggregateCounts(
-                    runningContainers = 2,
-                    stoppedContainers = 1,
-                    totalContainers = 3,
-                    totalImages = 4,
-                ),
-                store.aggregate,
-            )
+            assertNull(store.aggregate)
         } finally {
             scope.cancel()
         }
@@ -89,6 +81,40 @@ class DashboardStreamStoreTest {
         }
     }
 
+    @Test
+    fun configureNewClientKeepsReconciledEnvironmentsButClearsSnapshots() {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(HangingDashboardStreamClient)
+            store.reconcile(listOf(Environment(id = "edge", name = "Edge", apiUrl = "", status = "active")))
+            store.applyForTest(snapshotEvent("edge", running = 1, stopped = 0, images = 2))
+
+            store.configure(AlternateDashboardStreamClient)
+
+            val state = store.statesByEnvironmentId.getValue("edge")
+            assertEquals("Edge", state.name)
+            assertTrue(state.loading)
+            assertFalse(state.hasLoaded)
+            assertFalse(state.streamError)
+            assertNull(state.snapshot)
+
+            store.applyForTest(snapshotEvent("edge", running = 3, stopped = 1, images = 5))
+            assertEquals(
+                DashboardStreamAggregateCounts(
+                    runningContainers = 3,
+                    stoppedContainers = 1,
+                    totalContainers = 4,
+                    totalImages = 5,
+                ),
+                store.aggregate,
+            )
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
     private fun snapshotEvent(environmentId: String, running: Int, stopped: Int, images: Int): DashboardStreamEvent =
         DashboardStreamEvent(
             type = "snapshot",
@@ -121,6 +147,13 @@ class DashboardStreamStoreTest {
 }
 
 private object HangingDashboardStreamClient : DashboardStreamClient {
+    override fun stream(): Flow<DashboardStreamEvent> = flow { kotlinx.coroutines.awaitCancellation() }
+
+    override suspend fun snapshot(environmentId: String): DashboardSnapshot =
+        error("snapshot should not be called")
+}
+
+private object AlternateDashboardStreamClient : DashboardStreamClient {
     override fun stream(): Flow<DashboardStreamEvent> = flow { kotlinx.coroutines.awaitCancellation() }
 
     override suspend fun snapshot(environmentId: String): DashboardSnapshot =

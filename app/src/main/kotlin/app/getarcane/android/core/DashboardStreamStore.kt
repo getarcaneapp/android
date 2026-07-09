@@ -85,6 +85,7 @@ class DashboardStreamStore(
             var loadedCount = 0
             var counts = DashboardStreamAggregateCounts()
             for (state in states) {
+                if (state.streamError) return null
                 val snapshot = state.snapshot
                 if (state.hasLoaded && snapshot != null) {
                     loadedCount += 1
@@ -105,7 +106,20 @@ class DashboardStreamStore(
         if (this.client === client) return
         stop()
         this.client = client
-        statesByEnvironmentId = emptyMap()
+        statesByEnvironmentId = if (client == null) {
+            emptyMap()
+        } else {
+            statesByEnvironmentId.mapValues { (_, state) ->
+                state.copy(
+                    snapshot = null,
+                    hasLoaded = false,
+                    loading = true,
+                    streamError = false,
+                    errorMessage = null,
+                    errorCode = null,
+                )
+            }
+        }
         streamUnsupported = false
         streamFailed = false
     }
