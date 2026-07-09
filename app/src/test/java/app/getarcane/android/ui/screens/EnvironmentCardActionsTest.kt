@@ -18,15 +18,24 @@ class EnvironmentCardActionsTest {
             ),
             actions,
         )
-        assertFalse(actions.contains(EnvironmentCardAction.UpgradeArcane))
         assertFalse(actions.contains(EnvironmentCardAction.SystemPrune))
+        assertFalse(actions.map { it.label }.contains("Upgrade Arcane"))
     }
 
     @Test
-    fun adminActionsIncludeMaintenanceEntries() {
+    fun adminActionsKeepSystemPruneWithoutDashboardUpgrade() {
         val actions = environmentCardActions(isAdmin = true)
 
-        assertTrue(actions.contains(EnvironmentCardAction.UpgradeArcane))
+        assertEquals(
+            listOf(
+                EnvironmentCardAction.UseEnvironment,
+                EnvironmentCardAction.ViewSystemDetails,
+                EnvironmentCardAction.Sync,
+                EnvironmentCardAction.SystemPrune,
+            ),
+            actions,
+        )
         assertTrue(actions.contains(EnvironmentCardAction.SystemPrune))
+        assertFalse(actions.map { it.label }.contains("Upgrade Arcane"))
     }
 }
