@@ -144,22 +144,21 @@ fun DashboardScreen(
     var showActivities by remember { mutableStateOf(false) }
     var showPrune by remember { mutableStateOf(false) }
     val statsHistory = remember { mutableStateMapOf<String, DashboardStatsSeries>() }
+    val enabledEnvironmentIds = environments
+        .filter { it.enabled }
+        .map { it.id }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(client, environments.map { it.id }) {
+    LaunchedEffect(client, enabledEnvironmentIds) {
         if (client == null) return@LaunchedEffect
 
-        val enabledIds = environments
-            .filter { it.enabled }
-            .map { it.id }
-
         statsHistory.keys
-            .filterNot { it in enabledIds }
+            .filterNot { it in enabledEnvironmentIds }
             .forEach { statsHistory.remove(it) }
 
         coroutineScope {
-            enabledIds
+            enabledEnvironmentIds
                 .take(DashboardStatsMaxStreams)
                 .forEachIndexed { index, id ->
                     launch {
