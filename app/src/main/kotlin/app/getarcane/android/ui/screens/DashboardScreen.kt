@@ -476,7 +476,10 @@ fun DashboardScreen(
 
 @Composable
 private fun ActivityCenterToolbarIcon(failedCount: Int) {
-    Box {
+    Box(
+        modifier = Modifier.size(32.dp),
+        contentAlignment = Alignment.Center,
+    ) {
         Icon(
             Icons.Filled.History,
             contentDescription = activityCenterButtonContentDescription(failedCount),
@@ -485,7 +488,7 @@ private fun ActivityCenterToolbarIcon(failedCount: Int) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .offset(x = 10.dp, y = (-8).dp)
+                    .offset(x = 2.dp, y = 2.dp)
                     .defaultMinSize(minWidth = 18.dp, minHeight = 18.dp),
                 shape = CircleShape,
                 color = ArcaneRed,
