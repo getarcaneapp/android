@@ -598,18 +598,23 @@ internal fun buildNeedsAttentionItems(
         )
     }
 
-    if (streamActionItems.vulnerabilities > 0 && streamActionItems.vulnerabilityTarget != null) {
+    val vulnerabilityItems = streamActionItems.vulnerabilities
+    for (vulnerabilityItem in vulnerabilityItems) {
         items += NeedsAttentionItem(
-            id = "vulnerabilities",
-            title = "Actionable vulnerabilities",
-            count = streamActionItems.vulnerabilities,
+            id = "vulnerabilities-${vulnerabilityItem.environment.id}",
+            title = if (vulnerabilityItems.size == 1) {
+                "Actionable vulnerabilities"
+            } else {
+                "${vulnerabilityItem.environment.name} vulnerabilities"
+            },
+            count = vulnerabilityItem.count,
             icon = Icons.Filled.Security,
-            severity = if (streamActionItems.hasCriticalVulnerability) {
+            severity = if (vulnerabilityItem.isCritical) {
                 NeedsAttentionSeverity.Critical
             } else {
                 NeedsAttentionSeverity.Warning
             },
-            action = { onOpenVulnerabilities(streamActionItems.vulnerabilityTarget) },
+            action = { onOpenVulnerabilities(vulnerabilityItem.environment) },
         )
     }
 
@@ -656,19 +661,20 @@ internal data class DashboardActionTargetEnvironment(
 )
 
 private data class DashboardStreamActionItemSummary(
-    val vulnerabilities: Int = 0,
-    val vulnerabilityTarget: DashboardActionTargetEnvironment? = null,
-    val hasCriticalVulnerability: Boolean = false,
+    val vulnerabilities: List<DashboardVulnerabilityActionItem> = emptyList(),
     val expiringKeys: Int = 0,
+)
+
+private data class DashboardVulnerabilityActionItem(
+    val environment: DashboardActionTargetEnvironment,
+    val count: Int,
+    val isCritical: Boolean,
 )
 
 private fun aggregateStreamActionItems(
     streamStates: Map<String, DashboardEnvironmentStreamState>,
 ): DashboardStreamActionItemSummary {
-    var vulnerabilities = 0
-    var vulnerabilityTarget: DashboardActionTargetEnvironment? = null
-    var vulnerabilityTargetCount = 0
-    var hasCriticalVulnerability = false
+    val vulnerabilities = mutableListOf<DashboardVulnerabilityActionItem>()
     var expiringKeys = 0
 
     for (state in streamStates.values) {
@@ -677,17 +683,14 @@ private fun aggregateStreamActionItems(
             if (item.count <= 0) continue
             when (item.itemKind) {
                 DashboardActionItemKind.ActionableVulnerabilities -> {
-                    vulnerabilities += item.count
-                    if (item.itemSeverity == DashboardActionItemSeverity.Critical) {
-                        hasCriticalVulnerability = true
-                    }
-                    if (item.count > vulnerabilityTargetCount) {
-                        vulnerabilityTargetCount = item.count
-                        vulnerabilityTarget = DashboardActionTargetEnvironment(
+                    vulnerabilities += DashboardVulnerabilityActionItem(
+                        environment = DashboardActionTargetEnvironment(
                             id = state.id,
                             name = state.name,
-                        )
-                    }
+                        ),
+                        count = item.count,
+                        isCritical = item.itemSeverity == DashboardActionItemSeverity.Critical,
+                    )
                 }
                 DashboardActionItemKind.ExpiringKeys -> {
                     expiringKeys += item.count
@@ -702,8 +705,6 @@ private fun aggregateStreamActionItems(
 
     return DashboardStreamActionItemSummary(
         vulnerabilities = vulnerabilities,
-        vulnerabilityTarget = vulnerabilityTarget,
-        hasCriticalVulnerability = hasCriticalVulnerability,
         expiringKeys = expiringKeys,
     )
 }

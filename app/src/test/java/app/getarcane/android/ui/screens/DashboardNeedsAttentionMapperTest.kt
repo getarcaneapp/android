@@ -16,7 +16,7 @@ import org.junit.Test
 class DashboardNeedsAttentionMapperTest {
     @Test
     fun actionItemsAddVulnerabilitiesAndApiKeysWithoutDroppingExistingRows() {
-        var vulnerabilityTarget: DashboardActionTargetEnvironment? = null
+        val vulnerabilityTargets = mutableListOf<DashboardActionTargetEnvironment>()
         var openedApiKeys = false
         val items = buildNeedsAttentionItems(
             environments = listOf(Environment(id = "offline", name = "Offline", apiUrl = "", status = "error")),
@@ -50,7 +50,7 @@ class DashboardNeedsAttentionMapperTest {
             onOpenEnvironment = {},
             onOpenContainers = {},
             onOpenUpdates = {},
-            onOpenVulnerabilities = { vulnerabilityTarget = it },
+            onOpenVulnerabilities = { vulnerabilityTargets += it },
             onOpenApiKeys = { openedApiKeys = true },
             onOpenActivities = {},
         )
@@ -59,18 +59,28 @@ class DashboardNeedsAttentionMapperTest {
             listOf(
                 "offline-environments",
                 "stopped-containers",
-                "vulnerabilities",
+                "vulnerabilities-0",
+                "vulnerabilities-edge",
                 "image-updates",
                 "expiring-keys",
             ),
             items.map { it.id },
         )
-        assertEquals(7, items.first { it.id == "vulnerabilities" }.count)
-        assertEquals(NeedsAttentionSeverity.Critical, items.first { it.id == "vulnerabilities" }.severity)
+        assertEquals(2, items.first { it.id == "vulnerabilities-0" }.count)
+        assertEquals(NeedsAttentionSeverity.Warning, items.first { it.id == "vulnerabilities-0" }.severity)
+        assertEquals(5, items.first { it.id == "vulnerabilities-edge" }.count)
+        assertEquals(NeedsAttentionSeverity.Critical, items.first { it.id == "vulnerabilities-edge" }.severity)
         assertEquals(4, items.first { it.id == "expiring-keys" }.count)
 
-        items.first { it.id == "vulnerabilities" }.action()
-        assertEquals(DashboardActionTargetEnvironment(id = "edge", name = "Edge"), vulnerabilityTarget)
+        items.first { it.id == "vulnerabilities-0" }.action()
+        items.first { it.id == "vulnerabilities-edge" }.action()
+        assertEquals(
+            listOf(
+                DashboardActionTargetEnvironment(id = "0", name = "Local"),
+                DashboardActionTargetEnvironment(id = "edge", name = "Edge"),
+            ),
+            vulnerabilityTargets,
+        )
 
         items.first { it.id == "expiring-keys" }.action()
         assertTrue(openedApiKeys)
