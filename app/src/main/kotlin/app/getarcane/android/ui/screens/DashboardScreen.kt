@@ -4,14 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -29,8 +32,6 @@ import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -478,37 +479,42 @@ fun DashboardScreen(
 
 @Composable
 private fun ActivityCenterToolbarIcon(failedCount: Int) {
-    if (failedCount <= 0) {
-        Icon(
-            Icons.AutoMirrored.Filled.Assignment,
-            contentDescription = activityCenterButtonContentDescription(failedCount),
-            modifier = Modifier.size(24.dp),
-        )
-        return
-    }
-
-    BadgedBox(
-        badge = {
-            Badge(
-                modifier = Modifier.offset(x = (-2).dp, y = 2.dp),
-                containerColor = ArcaneRed,
-                contentColor = Color.White,
-            ) {
-                Text(
-                    failedActivityBadgeText(failedCount),
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 9.sp,
-                        lineHeight = 9.sp,
-                    ),
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-        },
+    Box(
+        modifier = Modifier.size(30.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Icon(
             Icons.AutoMirrored.Filled.Assignment,
             contentDescription = activityCenterButtonContentDescription(failedCount),
             modifier = Modifier.size(24.dp),
+        )
+
+        if (failedCount > 0) {
+            ActivityCenterFailedBadge(failedCount)
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.ActivityCenterFailedBadge(failedCount: Int) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 2.dp, y = (-2).dp)
+            .height(18.dp)
+            .widthIn(min = 18.dp)
+            .background(ArcaneRed, CircleShape)
+            .padding(horizontal = if (failedCount > 9) 4.dp else 0.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            failedActivityBadgeText(failedCount),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                lineHeight = 9.sp,
+            ),
+            fontWeight = FontWeight.Bold,
         )
     }
 }
