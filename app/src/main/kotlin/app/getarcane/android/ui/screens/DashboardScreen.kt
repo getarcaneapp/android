@@ -148,7 +148,8 @@ fun DashboardScreen(
     onOpenProject: ((String) -> Unit)? = null,
     onOpenVolume: ((String) -> Unit)? = null,
     onOpenEnvironmentDetails: ((String) -> Unit)? = null,
-    onOpenImageVulnerabilities: (() -> Unit)? = null,
+    onOpenImageVulnerabilities: ((String, String) -> Unit)? = null,
+    onOpenImageUpdates: (() -> Unit)? = null,
     onOpenApiKeys: (() -> Unit)? = null,
 ) {
     val manager = LocalArcaneManager.current
@@ -356,7 +357,7 @@ fun DashboardScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             DashboardTile("Updates", t?.let { "${it.updates}" } ?: "—", Icons.Filled.Autorenew, ArcaneGreen, Modifier.weight(1f)) {
-                                onOpenTab?.invoke(AppTab.Updates.id)
+                                onOpenImageUpdates?.invoke() ?: onOpenTab?.invoke(AppTab.Updates.id)
                             }
                             DashboardTile("Containers", t?.let { "${it.running} / ${it.total}" } ?: "—", Icons.Filled.Inventory2, ArcaneOrange, Modifier.weight(1f)) {
                                 onOpenTab?.invoke(AppTab.Containers.id)
@@ -386,10 +387,9 @@ fun DashboardScreen(
                         manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id)
                     },
                     onOpenContainers = { onOpenTab?.invoke(AppTab.Containers.id) },
-                    onOpenUpdates = { onOpenTab?.invoke(AppTab.Updates.id) },
+                    onOpenUpdates = { onOpenImageUpdates?.invoke() ?: onOpenTab?.invoke(AppTab.Updates.id) },
                     onOpenVulnerabilities = { target ->
-                        manager.setActiveEnvironment(EnvironmentId(target.id), target.name)
-                        onOpenImageVulnerabilities?.invoke() ?: onOpenTab?.invoke(AppTab.Images.id)
+                        onOpenImageVulnerabilities?.invoke(target.id, target.name) ?: onOpenTab?.invoke(AppTab.Images.id)
                     },
                     onOpenApiKeys = {
                         onOpenApiKeys?.invoke() ?: onOpenTab?.invoke(AppTab.ApiKeys.id)

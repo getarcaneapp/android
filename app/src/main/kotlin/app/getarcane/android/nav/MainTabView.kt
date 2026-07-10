@@ -47,6 +47,7 @@ import app.getarcane.android.ui.screens.environments.EnvironmentDetailScreen
 import app.getarcane.android.ui.screens.events.EventsScreen
 import app.getarcane.android.ui.screens.gitops.GitOpsScreen
 import app.getarcane.android.ui.screens.gitops.GitRepositoriesScreen
+import app.getarcane.android.ui.screens.updates.AllEnvironmentsImageUpdatesScreen
 import app.getarcane.android.ui.screens.images.ImagesScreen
 import app.getarcane.android.ui.screens.images.ImagesInitialDestination
 import app.getarcane.android.ui.screens.jobs.JobsScreen
@@ -69,6 +70,7 @@ import app.getarcane.android.ui.screens.settings.webhooks.WebhooksScreen
 import app.getarcane.android.ui.screens.swarm.SwarmScreen
 import app.getarcane.android.ui.screens.updates.UpdatesScreen
 import app.getarcane.android.ui.screens.volumes.VolumesScreen
+import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.models.user.isGlobalAdmin
 
@@ -81,8 +83,9 @@ private sealed interface DashboardOpenTarget {
     data class Project(override val id: String) : DashboardOpenTarget
     data class Volume(override val id: String) : DashboardOpenTarget
     data class Environment(override val id: String) : DashboardOpenTarget
-    data object ImageVulnerabilities : DashboardOpenTarget {
-        override val id: String = "image-vulnerabilities"
+    data class ImageVulnerabilities(override val id: String, val name: String) : DashboardOpenTarget
+    data object ImageUpdates : DashboardOpenTarget {
+        override val id: String = "image-updates"
     }
 }
 
@@ -137,7 +140,8 @@ fun MainTabView() {
         is DashboardOpenTarget.Project -> AppTab.Projects.id
         is DashboardOpenTarget.Volume -> AppTab.Volumes.id
         is DashboardOpenTarget.Environment -> null
-        DashboardOpenTarget.ImageVulnerabilities -> null
+        is DashboardOpenTarget.ImageVulnerabilities -> null
+        DashboardOpenTarget.ImageUpdates -> null
         null -> null
     }
     val bottomBarSelectedTabId = MainTabSelection.bottomBarSelectedTabId(
@@ -233,8 +237,11 @@ fun MainTabView() {
                     onImagesInitialDestinationHandled = {
                         imagesInitialDestination = ImagesInitialDestination.List
                     },
-                    onOpenImageVulnerabilities = {
-                        dashboardOpenTarget = DashboardOpenTarget.ImageVulnerabilities
+                    onOpenImageVulnerabilities = { id, name ->
+                        dashboardOpenTarget = DashboardOpenTarget.ImageVulnerabilities(id = id, name = name)
+                    },
+                    onOpenImageUpdates = {
+                        dashboardOpenTarget = DashboardOpenTarget.ImageUpdates
                     },
                     onOpenApiKeys = {
                         dashboardOpenTarget = null
@@ -317,7 +324,8 @@ private fun TabContent(
     onSettingsInitialDestinationHandled: () -> Unit,
     imagesInitialDestination: ImagesInitialDestination,
     onImagesInitialDestinationHandled: () -> Unit,
-    onOpenImageVulnerabilities: () -> Unit,
+    onOpenImageVulnerabilities: (String, String) -> Unit,
+    onOpenImageUpdates: () -> Unit,
     onOpenApiKeys: () -> Unit,
 ) {
     when (tabId) {
@@ -352,12 +360,17 @@ private fun TabContent(
                         onBack = onDashboardBack,
                     )
                 }
-                DashboardOpenTarget.ImageVulnerabilities -> key(target) {
+                is DashboardOpenTarget.ImageVulnerabilities -> key(target) {
                     ImagesScreen(
                         initialDestination = ImagesInitialDestination.Vulnerabilities,
+                        vulnerabilitiesEnvironmentId = EnvironmentId(target.id),
+                        vulnerabilitiesEnvironmentName = target.name,
                         onInitialDestinationHandled = {},
                         onInitialDestinationBack = onDashboardBack,
                     )
+                }
+                DashboardOpenTarget.ImageUpdates -> key(target) {
+                    AllEnvironmentsImageUpdatesScreen(onBack = onDashboardBack)
                 }
                 null -> DashboardScreen(
                     onOpenTab = onSelectTab,
@@ -366,6 +379,7 @@ private fun TabContent(
                     onOpenVolume = onOpenVolume,
                     onOpenEnvironmentDetails = onOpenEnvironment,
                     onOpenImageVulnerabilities = onOpenImageVulnerabilities,
+                    onOpenImageUpdates = onOpenImageUpdates,
                     onOpenApiKeys = onOpenApiKeys,
                 )
             }
