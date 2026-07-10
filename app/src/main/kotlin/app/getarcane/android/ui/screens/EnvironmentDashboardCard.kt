@@ -78,6 +78,7 @@ fun environmentCardActions(isAdmin: Boolean): List<EnvironmentCardAction> =
 @Composable
 fun EnvironmentDashboardCard(
     env: app.getarcane.sdk.models.environment.Environment,
+    overviewCounts: DashboardEnvironmentCardOverviewCounts? = null,
     statsSeries: DashboardStatsSeries?,
     refreshToken: Int = 0,
     onSelect: () -> Unit,
@@ -190,10 +191,10 @@ fun EnvironmentDashboardCard(
             HorizontalDivider()
 
             // Mini metrics
-            val running = dockerInfo?.info?.get("ContainersRunning")?.intValue
-            val stopped = dockerInfo?.info?.get("ContainersStopped")?.intValue
-            val images = dockerInfo?.info?.get("Images")?.intValue
-            val has = dockerInfo != null
+            val running = dockerInfo?.info?.get("ContainersRunning")?.intValue ?: overviewCounts?.running
+            val stopped = dockerInfo?.info?.get("ContainersStopped")?.intValue ?: overviewCounts?.stopped
+            val images = dockerInfo?.info?.get("Images")?.intValue ?: overviewCounts?.images
+            val has = dockerInfo != null || overviewCounts != null
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 MiniMetric("Running", if (has) "${running ?: 0}" else "--", ArcaneGreen, Modifier.weight(1f))
                 MiniMetric("Stopped", if (has) "${stopped ?: 0}" else "--", MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
