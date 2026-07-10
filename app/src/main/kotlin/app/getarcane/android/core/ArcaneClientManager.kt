@@ -17,6 +17,7 @@ import app.getarcane.sdk.models.auth.OidcStatusInfo
 import app.getarcane.sdk.models.user.User
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -42,7 +43,7 @@ class ArcaneClientManager(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val cookieJar = ArcaneCookieJar()
 
-    var authStatus by mutableStateOf(AuthStatus.SETUP); private set
+    var authStatus by mutableStateOf(AuthStatus.AUTHENTICATING); private set
     var serverUrl by mutableStateOf(""); private set
     var currentUser by mutableStateOf<User?>(null); private set
     var capabilities by mutableStateOf(ServerCapabilities.UNKNOWN); private set
@@ -79,17 +80,24 @@ class ArcaneClientManager(context: Context) {
 
     init {
         scope.launch {
-            val saved = prefs.serverUrl.first()
-            prefs.activeEnvId.first()?.let { id ->
-                activeEnvironmentId = EnvironmentId(id)
-                activeEnvironmentName = prefs.activeEnvName.first() ?: "Local Docker"
-            }
-            if (!saved.isNullOrBlank()) {
-                serverUrl = saved
-                client = makeClient(saved)
-                authStatus = AuthStatus.AUTHENTICATING
-                checkExistingAuth()
-            } else {
+            try {
+                val saved = prefs.serverUrl.first()
+                prefs.activeEnvId.first()?.let { id ->
+                    activeEnvironmentId = EnvironmentId(id)
+                    activeEnvironmentName = prefs.activeEnvName.first() ?: "Local Docker"
+                }
+                if (!saved.isNullOrBlank()) {
+                    serverUrl = saved
+                    client = makeClient(saved)
+                    authStatus = AuthStatus.AUTHENTICATING
+                    checkExistingAuth()
+                } else {
+                    authStatus = AuthStatus.SETUP
+                }
+            } catch (e: CancellationException) {
+                authStatus = AuthStatus.SETUP
+                throw e
+            } catch (e: Throwable) {
                 authStatus = AuthStatus.SETUP
             }
         }
