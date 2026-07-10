@@ -38,4 +38,28 @@ class EnvironmentCardActionsTest {
         assertTrue(actions.contains(EnvironmentCardAction.SystemPrune))
         assertFalse(actions.map { it.label }.contains("Upgrade Arcane"))
     }
+
+    @Test
+    fun adminActionsIncludeUpgradeOnlyWhenCheckAllowsIt() {
+        val actions = environmentCardActions(isAdmin = true, canUpgradeArcane = true)
+
+        assertEquals(
+            listOf(
+                EnvironmentCardAction.UseEnvironment,
+                EnvironmentCardAction.ViewSystemDetails,
+                EnvironmentCardAction.Sync,
+                EnvironmentCardAction.UpgradeArcane,
+                EnvironmentCardAction.SystemPrune,
+            ),
+            actions,
+        )
+    }
+
+    @Test
+    fun nonAdminActionsDoNotIncludeUpgradeEvenWhenAvailable() {
+        val actions = environmentCardActions(isAdmin = false, canUpgradeArcane = true)
+
+        assertFalse(actions.contains(EnvironmentCardAction.UpgradeArcane))
+        assertFalse(actions.map { it.label }.contains("Upgrade Arcane"))
+    }
 }

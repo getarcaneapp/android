@@ -55,6 +55,7 @@ import app.getarcane.android.ui.theme.ArcaneGray
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
+import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.system.UpgradeCheckResult
 import app.getarcane.sdk.models.user.isAdmin
 import kotlinx.coroutines.launch
@@ -71,10 +72,13 @@ private sealed interface UpgradePhase {
 /** Self-upgrade check + trigger flow. Port of iOS `SystemUpgradeView`. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SystemUpgradeScreen(onBack: () -> Unit) {
+fun SystemUpgradeScreen(
+    environmentId: EnvironmentId? = null,
+    onBack: () -> Unit,
+) {
     val manager = LocalArcaneManager.current
     val client = manager.client
-    val envId = manager.activeEnvironmentId
+    val envId = environmentId ?: manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
     val isAdmin = manager.currentUser?.isAdmin ?: false
 
@@ -106,7 +110,7 @@ fun SystemUpgradeScreen(onBack: () -> Unit) {
         }
     }
 
-    LaunchedEffect(Unit) { if (isAdmin) check() }
+    LaunchedEffect(envId, isAdmin) { if (isAdmin) check() }
 
     Scaffold(
         topBar = {

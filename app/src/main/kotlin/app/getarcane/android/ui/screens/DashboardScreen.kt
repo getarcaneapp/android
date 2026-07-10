@@ -86,6 +86,7 @@ import app.getarcane.android.ui.screens.settings.FormSuccessRow
 import app.getarcane.android.ui.screens.settings.LabeledPicker
 import app.getarcane.android.ui.screens.settings.LabeledTextField
 import app.getarcane.android.ui.screens.settings.SettingsSectionHeader
+import app.getarcane.android.ui.screens.settings.system.SystemUpgradeScreen
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcanePurple
@@ -109,6 +110,7 @@ import app.getarcane.sdk.models.system.PruneNetworkMode
 import app.getarcane.sdk.models.system.PruneNetworksOptions
 import app.getarcane.sdk.models.system.PruneVolumeMode
 import app.getarcane.sdk.models.system.PruneVolumesOptions
+import app.getarcane.sdk.models.user.isAdmin
 import app.getarcane.sdk.models.user.isGlobalAdmin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -159,10 +161,14 @@ fun DashboardScreen(
 
     val supportsActivities = manager.capabilities.supportsActivities
     val isAdmin = manager.currentUser?.isGlobalAdmin ?: false
+    val canCheckUpgrades = manager.currentUser?.isAdmin ?: false
 
     var environments by remember { mutableStateOf<List<Environment>>(emptyList()) }
     var overviewByEnvironmentId by remember {
         mutableStateOf<Map<String, DashboardEnvironmentOverview>>(emptyMap())
+    }
+    var upgradeAvailableByEnvironmentId by remember {
+        mutableStateOf<Map<String, Boolean>>(emptyMap())
     }
     var totals by remember { mutableStateOf<DashTotals?>(null) }
     var failedActivities by remember { mutableStateOf<List<Activity>>(emptyList()) }
@@ -171,6 +177,7 @@ fun DashboardScreen(
     var statsRestartKey by remember { mutableStateOf(0) }
     var showActivities by remember { mutableStateOf(false) }
     var showUpdateAll by remember { mutableStateOf(false) }
+    var upgradeEnvironmentId by remember { mutableStateOf<EnvironmentId?>(null) }
     var pruneEnvironmentId by remember { mutableStateOf<EnvironmentId?>(null) }
     val statsHistory = remember { mutableStateMapOf<String, DashboardStatsSeries>() }
     val scope = rememberCoroutineScope()
@@ -238,6 +245,26 @@ fun DashboardScreen(
 
     LaunchedEffect(environments) {
         streamStore.reconcile(environments)
+    }
+
+    LaunchedEffect(client, canCheckUpgrades, enabledEnvironmentIds, refreshKey) {
+        val c = client
+        if (c == null || !canCheckUpgrades) {
+            upgradeAvailableByEnvironmentId = emptyMap()
+            return@LaunchedEffect
+        }
+
+        upgradeAvailableByEnvironmentId = coroutineScope {
+            enabledEnvironmentIds.map { id ->
+                async {
+                    id to runCatching {
+                        c.system.checkUpgrade(EnvironmentId(id)).canUpgrade
+                    }.getOrDefault(false)
+                }
+            }.awaitAll()
+                .filter { (_, canUpgrade) -> canUpgrade }
+                .toMap()
+        }
     }
 
     LaunchedEffect(refreshKey) {
@@ -440,7 +467,10 @@ fun DashboardScreen(
                         statsSeries = statsHistory[env.id],
                         refreshToken = refreshKey,
                         onSelect = { manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id) },
-                        actions = environmentCardActions(isAdmin = isAdmin),
+                        actions = environmentCardActions(
+                            isAdmin = isAdmin,
+                            canUpgradeArcane = upgradeAvailableByEnvironmentId[env.id] == true,
+                        ),
                         onAction = { action ->
                             when (action) {
                                 EnvironmentCardAction.UseEnvironment -> {
@@ -452,6 +482,9 @@ fun DashboardScreen(
                                 EnvironmentCardAction.Sync -> {
                                     refreshKey++
                                     scope.launch { snackbar.showSnackbar("Refreshing ${env.name ?: env.id}") }
+                                }
+                                EnvironmentCardAction.UpgradeArcane -> {
+                                    upgradeEnvironmentId = EnvironmentId(env.id)
                                 }
                                 EnvironmentCardAction.SystemPrune -> {
                                     pruneEnvironmentId = EnvironmentId(env.id)
@@ -491,6 +524,20 @@ fun DashboardScreen(
                     onDismiss = { showUpdateAll = false },
                     onMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
                     onComplete = { refreshKey++ },
+                )
+            }
+        }
+    }
+
+    upgradeEnvironmentId?.let { upgradeEnvId ->
+        Dialog(
+            onDismissRequest = { upgradeEnvironmentId = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                SystemUpgradeScreen(
+                    environmentId = upgradeEnvId,
+                    onBack = { upgradeEnvironmentId = null },
                 )
             }
         }

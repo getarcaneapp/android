@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowCircleUp
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
@@ -66,15 +67,19 @@ enum class EnvironmentCardAction(val label: String) {
     UseEnvironment("Use Environment"),
     ViewSystemDetails("View System Details"),
     Sync("Sync"),
+    UpgradeArcane("Upgrade Arcane"),
     SystemPrune("System Prune"),
 }
 
-fun environmentCardActions(isAdmin: Boolean): List<EnvironmentCardAction> =
+fun environmentCardActions(isAdmin: Boolean, canUpgradeArcane: Boolean = false): List<EnvironmentCardAction> =
     buildList {
         add(EnvironmentCardAction.UseEnvironment)
         add(EnvironmentCardAction.ViewSystemDetails)
         add(EnvironmentCardAction.Sync)
         if (isAdmin) {
+            if (canUpgradeArcane) {
+                add(EnvironmentCardAction.UpgradeArcane)
+            }
             add(EnvironmentCardAction.SystemPrune)
         }
     }
@@ -218,6 +223,7 @@ private val EnvironmentCardAction.icon: androidx.compose.ui.graphics.vector.Imag
         EnvironmentCardAction.UseEnvironment -> Icons.Filled.CheckCircle
         EnvironmentCardAction.ViewSystemDetails -> Icons.Filled.Dns
         EnvironmentCardAction.Sync -> Icons.Filled.Sync
+        EnvironmentCardAction.UpgradeArcane -> Icons.Filled.ArrowCircleUp
         EnvironmentCardAction.SystemPrune -> Icons.Filled.Delete
     }
 
