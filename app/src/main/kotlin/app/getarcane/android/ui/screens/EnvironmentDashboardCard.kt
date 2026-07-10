@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -46,14 +47,19 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.core.DashboardActionItem
+import app.getarcane.android.core.DashboardActionItemKind
+import app.getarcane.android.core.DashboardActionItemSeverity
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
+import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneTeal
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.base.intValue
 import app.getarcane.sdk.models.system.DockerInfo
+import java.util.Locale
 import kotlin.math.roundToInt
 
 enum class EnvironmentCardAction(val label: String) {
@@ -79,6 +85,7 @@ fun environmentCardActions(isAdmin: Boolean): List<EnvironmentCardAction> =
 fun EnvironmentDashboardCard(
     env: app.getarcane.sdk.models.environment.Environment,
     overviewCounts: DashboardEnvironmentCardOverviewCounts? = null,
+    actionItems: List<DashboardActionItem> = emptyList(),
     statsSeries: DashboardStatsSeries?,
     refreshToken: Int = 0,
     onSelect: () -> Unit,
@@ -200,6 +207,8 @@ fun EnvironmentDashboardCard(
                 MiniMetric("Stopped", if (has) "${stopped ?: 0}" else "--", MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
                 MiniMetric("Images", if (has) "${images ?: 0}" else "--", ArcanePurple, Modifier.weight(1f))
             }
+
+            DashboardCardActionItemsRow(actionItems)
         }
     }
 }
@@ -268,3 +277,56 @@ private fun MiniMetric(title: String, value: String, color: Color, modifier: Mod
 }
 
 private fun pctShort(v: Double?): String = v?.let { "${it.coerceIn(0.0, 100.0).roundToInt()}%" } ?: "—"
+
+@Composable
+private fun DashboardCardActionItemsRow(items: List<DashboardActionItem>) {
+    val summary = dashboardCardActionItemSummary(items) ?: return
+    val hasCritical = items.any { it.count > 0 && it.itemSeverity == DashboardActionItemSeverity.Critical }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            Icons.Filled.Warning,
+            contentDescription = null,
+            tint = if (hasCritical) MaterialTheme.colorScheme.error else ArcaneOrange,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            summary,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+internal fun dashboardCardActionItemSummary(
+    items: List<DashboardActionItem>,
+    maxItems: Int = 2,
+): String? {
+    val summaries = items
+        .asSequence()
+        .filter { it.count > 0 }
+        .take(maxItems)
+        .map { "${it.count} ${it.dashboardCardLabel}" }
+        .toList()
+
+    return summaries.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
+
+private val DashboardActionItem.dashboardCardLabel: String
+    get() = when (itemKind) {
+        DashboardActionItemKind.StoppedContainers -> "Stopped"
+        DashboardActionItemKind.ImageUpdates -> "Updates"
+        DashboardActionItemKind.ActionableVulnerabilities -> "Vulnerabilities"
+        DashboardActionItemKind.ExpiringKeys -> "Expiring Keys"
+        DashboardActionItemKind.Unknown -> kind
+            .split("_", "-")
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase(Locale.US) } }
+            .ifBlank { kind }
+    }
