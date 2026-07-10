@@ -432,9 +432,11 @@ fun DashboardScreen(
                     }
                 }
                 items(environments, key = { it.id }) { env ->
+                    val streamState = streamStore.statesByEnvironmentId[env.id]
                     EnvironmentDashboardCard(
                         env = env,
                         overviewCounts = overviewByEnvironmentId[env.id]?.cardOverviewCounts(),
+                        actionItems = streamState.loadedActionItems,
                         statsSeries = statsHistory[env.id],
                         refreshToken = refreshKey,
                         onSelect = { manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id) },
@@ -774,6 +776,13 @@ internal fun buildNeedsAttentionItems(
 
     return items
 }
+
+private val DashboardEnvironmentStreamState?.loadedActionItems
+    get() = if (this?.hasLoaded == true && !streamError) {
+        snapshot?.actionItems?.items.orEmpty()
+    } else {
+        emptyList()
+    }
 
 internal data class DashboardActionTargetEnvironment(
     val id: String,
