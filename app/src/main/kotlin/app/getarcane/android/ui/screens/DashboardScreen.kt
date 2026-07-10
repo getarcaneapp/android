@@ -49,6 +49,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -66,6 +67,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.ArcaneDashboardStreamClient
 import app.getarcane.android.core.DashboardActionItemKind
@@ -159,6 +163,7 @@ fun DashboardScreen(
     var failedActivities by remember { mutableStateOf<List<Activity>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
+    var statsRestartKey by remember { mutableStateOf(0) }
     var showActivities by remember { mutableStateOf(false) }
     var showUpdateAll by remember { mutableStateOf(false) }
     var pruneEnvironmentId by remember { mutableStateOf<EnvironmentId?>(null) }
@@ -171,7 +176,7 @@ fun DashboardScreen(
         .map { it.id }
     val snackbar = remember { SnackbarHostState() }
 
-    LaunchedEffect(client, enabledEnvironmentIds, refreshKey) {
+    LaunchedEffect(client, enabledEnvironmentIds, refreshKey, statsRestartKey) {
         if (client == null) return@LaunchedEffect
 
         statsHistory.keys
@@ -199,6 +204,22 @@ fun DashboardScreen(
                     }
                 }
         }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, client, enabledEnvironmentIds) {
+        var resumedOnce = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (resumedOnce && client != null && enabledEnvironmentIds.isNotEmpty()) {
+                    statsRestartKey++
+                } else {
+                    resumedOnce = true
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(streamClient) {
