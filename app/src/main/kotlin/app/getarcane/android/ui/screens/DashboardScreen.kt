@@ -95,6 +95,7 @@ import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.activity.Activity
 import app.getarcane.sdk.models.activity.ActivityStatus
 import app.getarcane.sdk.models.base.SortOrder
+import app.getarcane.sdk.models.dashboard.DashboardEnvironmentOverview
 import app.getarcane.sdk.models.environment.Environment
 import app.getarcane.sdk.models.system.PruneAllRequest
 import app.getarcane.sdk.models.system.PruneAllResult
@@ -124,8 +125,8 @@ internal data class DashTotals(
     val running: Int,
     val total: Int,
     val images: Int,
-    val volumes: Int,
-    val updates: Int,
+    val volumes: Int?,
+    val updates: Int?,
     val stopped: Int,
 )
 
@@ -160,6 +161,9 @@ fun DashboardScreen(
     val isAdmin = manager.currentUser?.isGlobalAdmin ?: false
 
     var environments by remember { mutableStateOf<List<Environment>>(emptyList()) }
+    var overviewByEnvironmentId by remember {
+        mutableStateOf<Map<String, DashboardEnvironmentOverview>>(emptyMap())
+    }
     var totals by remember { mutableStateOf<DashTotals?>(null) }
     var failedActivities by remember { mutableStateOf<List<Activity>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
@@ -239,42 +243,42 @@ fun DashboardScreen(
     LaunchedEffect(refreshKey) {
         if (client == null) return@LaunchedEffect
         loading = true
-        val envs = runCatching { client.environments.list().data }.getOrElse {
-            // Fall back to the active environment so the dashboard still shows a card.
-            listOf(Environment(id = envId.rawValue, name = manager.activeEnvironmentName, apiUrl = "", status = "active"))
+        val overview = runCatching { client.dashboard.environmentsOverview() }.getOrNull()
+        val overviewEnvironments = overview?.environmentsForDashboard().orEmpty()
+        val envs = overviewEnvironments.ifEmpty {
+            runCatching { client.environments.list().data }.getOrElse {
+                // Fall back to the active environment so the dashboard still shows a card.
+                listOf(Environment(id = envId.rawValue, name = manager.activeEnvironmentName, apiUrl = "", status = "active"))
+            }
         }
         environments = envs
-        // Aggregate the overview tiles across ALL environments (parallel, best-effort per env).
-        totals = runCatching {
+        overviewByEnvironmentId = overview?.environments.orEmpty()
+            .associateBy { it.environmentForDashboard()?.id }
+            .filterKeys { it != null }
+            .mapKeys { it.key!! }
+        val overviewTotals = overview?.toDashTotals()
+        totals = overviewTotals
+
+        // Aggregate the slow overview tiles across ALL environments (parallel, best-effort per env).
+        val volumesAndUpdates = runCatching {
             coroutineScope {
                 envs.map { env ->
                     val e = EnvironmentId(env.id)
                     async {
-                        val sc = runCatching { client.containers.statusCounts(envId = e) }.getOrNull()
-                        val ic = runCatching { client.images.usageCounts(envId = e) }.getOrNull()
                         val vc = runCatching { client.volumes.counts(envId = e) }.getOrNull()
                         val us = runCatching { client.images.updateSummary(envId = e) }.getOrNull()
                         intArrayOf(
-                            sc?.runningContainers ?: 0,
-                            sc?.totalContainers ?: 0,
-                            ic?.totalImages ?: 0,
                             vc?.total ?: 0,
                             us?.imagesWithUpdates ?: 0,
-                            ((sc?.totalContainers ?: 0) - (sc?.runningContainers ?: 0)).coerceAtLeast(0),
                         )
                     }
                 }.awaitAll()
-            }.let { rows ->
-                DashTotals(
-                    running = rows.sumOf { it[0] },
-                    total = rows.sumOf { it[1] },
-                    images = rows.sumOf { it[2] },
-                    volumes = rows.sumOf { it[3] },
-                    updates = rows.sumOf { it[4] },
-                    stopped = rows.sumOf { it[5] },
-                )
             }
         }.getOrNull()
+        val volumes = volumesAndUpdates?.sumOf { it[0] }
+        val updates = volumesAndUpdates?.sumOf { it[1] }
+        totals = overviewTotals?.copy(volumes = volumes, updates = updates)
+            ?: loadLegacyDashboardTotals(client, envs, volumes = volumes, updates = updates)
 
         // Surface recent failed background work (RBAC servers only). Best-effort, per environment,
         // limited to the 3 most recent failures across environments. Mirrors iOS `loadFailedWork()`.
@@ -349,14 +353,14 @@ fun DashboardScreen(
                             running = aggregate.runningContainers,
                             total = aggregate.totalContainers,
                             images = aggregate.totalImages,
-                            volumes = totals?.volumes ?: 0,
-                            updates = totals?.updates ?: 0,
+                            volumes = totals?.volumes,
+                            updates = totals?.updates,
                             stopped = aggregate.stoppedContainers,
                         )
                     } ?: totals
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            DashboardTile("Updates", t?.let { "${it.updates}" } ?: "—", Icons.Filled.Autorenew, ArcaneGreen, Modifier.weight(1f)) {
+                            DashboardTile("Updates", t?.updates?.let { "$it" } ?: "—", Icons.Filled.Autorenew, ArcaneGreen, Modifier.weight(1f)) {
                                 onOpenImageUpdates?.invoke() ?: onOpenTab?.invoke(AppTab.Updates.id)
                             }
                             DashboardTile("Containers", t?.let { "${it.running} / ${it.total}" } ?: "—", Icons.Filled.Inventory2, ArcaneOrange, Modifier.weight(1f)) {
@@ -367,7 +371,7 @@ fun DashboardScreen(
                             DashboardTile("Images", t?.let { "${it.images}" } ?: "—", Icons.Filled.Layers, ArcanePurple, Modifier.weight(1f)) {
                                 onOpenTab?.invoke(AppTab.Images.id)
                             }
-                            DashboardTile("Volumes", t?.let { "${it.volumes}" } ?: "—", Icons.Filled.Storage, ArcaneTeal, Modifier.weight(1f)) {
+                            DashboardTile("Volumes", t?.volumes?.let { "$it" } ?: "—", Icons.Filled.Storage, ArcaneTeal, Modifier.weight(1f)) {
                                 onOpenTab?.invoke(AppTab.Volumes.id)
                             }
                         }
@@ -430,6 +434,7 @@ fun DashboardScreen(
                 items(environments, key = { it.id }) { env ->
                     EnvironmentDashboardCard(
                         env = env,
+                        overviewCounts = overviewByEnvironmentId[env.id]?.cardOverviewCounts(),
                         statsSeries = statsHistory[env.id],
                         refreshToken = refreshKey,
                         onSelect = { manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id) },
@@ -497,6 +502,39 @@ fun DashboardScreen(
         )
     }
 }
+
+private suspend fun loadLegacyDashboardTotals(
+    client: app.getarcane.sdk.ArcaneClient,
+    envs: List<Environment>,
+    volumes: Int?,
+    updates: Int?,
+): DashTotals? =
+    runCatching {
+        coroutineScope {
+            envs.map { env ->
+                val e = EnvironmentId(env.id)
+                async {
+                    val sc = runCatching { client.containers.statusCounts(envId = e) }.getOrNull()
+                    val ic = runCatching { client.images.usageCounts(envId = e) }.getOrNull()
+                    intArrayOf(
+                        sc?.runningContainers ?: 0,
+                        sc?.totalContainers ?: 0,
+                        ic?.totalImages ?: 0,
+                        ((sc?.totalContainers ?: 0) - (sc?.runningContainers ?: 0)).coerceAtLeast(0),
+                    )
+                }
+            }.awaitAll()
+        }.let { rows ->
+            DashTotals(
+                running = rows.sumOf { it[0] },
+                total = rows.sumOf { it[1] },
+                images = rows.sumOf { it[2] },
+                volumes = volumes,
+                updates = updates,
+                stopped = rows.sumOf { it[3] },
+            )
+        }
+    }.getOrNull()
 
 @Composable
 private fun ActivityCenterToolbarIcon(failedCount: Int) {
