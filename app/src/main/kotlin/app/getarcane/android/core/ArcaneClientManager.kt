@@ -42,7 +42,7 @@ class ArcaneClientManager(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val cookieJar = ArcaneCookieJar()
 
-    var authStatus by mutableStateOf(AuthStatus.SETUP); private set
+    var authStatus by mutableStateOf(AuthStatus.AUTHENTICATING); private set
     var serverUrl by mutableStateOf(""); private set
     var currentUser by mutableStateOf<User?>(null); private set
     var capabilities by mutableStateOf(ServerCapabilities.UNKNOWN); private set
