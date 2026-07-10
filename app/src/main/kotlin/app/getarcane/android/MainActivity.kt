@@ -58,6 +58,11 @@ class MainActivity : ComponentActivity() {
         handleOidcRedirectIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        arcaneManager.refreshAuthOnForeground()
+    }
+
     private fun handleOidcRedirectIntent(intent: Intent?) {
         arcaneManager.handleOidcRedirect(intent?.data)
     }
