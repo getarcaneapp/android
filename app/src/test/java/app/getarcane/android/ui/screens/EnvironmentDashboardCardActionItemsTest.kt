@@ -53,4 +53,27 @@ class EnvironmentDashboardCardActionItemsTest {
 
         assertEquals("7 Custom Signal", summary)
     }
+
+    @Test
+    fun imageUpdateCountUsesSameActionItemSemanticsAsCardSummary() {
+        val items = listOf(
+            DashboardActionItem("image_updates", 4, "warning"),
+            DashboardActionItem("stopped_containers", 3, "warning"),
+            DashboardActionItem("image_updates", 2, "warning"),
+            DashboardActionItem("image_updates", 0, "warning"),
+        )
+
+        assertEquals(6, dashboardCardImageUpdateCount(items))
+    }
+
+    @Test
+    fun dashboardImageUpdateCountRequiresEveryVisibleEnvironment() {
+        val actionItems = mapOf(
+            "local" to listOf(DashboardActionItem("image_updates", 4, "warning")),
+            "edge" to listOf(DashboardActionItem("image_updates", 7, "warning")),
+        )
+
+        assertEquals(11, dashboardImageUpdateCountByEnvironment(actionItems, listOf("local", "edge")))
+        assertNull(dashboardImageUpdateCountByEnvironment(actionItems, listOf("local", "missing")))
+    }
 }

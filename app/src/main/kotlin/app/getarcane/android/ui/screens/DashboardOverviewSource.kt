@@ -5,6 +5,7 @@ import app.getarcane.sdk.models.base.arrayValue
 import app.getarcane.sdk.models.base.boolValue
 import app.getarcane.sdk.models.base.objectValue
 import app.getarcane.sdk.models.base.stringValue
+import app.getarcane.android.core.DashboardActionItem
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentOverview
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentsOverview
 import app.getarcane.sdk.models.environment.Environment
@@ -37,6 +38,15 @@ internal fun DashboardEnvironmentOverview.cardOverviewCounts(): DashboardEnviron
         stopped = containers.stoppedContainers,
         images = imageUsageCounts.totalImages,
     )
+
+internal fun DashboardEnvironmentOverview.cardActionItems(): List<DashboardActionItem> =
+    actionItems.items.map { item ->
+        DashboardActionItem(
+            kind = item.kind.wire,
+            count = item.count,
+            severity = item.severity.wire,
+        )
+    }
 
 internal fun DashboardEnvironmentOverview.environmentForDashboard(): Environment? {
     val fields = environment.objectValue ?: return null

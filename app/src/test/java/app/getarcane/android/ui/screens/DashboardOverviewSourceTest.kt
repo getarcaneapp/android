@@ -2,6 +2,9 @@ package app.getarcane.android.ui.screens
 
 import app.getarcane.sdk.models.base.JsonValue
 import app.getarcane.sdk.models.container.ContainerStatusCounts
+import app.getarcane.sdk.models.dashboard.ActionItem
+import app.getarcane.sdk.models.dashboard.ActionItemKind
+import app.getarcane.sdk.models.dashboard.ActionItemSeverity
 import app.getarcane.sdk.models.dashboard.ActionItems
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentOverview
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentsOverview
@@ -79,16 +82,31 @@ class DashboardOverviewSourceTest {
         )
     }
 
+    @Test
+    fun overviewActionItemsMapToDashboardCardSummaryItems() {
+        val row = overviewRow(
+            actionItems = ActionItems(
+                listOf(
+                    ActionItem(ActionItemKind.IMAGE_UPDATES, 11, ActionItemSeverity.WARNING),
+                    ActionItem(ActionItemKind.EXPIRING_KEYS, 2, ActionItemSeverity.CRITICAL),
+                ),
+            ),
+        )
+
+        assertEquals("11 Updates · 2 Expiring Keys", dashboardCardActionItemSummary(row.cardActionItems()))
+    }
+
     private fun overviewRow(
         environment: JsonValue = JsonValue.Obj(mapOf("id" to JsonValue.Str("0"), "name" to JsonValue.Str("Local"))),
         containers: ContainerStatusCounts = ContainerStatusCounts(0, 0, 0),
         imageUsageCounts: ImageUsageCounts = ImageUsageCounts(0, 0, 0, 0),
+        actionItems: ActionItems = ActionItems(),
     ): DashboardEnvironmentOverview =
         DashboardEnvironmentOverview(
             environment = environment,
             containers = containers,
             imageUsageCounts = imageUsageCounts,
-            actionItems = ActionItems(),
+            actionItems = actionItems,
             settings = DashboardSnapshotSettings(),
             snapshotState = EnvironmentSnapshotState.READY,
         )

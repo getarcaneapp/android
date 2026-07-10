@@ -324,6 +324,11 @@ internal fun dashboardCardActionItemSummary(
     return summaries.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 
+internal fun dashboardCardImageUpdateCount(items: List<DashboardActionItem>): Int =
+    items
+        .filter { it.itemKind == DashboardActionItemKind.ImageUpdates && it.count > 0 }
+        .sumOf { it.count }
+
 private val DashboardActionItem.dashboardCardLabel: String
     get() = when (itemKind) {
         DashboardActionItemKind.StoppedContainers -> "Stopped"

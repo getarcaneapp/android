@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -72,6 +73,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.ArcaneDashboardStreamClient
+import app.getarcane.android.core.DashboardActionItem
 import app.getarcane.android.core.DashboardActionItemKind
 import app.getarcane.android.core.DashboardActionItemSeverity
 import app.getarcane.android.core.DashboardEnvironmentStreamState
@@ -166,6 +168,9 @@ fun DashboardScreen(
     var environments by remember { mutableStateOf<List<Environment>>(emptyList()) }
     var overviewByEnvironmentId by remember {
         mutableStateOf<Map<String, DashboardEnvironmentOverview>>(emptyMap())
+    }
+    var overviewActionItemsByEnvironmentId by remember {
+        mutableStateOf<Map<String, List<DashboardActionItem>>>(emptyMap())
     }
     var upgradeAvailableByEnvironmentId by remember {
         mutableStateOf<Map<String, Boolean>>(emptyMap())
@@ -283,6 +288,9 @@ fun DashboardScreen(
             .associateBy { it.environmentForDashboard()?.id }
             .filterKeys { it != null }
             .mapKeys { it.key!! }
+        overviewActionItemsByEnvironmentId = overviewByEnvironmentId.mapValues { (_, row) ->
+            row.cardActionItems()
+        }
         val overviewTotals = overview?.toDashTotals()
         totals = overviewTotals
 
@@ -376,15 +384,37 @@ fun DashboardScreen(
                 }
                 item {
                     val t = streamStore.aggregate?.let { aggregate ->
+                        val actionItemUpdateCount = dashboardImageUpdateCountByEnvironment(
+                            actionItemsByEnvironmentId = enabledEnvironmentIds.mapNotNull { id ->
+                                val actionItems = dashboardCardActionItems(
+                                    streamState = streamStore.statesByEnvironmentId[id],
+                                    overviewActionItems = overviewActionItemsByEnvironmentId[id],
+                                )
+                                actionItems?.let { id to it }
+                            }.toMap(),
+                            environmentIds = enabledEnvironmentIds,
+                        )
                         DashTotals(
                             running = aggregate.runningContainers,
                             total = aggregate.totalContainers,
                             images = aggregate.totalImages,
                             volumes = totals?.volumes,
-                            updates = totals?.updates,
+                            updates = actionItemUpdateCount ?: totals?.updates,
                             stopped = aggregate.stoppedContainers,
                         )
-                    } ?: totals
+                    } ?: totals?.let { fallbackTotals ->
+                        val actionItemUpdateCount = dashboardImageUpdateCountByEnvironment(
+                            actionItemsByEnvironmentId = enabledEnvironmentIds.mapNotNull { id ->
+                                val actionItems = dashboardCardActionItems(
+                                    streamState = streamStore.statesByEnvironmentId[id],
+                                    overviewActionItems = overviewActionItemsByEnvironmentId[id],
+                                )
+                                actionItems?.let { id to it }
+                            }.toMap(),
+                            environmentIds = enabledEnvironmentIds,
+                        )
+                        fallbackTotals.copy(updates = actionItemUpdateCount ?: fallbackTotals.updates)
+                    }
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             DashboardTile("Updates", t?.updates?.let { "$it" } ?: "—", Icons.Filled.Autorenew, ArcaneGreen, Modifier.weight(1f)) {
@@ -447,23 +477,34 @@ fun DashboardScreen(
                             .fillMaxWidth()
                             .padding(top = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text("Environments", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Environments",
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                         if (shouldShowUpdateAllAction(isAdmin)) {
                             Button(onClick = { showUpdateAll = true }) {
                                 Icon(Icons.Filled.ArrowCircleUp, contentDescription = null)
-                                Text("  Update All")
+                                Spacer(modifier = Modifier.size(8.dp))
+                                Text("Update All", maxLines = 1)
                             }
                         }
                     }
                 }
                 items(environments, key = { it.id }) { env ->
                     val streamState = streamStore.statesByEnvironmentId[env.id]
+                    val actionItems = dashboardCardActionItems(
+                        streamState = streamState,
+                        overviewActionItems = overviewActionItemsByEnvironmentId[env.id],
+                    ).orEmpty()
                     EnvironmentDashboardCard(
                         env = env,
                         overviewCounts = overviewByEnvironmentId[env.id]?.cardOverviewCounts(),
-                        actionItems = streamState.loadedActionItems,
+                        actionItems = actionItems,
                         statsSeries = statsHistory[env.id],
                         refreshToken = refreshKey,
                         onSelect = { manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id) },
@@ -830,6 +871,26 @@ private val DashboardEnvironmentStreamState?.loadedActionItems
     } else {
         emptyList()
     }
+
+private fun dashboardCardActionItems(
+    streamState: DashboardEnvironmentStreamState?,
+    overviewActionItems: List<DashboardActionItem>?,
+): List<DashboardActionItem>? =
+    if (streamState?.hasLoaded == true && !streamState.streamError) {
+        streamState.snapshot?.actionItems?.items.orEmpty()
+    } else {
+        overviewActionItems
+    }
+
+internal fun dashboardImageUpdateCountByEnvironment(
+    actionItemsByEnvironmentId: Map<String, List<DashboardActionItem>>,
+    environmentIds: List<String>,
+): Int? {
+    val uniqueIds = environmentIds.distinct()
+    if (uniqueIds.isEmpty()) return null
+    if (!uniqueIds.all { actionItemsByEnvironmentId.containsKey(it) }) return null
+    return uniqueIds.sumOf { id -> dashboardCardImageUpdateCount(actionItemsByEnvironmentId[id].orEmpty()) }
+}
 
 internal data class DashboardActionTargetEnvironment(
     val id: String,
