@@ -62,6 +62,8 @@ class ArcaneClientManager(context: Context) {
     var client: ArcaneClient? = null; private set
 
     private val oidcRedirectUri = OIDC_REDIRECT_URI
+    private var authCheckJob: Job? = null
+    private var explicitlyLoggedOut = false
 
     companion object {
         const val OIDC_REDIRECT_URI = "arcane-mobile://oidc-callback"
@@ -142,6 +144,7 @@ class ArcaneClientManager(context: Context) {
                 val response = c.auth.login(username, password)
                 currentUser = response.user
                 capabilities = c.serverCapabilities()
+                explicitlyLoggedOut = false
                 authStatus = AuthStatus.AUTHENTICATED
             } catch (e: Throwable) {
                 errorMessage = friendlyErrorMessage(e)
@@ -155,6 +158,7 @@ class ArcaneClientManager(context: Context) {
         val c = client ?: return
         scope.launch {
             runCatching { c.auth.logout() }
+            explicitlyLoggedOut = true
             authStatus = AuthStatus.LOGIN
             mainTabSelectionStore.clear()
             cookieJar.clear()
@@ -202,6 +206,7 @@ class ArcaneClientManager(context: Context) {
                 }
                 currentUser = response.user
                 capabilities = c.serverCapabilities()
+                explicitlyLoggedOut = false
                 authStatus = AuthStatus.AUTHENTICATED
             } catch (e: Throwable) {
                 errorMessage = friendlyErrorMessage(e)
@@ -248,6 +253,7 @@ class ArcaneClientManager(context: Context) {
                     currentUser = response.user
                     capabilities = c.serverCapabilities()
                     demoEndsAt = session.endsAtMillis
+                    explicitlyLoggedOut = false
                     authStatus = AuthStatus.AUTHENTICATED
                     DemoService.startHeartbeat(scope)
                     scheduleDemoExpiry(session.endsAtMillis)
@@ -308,15 +314,38 @@ class ArcaneClientManager(context: Context) {
         scope.launch { prefs.setActiveEnv(id.rawValue, name) }
     }
 
-    private suspend fun checkExistingAuth() {
+    /**
+     * Re-check persisted auth when the app returns to the foreground. This recovers from a stale
+     * LOGIN state after unlock/resume without forcing a full app refresh, and avoids evicting an
+     * already-authenticated UI for a transient foreground probe failure.
+     */
+    fun refreshAuthOnForeground() {
+        val status = authStatus
+        if (status == AuthStatus.SETUP || status == AuthStatus.AUTHENTICATING) return
+        if (serverUrl.isBlank() || client == null) return
+        if (status == AuthStatus.LOGIN && explicitlyLoggedOut) return
+
+        authCheckJob?.cancel()
+        authCheckJob = scope.launch {
+            if (status == AuthStatus.LOGIN) {
+                authStatus = AuthStatus.AUTHENTICATING
+            }
+            checkExistingAuth(fallbackToLogin = status != AuthStatus.AUTHENTICATED)
+        }
+    }
+
+    private suspend fun checkExistingAuth(fallbackToLogin: Boolean = true) {
         val c = client ?: run { authStatus = AuthStatus.LOGIN; return }
         try {
             currentUser = c.auth.me()
             capabilities = c.serverCapabilities()
+            explicitlyLoggedOut = false
             authStatus = AuthStatus.AUTHENTICATED
         } catch (e: Throwable) {
-            authStatus = AuthStatus.LOGIN
-            refreshOidc()
+            if (fallbackToLogin) {
+                authStatus = AuthStatus.LOGIN
+                refreshOidc()
+            }
         }
     }
 
