@@ -333,7 +333,7 @@ private val DashboardActionItem.dashboardCardSummaryPart: String
 private val DashboardActionItem.dashboardCardLabel: String
     get() = when (itemKind) {
         DashboardActionItemKind.StoppedContainers -> "Stopped"
-        DashboardActionItemKind.ImageUpdates -> "Image updates"
+        DashboardActionItemKind.ImageUpdates -> "Image updates available"
         DashboardActionItemKind.ActionableVulnerabilities -> "Vulnerabilities"
         DashboardActionItemKind.ExpiringKeys -> "Expiring Keys"
         DashboardActionItemKind.Unknown -> kind
