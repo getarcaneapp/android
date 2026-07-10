@@ -4,24 +4,27 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.ArrowCircleUp
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Security
@@ -29,8 +32,6 @@ import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,6 +63,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.getarcane.android.core.formatBytes
@@ -477,25 +479,42 @@ fun DashboardScreen(
 
 @Composable
 private fun ActivityCenterToolbarIcon(failedCount: Int) {
-    BadgedBox(
-        badge = {
-            if (failedCount > 0) {
-                Badge(
-                    containerColor = ArcaneRed,
-                    modifier = Modifier.offset(x = (-2).dp, y = 2.dp),
-                ) {
-                    Text(
-                        failedActivityBadgeText(failedCount),
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-        },
+    Box(
+        modifier = Modifier.size(30.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Icon(
             Icons.Filled.History,
             contentDescription = activityCenterButtonContentDescription(failedCount),
             modifier = Modifier.size(24.dp),
+        )
+
+        if (failedCount > 0) {
+            ActivityCenterFailedBadge(failedCount)
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.ActivityCenterFailedBadge(failedCount: Int) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 2.dp, y = (-2).dp)
+            .height(18.dp)
+            .widthIn(min = 18.dp)
+            .background(ArcaneRed, CircleShape)
+            .padding(horizontal = if (failedCount > 9) 4.dp else 0.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            failedActivityBadgeText(failedCount),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                lineHeight = 9.sp,
+            ),
+            fontWeight = FontWeight.Bold,
         )
     }
 }
