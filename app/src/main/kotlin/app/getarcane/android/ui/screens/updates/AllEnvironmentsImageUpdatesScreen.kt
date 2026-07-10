@@ -285,7 +285,20 @@ private fun EnvironmentUpdatesCard(
                 }
             }
 
-            if (bucket.updateRefs.isEmpty()) {
+            if (
+                bucket.updateRefs.isEmpty() &&
+                bucket.summary != null &&
+                bucket.summary.imagesWithUpdates > 0 &&
+                !bucket.loading
+            ) {
+                val n = bucket.summary.imagesWithUpdates
+                Text(
+                    "Update details unavailable for $n image${if (n == 1) "" else "s"}.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            } else if (bucket.updateRefs.isEmpty()) {
                 Text(
                     bucket.summary?.let { "All ${it.totalImages} images up to date" } ?: "No updates found",
                     style = MaterialTheme.typography.bodySmall,
