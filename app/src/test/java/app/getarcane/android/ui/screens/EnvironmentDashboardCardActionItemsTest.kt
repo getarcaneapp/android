@@ -17,7 +17,7 @@ class EnvironmentDashboardCardActionItemsTest {
             ),
         )
 
-        assertEquals("3 Stopped · Image updates", summary)
+        assertEquals("3 Stopped · Image updates available", summary)
     }
 
     @Test
@@ -63,6 +63,20 @@ class EnvironmentDashboardCardActionItemsTest {
             ),
         )
 
-        assertEquals("Image updates · 2 Vulnerabilities", summary)
+        assertEquals("Image updates available · 2 Vulnerabilities", summary)
+    }
+
+    @Test
+    fun summaryKeepsImageUpdatesNonNumericEvenWhenAuthoritativeTotalIsHigher() {
+        val authoritativeDashboardTotal = 13
+        val summary = dashboardCardActionItemSummary(
+            listOf(
+                DashboardActionItem("image_updates", 4, "warning"),
+                DashboardActionItem("expiring_keys", 1, "warning"),
+            ),
+        )
+
+        assertEquals(13, authoritativeDashboardTotal)
+        assertEquals("Image updates available · 1 Expiring Keys", summary)
     }
 }
