@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -455,20 +454,13 @@ fun DashboardScreen(
                             .fillMaxWidth()
                             .padding(top = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text(
-                            "Environments",
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
+                        Text("Environments", style = MaterialTheme.typography.titleMedium)
                         if (shouldShowUpdateAllAction(isAdmin)) {
                             Button(onClick = { showUpdateAll = true }) {
                                 Icon(Icons.Filled.ArrowCircleUp, contentDescription = null)
-                                Spacer(modifier = Modifier.size(8.dp))
-                                Text("Update All", maxLines = 1)
+                                Text("  Update All")
                             }
                         }
                     }
