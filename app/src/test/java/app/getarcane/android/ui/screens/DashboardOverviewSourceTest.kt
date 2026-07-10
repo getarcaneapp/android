@@ -93,7 +93,7 @@ class DashboardOverviewSourceTest {
             ),
         )
 
-        assertEquals("11 Updates · 2 Expiring Keys", dashboardCardActionItemSummary(row.cardActionItems()))
+        assertEquals("Image updates · 2 Expiring Keys", dashboardCardActionItemSummary(row.cardActionItems()))
     }
 
     private fun overviewRow(

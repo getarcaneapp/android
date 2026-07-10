@@ -318,21 +318,22 @@ internal fun dashboardCardActionItemSummary(
         .asSequence()
         .filter { it.count > 0 }
         .take(maxItems)
-        .map { "${it.count} ${it.dashboardCardLabel}" }
+        .map { it.dashboardCardSummaryPart }
         .toList()
 
     return summaries.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 
-internal fun dashboardCardImageUpdateCount(items: List<DashboardActionItem>): Int =
-    items
-        .filter { it.itemKind == DashboardActionItemKind.ImageUpdates && it.count > 0 }
-        .sumOf { it.count }
+private val DashboardActionItem.dashboardCardSummaryPart: String
+    get() = when (itemKind) {
+        DashboardActionItemKind.ImageUpdates -> dashboardCardLabel
+        else -> "$count $dashboardCardLabel"
+    }
 
 private val DashboardActionItem.dashboardCardLabel: String
     get() = when (itemKind) {
         DashboardActionItemKind.StoppedContainers -> "Stopped"
-        DashboardActionItemKind.ImageUpdates -> "Updates"
+        DashboardActionItemKind.ImageUpdates -> "Image updates"
         DashboardActionItemKind.ActionableVulnerabilities -> "Vulnerabilities"
         DashboardActionItemKind.ExpiringKeys -> "Expiring Keys"
         DashboardActionItemKind.Unknown -> kind

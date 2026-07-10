@@ -384,37 +384,15 @@ fun DashboardScreen(
                 }
                 item {
                     val t = streamStore.aggregate?.let { aggregate ->
-                        val actionItemUpdateCount = dashboardImageUpdateCountByEnvironment(
-                            actionItemsByEnvironmentId = enabledEnvironmentIds.mapNotNull { id ->
-                                val actionItems = dashboardCardActionItems(
-                                    streamState = streamStore.statesByEnvironmentId[id],
-                                    overviewActionItems = overviewActionItemsByEnvironmentId[id],
-                                )
-                                actionItems?.let { id to it }
-                            }.toMap(),
-                            environmentIds = enabledEnvironmentIds,
-                        )
                         DashTotals(
                             running = aggregate.runningContainers,
                             total = aggregate.totalContainers,
                             images = aggregate.totalImages,
                             volumes = totals?.volumes,
-                            updates = actionItemUpdateCount ?: totals?.updates,
+                            updates = totals?.updates,
                             stopped = aggregate.stoppedContainers,
                         )
-                    } ?: totals?.let { fallbackTotals ->
-                        val actionItemUpdateCount = dashboardImageUpdateCountByEnvironment(
-                            actionItemsByEnvironmentId = enabledEnvironmentIds.mapNotNull { id ->
-                                val actionItems = dashboardCardActionItems(
-                                    streamState = streamStore.statesByEnvironmentId[id],
-                                    overviewActionItems = overviewActionItemsByEnvironmentId[id],
-                                )
-                                actionItems?.let { id to it }
-                            }.toMap(),
-                            environmentIds = enabledEnvironmentIds,
-                        )
-                        fallbackTotals.copy(updates = actionItemUpdateCount ?: fallbackTotals.updates)
-                    }
+                    } ?: totals
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             DashboardTile("Updates", t?.updates?.let { "$it" } ?: "—", Icons.Filled.Autorenew, ArcaneGreen, Modifier.weight(1f)) {
@@ -881,16 +859,6 @@ private fun dashboardCardActionItems(
     } else {
         overviewActionItems
     }
-
-internal fun dashboardImageUpdateCountByEnvironment(
-    actionItemsByEnvironmentId: Map<String, List<DashboardActionItem>>,
-    environmentIds: List<String>,
-): Int? {
-    val uniqueIds = environmentIds.distinct()
-    if (uniqueIds.isEmpty()) return null
-    if (!uniqueIds.all { actionItemsByEnvironmentId.containsKey(it) }) return null
-    return uniqueIds.sumOf { id -> dashboardCardImageUpdateCount(actionItemsByEnvironmentId[id].orEmpty()) }
-}
 
 internal data class DashboardActionTargetEnvironment(
     val id: String,
