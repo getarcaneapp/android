@@ -77,6 +77,7 @@ import kotlinx.datetime.Instant
 fun ActivitiesScreen(
     onBack: (() -> Unit)? = null,
     onOpenDetail: (activityId: String, envId: String) -> Unit = { _, _ -> },
+    onHistoryCleared: () -> Unit = {},
 ) {
     val manager = LocalArcaneManager.current
     val supportsActivities = manager.capabilities.supportsActivities
@@ -193,6 +194,7 @@ fun ActivitiesScreen(
                     scope.launch {
                         val result = store.clearHistory(clearableEnvironmentIds)
                         if (result != null) {
+                            onHistoryCleared()
                             val noun = if (result.deleted == 1L) "activity" else "activities"
                             var msg = "Cleared ${result.deleted} completed $noun."
                             if (result.failed > 0) {

@@ -4,23 +4,27 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.ArrowCircleUp
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Security
@@ -59,6 +63,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.getarcane.android.core.formatBytes
@@ -285,7 +290,7 @@ fun DashboardScreen(
                 actions = {
                     if (supportsActivities) {
                         IconButton(onClick = { showActivities = true }) {
-                            Icon(Icons.Filled.History, contentDescription = "Activity Center")
+                            ActivityCenterToolbarIcon(failedCount = failedActivities.size)
                         }
                     }
                     IconButton(onClick = { pruneEnvironmentId = envId }) {
@@ -439,7 +444,10 @@ fun DashboardScreen(
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             Surface(modifier = Modifier.fillMaxSize()) {
-                ActivitiesTab(onClose = { showActivities = false })
+                ActivitiesTab(
+                    onClose = { showActivities = false },
+                    onHistoryCleared = { refreshKey++ },
+                )
             }
         }
     }
@@ -468,6 +476,58 @@ fun DashboardScreen(
         )
     }
 }
+
+@Composable
+private fun ActivityCenterToolbarIcon(failedCount: Int) {
+    Box(
+        modifier = Modifier.size(30.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.History,
+            contentDescription = activityCenterButtonContentDescription(failedCount),
+            modifier = Modifier.size(24.dp),
+        )
+
+        if (failedCount > 0) {
+            ActivityCenterFailedBadge(failedCount)
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.ActivityCenterFailedBadge(failedCount: Int) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 2.dp, y = (-2).dp)
+            .height(18.dp)
+            .widthIn(min = 18.dp)
+            .background(ArcaneRed, CircleShape)
+            .padding(horizontal = if (failedCount > 9) 4.dp else 0.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            failedActivityBadgeText(failedCount),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                lineHeight = 9.sp,
+            ),
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+internal fun failedActivityBadgeText(count: Int): String =
+    if (count > 9) "9+" else count.coerceAtLeast(0).toString()
+
+internal fun activityCenterButtonContentDescription(failedCount: Int): String =
+    if (failedCount > 0) {
+        "Activity Center, $failedCount failed ${if (failedCount == 1) "activity needs" else "activities need"} attention"
+    } else {
+        "Activity Center"
+    }
 
 @Composable
 private fun NeedsAttentionSection(items: List<NeedsAttentionItem>) {
