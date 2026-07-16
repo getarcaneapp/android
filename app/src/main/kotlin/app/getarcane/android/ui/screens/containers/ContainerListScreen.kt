@@ -66,6 +66,7 @@ import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.StatusRunning
 import app.getarcane.android.ui.theme.StatusUnknown
+import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.container.ContainerSummary
 import kotlinx.coroutines.launch
 
@@ -93,7 +94,12 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            Loadable.Success(client.containers.list(envId = envId).data)
+            Loadable.Success(
+                client.containers.list(
+                    envId = envId,
+                    query = SearchPaginationSort(start = 0, limit = -1),
+                ).data,
+            )
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }
