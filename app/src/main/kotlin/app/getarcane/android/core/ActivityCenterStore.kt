@@ -258,7 +258,11 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
             ActivityStreamEventType.MESSAGE -> event.message?.let { applyMessage(it) }
             ActivityStreamEventType.MISSED ->
                 streamErrorMessage = "Some activity updates were missed. Pull to refresh."
-            ActivityStreamEventType.UNKNOWN -> Unit
+            ActivityStreamEventType.ERROR ->
+                streamErrorMessage = event.error ?: "Live updates paused. Pull to refresh."
+            ActivityStreamEventType.HEARTBEAT,
+            ActivityStreamEventType.UNKNOWN,
+            -> Unit
         }
     }
 
