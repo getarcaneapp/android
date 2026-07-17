@@ -134,8 +134,8 @@ The standard checks are:
     unique secondary ordering.
   - `.\gradlew.bat :app:testDebugUnitTest --tests
     "app.getarcane.android.ui.screens.containers.ContainerPaginationTest" --rerun-tasks` passed all
-    13 focused tests (0 failures, 0 errors, 0 skipped).
-  - `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug` passed all 97 unit tests and produced
+    14 focused tests (0 failures, 0 errors, 0 skipped).
+  - `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug` passed all 98 unit tests and produced
     the debug APK; `git diff --check` passed.
 
 - [ ] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**

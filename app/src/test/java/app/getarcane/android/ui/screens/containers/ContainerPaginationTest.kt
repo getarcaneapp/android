@@ -33,11 +33,24 @@ class ContainerPaginationTest {
     }
 
     @Test
-    fun `duplicate IDs are removed without additional requests`() = runBlocking {
+    fun `duplicate IDs are removed when reported total counts raw items`() = runBlocking {
         var requestCount = 0
 
         val result = loadCompleteContainerCollection(idOf = { it }) {
             requestCount++
+            CompleteContainerResponse(
+                items = listOf("container-1", "container-2", "container-2"),
+                totalItems = 3,
+            )
+        }
+
+        assertEquals(listOf("container-1", "container-2"), result)
+        assertEquals(1, requestCount)
+    }
+
+    @Test
+    fun `duplicate IDs are removed when reported total counts unique items`() = runBlocking {
+        val result = loadCompleteContainerCollection(idOf = { it }) {
             CompleteContainerResponse(
                 items = listOf("container-1", "container-2", "container-2"),
                 totalItems = 2,
@@ -45,7 +58,6 @@ class ContainerPaginationTest {
         }
 
         assertEquals(listOf("container-1", "container-2"), result)
-        assertEquals(1, requestCount)
     }
 
     @Test
@@ -59,7 +71,7 @@ class ContainerPaginationTest {
         }
 
         assertEquals(
-            "Container response contained 1 unique items, but the server reported 2",
+            "Container response counts: raw=1, unique=1; server reported 2",
             error.message,
         )
     }

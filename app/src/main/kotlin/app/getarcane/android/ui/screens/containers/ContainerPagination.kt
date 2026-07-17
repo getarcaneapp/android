@@ -27,10 +27,15 @@ internal suspend fun <T> loadCompleteContainerCollection(
     val itemsById = linkedMapOf<String, T>()
     response.items.forEach { item -> itemsById.putIfAbsent(idOf(item), item) }
 
-    if (response.totalItems >= 0 && response.totalItems != itemsById.size.toLong()) {
+    val rawItemCount = response.items.size.toLong()
+    val uniqueItemCount = itemsById.size.toLong()
+    if (response.totalItems >= 0 &&
+        response.totalItems != rawItemCount &&
+        response.totalItems != uniqueItemCount
+    ) {
         throw IncompleteContainerCollectionException(
-            "Container response contained ${itemsById.size} unique items, " +
-                "but the server reported ${response.totalItems}",
+            "Container response counts: raw=$rawItemCount, unique=$uniqueItemCount; " +
+                "server reported ${response.totalItems}",
         )
     }
     return itemsById.values.toList()
