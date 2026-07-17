@@ -121,6 +121,8 @@ The standard checks are:
     equivalent semantics.
   - [x] Loading, partial-page failure, refresh, cancellation, and empty states are covered.
 - **Completion evidence (2026-07-17):**
+  - Review: draft PR [#41](https://github.com/getarcaneapp/android/pull/41); automated validation
+    is complete and focused manual device validation is pending.
   - Source pins: Android base `ca211804fcb3223b7b65abb0d13a97afad81799e`,
     libarcane-kotlin `89c8dd58886a099cdbea9cb9362c9262ba5851d9`, and Arcane
     `b501c49cc9f3d3433494f8334178ac65a59a013d`.
