@@ -25,6 +25,7 @@ SDK, and Arcane server revisions in the resulting issue or pull request.
 | **Blocked/Hold** | Do not implement until the named external dependency or product decision changes. |
 | **Deferred** | Deliberately sequenced behind foundation work or not required for current parity. |
 | **Done/verify** | Later notes suggest the work progressed or landed; confirm current behavior and close or reopen with new evidence. |
+| **Complete** | Required implementation, acceptance criteria, and validation evidence are complete. |
 
 Priorities are **P0** correctness/security, **P1** high-frequency workflow parity, **P2**
 resilience/native continuity, and **P3** maturity or optional expansion. Dependencies name task IDs;
@@ -103,22 +104,37 @@ The standard checks are:
     recreation.
   - [ ] Device testing confirms no prior-server data flashes or actions remain available.
 
-- [ ] **PAR-003 — Fix complete-container loading before local filtering**
+- [x] **PAR-003 — Fix complete-container loading before local filtering**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Make the Containers tab filter a complete result set rather than the SDK's default
   first page of 20. Do not assume `limit = -1` is supported: inspect the Arcane handler and SDK
   semantics, then use explicit paging unless an unlimited query is documented and safely bounded.
 - **Acceptance criteria:**
-  - [ ] The server and SDK behavior for page size, start, limit, ordering, and terminal-page detection is
+  - [x] The server and SDK behavior for page size, start, limit, ordering, and terminal-page detection is
     documented in focused tests or issue evidence.
-  - [ ] An environment with more than 20 containers displays and filters across the full set without
+  - [x] An environment with more than 20 containers displays and filters across the full set without
     duplicates, omissions, or infinite requests.
-  - [ ] Search/status filters are proven to run after complete loading, or are moved server-side with
+  - [x] Search/status filters are proven to run after complete loading, or are moved server-side with
     equivalent semantics.
-  - [ ] Loading, partial-page failure, refresh, cancellation, and empty states are covered.
+  - [x] Loading, partial-page failure, refresh, cancellation, and empty states are covered.
+- **Completion evidence (2026-07-17):**
+  - Source pins: Android base `ca211804fcb3223b7b65abb0d13a97afad81799e`,
+    libarcane-kotlin `89c8dd58886a099cdbea9cb9362c9262ba5851d9`, and Arcane
+    `b501c49cc9f3d3433494f8334178ac65a59a013d`.
+  - The SDK forwards `start` and `limit`; Arcane defaults them to `0` and `20`, documents
+    `limit = -1` as one-page "show all", bypasses offset slicing for that value, and reports the complete
+    `totalItems`. The app therefore uses one finite show-all request, de-duplicates by container ID,
+    validates the unique count before publishing, and only then applies local search and filters.
+    This avoids offset traversal across a changing collection whose supported sort keys have no
+    unique secondary ordering.
+  - `.\gradlew.bat :app:testDebugUnitTest --tests
+    "app.getarcane.android.ui.screens.containers.ContainerPaginationTest" --rerun-tasks` passed all
+    13 focused tests (0 failures, 0 errors, 0 skipped).
+  - `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug` passed all 97 unit tests and produced
+    the debug APK; `git diff --check` passed.
 
 - [ ] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
 
@@ -128,6 +144,10 @@ The standard checks are:
 - **Scope:** Inventory every list call whose UI or calculation claims fleet-wide or complete
   results. Prioritize environments, dashboard totals/cards, updates, all-environment image updates,
   and environment management.
+- **PAR-003 follow-up:** Evaluate a reusable complete-list pattern that selects an endpoint-supported
+  show-all request or stable offset traversal and consistently handles count validation,
+  de-duplication, cancellation, and atomic failure. Keep call-site inventory and changes within
+  PAR-004.
 - **Acceptance criteria:**
   - [ ] A checked inventory records each caller as intentionally paged, intentionally bounded, or fixed.
   - [ ] All complete-environment callers work with more than 20 environments.

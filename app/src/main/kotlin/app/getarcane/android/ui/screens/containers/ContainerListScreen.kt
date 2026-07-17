@@ -68,9 +68,15 @@ import app.getarcane.android.ui.theme.StatusRunning
 import app.getarcane.android.ui.theme.StatusUnknown
 import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.container.ContainerSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-private enum class StateFilter(val label: String) { All("All"), Running("Running"), Stopped("Stopped") }
+private val ContainerStateFilter.label: String
+    get() = when (this) {
+        ContainerStateFilter.All -> "All"
+        ContainerStateFilter.Running -> "Running"
+        ContainerStateFilter.Stopped -> "Stopped"
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,29 +87,40 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
 
-    var state by remember { mutableStateOf<Loadable<List<ContainerSummary>>>(Loadable.Loading) }
+    var loadState by remember {
+        mutableStateOf(ContainerListLoadState<List<ContainerSummary>>())
+    }
     var search by remember { mutableStateOf("") }
     var sortAsc by remember { mutableStateOf(true) }
-    var filter by remember { mutableStateOf(StateFilter.All) }
+    var filter by remember { mutableStateOf(ContainerStateFilter.All) }
     var updateFilter by remember { mutableStateOf(ResourceUpdateFilter.ALL) }
     var refreshKey by remember { mutableStateOf(0) }
-    var refreshing by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(envId.rawValue, refreshKey) {
         if (client == null) return@LaunchedEffect
-        if (state !is Loadable.Success) state = Loadable.Loading
-        state = try {
-            Loadable.Success(
-                client.containers.list(
-                    envId = envId,
-                    query = SearchPaginationSort(start = 0, limit = -1),
-                ).data,
+        loadState = beginContainerReload(loadState)
+        loadState = try {
+            completeContainerLoad(
+                loadCompleteContainerCollection(
+                    idOf = { it.id },
+                    loadAll = {
+                        val response = client.containers.list(
+                            envId = envId,
+                            query = SearchPaginationSort(start = 0, limit = -1),
+                        )
+                        CompleteContainerResponse(
+                            items = response.data,
+                            totalItems = response.pagination.totalItems,
+                        )
+                    },
+                ),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
-            Loadable.Error(friendlyErrorMessage(e))
+            failContainerLoad(friendlyErrorMessage(e))
         }
-        refreshing = false
     }
 
     fun act(block: suspend () -> Unit) {
@@ -124,7 +141,7 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
                             DropdownMenuItem(text = { Text("Z–A") }, onClick = { sortAsc = false; menuOpen = false }, leadingIcon = { if (!sortAsc) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             HorizontalDivider()
                             Text("Filter", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(start = 12.dp, top = 8.dp))
-                            StateFilter.entries.forEach { f ->
+                            ContainerStateFilter.entries.forEach { f ->
                                 DropdownMenuItem(text = { Text(f.label) }, onClick = { filter = f; menuOpen = false }, trailingIcon = { if (filter == f) Icon(Icons.AutoMirrored.Filled.Sort, null) })
                             }
                             HorizontalDivider()
@@ -148,31 +165,31 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             )
             PullToRefreshBox(
-                isRefreshing = refreshing,
-                onRefresh = { refreshing = true; refreshKey++ },
+                isRefreshing = loadState.refreshing,
+                onRefresh = {
+                    loadState = beginContainerRefresh(loadState)
+                    refreshKey++
+                },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                when (val s = state) {
+                when (val s = loadState.content) {
                     is Loadable.Loading -> SkeletonListLoadingView()
                     is Loadable.Error -> ContentUnavailable("Error", Icons.Outlined.Inventory2, s.message, "Refresh") { refreshKey++ }
                     is Loadable.Success -> {
                         val pinnedIds = pinned.pinnedIds(PinnedItemsStore.Kind.CONTAINER, envId)
-                        val filtered = s.value.filter { c ->
-                            (filter == StateFilter.All ||
-                                (filter == StateFilter.Running && c.isRunning) ||
-                                (filter == StateFilter.Stopped && !c.isRunning)) &&
-                                updateFilter.matches(c.hasAvailableUpdate) &&
-                                (search.isBlank() ||
-                                    c.names.any { it.contains(search, true) } ||
-                                    c.image.contains(search, true))
-                        }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
-                            .let { if (sortAsc) it else it.reversed() }
+                        val filtered = filterAndSortContainers(
+                            containers = s.value,
+                            search = search,
+                            stateFilter = filter,
+                            updateFilter = updateFilter,
+                            sortAscending = sortAsc,
+                        )
 
                         val pinnedItems = filtered.filter { it.id in pinnedIds }
                         val running = filtered.filter { it.id !in pinnedIds && it.isRunning }
                         val stopped = filtered.filter { it.id !in pinnedIds && !it.isRunning }
 
-                        if (filtered.isEmpty() && search.isBlank() && filter == StateFilter.All && updateFilter == ResourceUpdateFilter.ALL) {
+                        if (filtered.isEmpty() && search.isBlank() && filter == ContainerStateFilter.All && updateFilter == ResourceUpdateFilter.ALL) {
                             ContentUnavailable("No Containers", Icons.Outlined.Inventory2, "No containers found in this environment.", "Refresh") { refreshKey++ }
                         } else {
                             LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp)) {
