@@ -15,6 +15,25 @@ a GitHub release unless the user explicitly requests it.
 
 Always inspect `git status` first and preserve unrelated local changes and untracked files.
 
+## Parity Task and PR Workflow
+
+For Android parity work, follow the full
+[parity delivery workflow](docs/parity-delivery-workflow.md) and these mandatory rules:
+
+- Revalidate current `main`, recent commits, and the canonical parity task before coding.
+- Treat `docs/ios-parity-task-list.md` as canonical. Before publication, reconcile task status,
+  checkboxes, acceptance criteria, revision pins, validation evidence, pending manual/device tests,
+  and scoped follow-ups.
+- Complete focused tests, the applicable full build/test baseline, an independent final diff review,
+  and accurate documentation before requesting publication.
+- Treat commit, feature-branch push, PR creation, and PR merge as separate authorization boundaries.
+- When PR creation is authorized, open a tested, documented change as ready for review, not draft.
+- Retrieve CI results, the full Greptile review, and inline comments. Address higher-risk findings,
+  reply in their original threads, resolve verified fixes, and report review readiness after fresh
+  green CI.
+- Never merge without separate explicit authorization. Honor the active task's scope, dependencies,
+  and holds.
+
 ## Architecture
 
 - `app/src/main/kotlin/app/getarcane/android/core/` — client ownership, authentication, preferences,

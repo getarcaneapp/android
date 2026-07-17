@@ -6,6 +6,9 @@ This is the working backlog for bringing Arcane Android to product-outcome parit
 turns the findings in [the pinned gap analysis](ios-android-gap-analysis.md) into issue-sized work;
 it does not repeat that research.
 
+Use the [Android parity delivery workflow](parity-delivery-workflow.md) when taking an item from
+this canonical backlog through local validation and a review-ready pull request.
+
 The source comparison is pinned to:
 
 - iOS `03f2f3d11e40f759ca62f0207bb3d59418a42933`
