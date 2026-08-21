@@ -274,9 +274,9 @@ The standard checks are:
   - [ ] Backup/restore behavior is checked on a supported emulator or documented platform test.
   - [ ] No machine-specific paths, secrets, or backup artifacts are committed.
 
-- [ ] **PAR-008 — Audit coroutine cancellation and stream ownership**
+- [x] **PAR-008 — Audit coroutine cancellation and stream ownership**
 
-- **Status:** Done/verify
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Find broad exception handling in stores and streams, rethrow `CancellationException`,
@@ -296,8 +296,9 @@ The standard checks are:
     refresh, paging, reconnect, environment-removal, and client-replacement cancellation.
   - `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 143 unit tests and assembled the
     debug APK; `git diff --check` passed.
-  - Physical-device/live-server verification is pending for reconnect, environment switching, and
-    leaving each affected streaming screen while work is active.
+  - Michael's physical-device/live-server smoke test passed dashboard reconnect, environment
+    switching without stale stream content, Activity Center refresh and screen departure, container
+    Logs/Stats/Terminal departure and reopen, and recovery after force-stop.
 
 - [ ] **PAR-009 — Persist and apply Light/Dark/Auto appearance**
 
