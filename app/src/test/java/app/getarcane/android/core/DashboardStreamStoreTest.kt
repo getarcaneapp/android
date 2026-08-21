@@ -1,5 +1,6 @@
 package app.getarcane.android.core
 
+import app.getarcane.sdk.errors.ArcaneError
 import app.getarcane.sdk.models.container.ContainerStatusCounts
 import app.getarcane.sdk.models.environment.Environment
 import app.getarcane.sdk.models.image.ImageUsageCounts
@@ -14,6 +15,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -303,6 +305,60 @@ class DashboardStreamStoreTest {
         assertEquals(0, client.active)
     }
 
+    @Test
+    fun unsupportedStreamStopsReconnectAndResetsForAReplacementClient() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val unsupportedClient = UnsupportedStreamClient()
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(unsupportedClient)
+            store.start()
+            yield()
+
+            assertTrue(store.streamUnsupported)
+            assertFalse(store.streamFailed)
+            assertFalse(store.isStreaming)
+            assertEquals(1, unsupportedClient.started)
+
+            store.retry()
+            assertEquals(1, unsupportedClient.started)
+
+            store.configure(HangingDashboardStreamClient)
+            store.start()
+            assertFalse(store.streamUnsupported)
+            assertTrue(store.isStreaming)
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun repeatedTransportFailuresEnterBoundedIdleRetry() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val client = FailingStreamClient()
+        val store = DashboardStreamStore(
+            scope = scope,
+            maxReconnectAttempts = 2,
+            maxReconnectDelayMillis = 1,
+            idleRetryMillis = 60_000,
+        )
+        try {
+            store.configure(client)
+            store.start()
+            withTimeout(1_000) {
+                while (!store.streamFailed) yield()
+            }
+
+            assertEquals(3, client.started)
+            assertTrue(store.isStreaming)
+            assertFalse(store.connected)
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
     private fun snapshotEvent(environmentId: String, running: Int, stopped: Int, images: Int): DashboardStreamEvent =
         DashboardStreamEvent(
             type = "snapshot",
@@ -391,4 +447,29 @@ private class CountingSnapshotClient : DashboardStreamClient {
             active--
         }
     }
+}
+
+private class UnsupportedStreamClient : DashboardStreamClient {
+    var started = 0
+
+    override fun stream(): Flow<DashboardStreamEvent> = flow {
+        started++
+        yield()
+        throw ArcaneError.NotFound
+    }
+
+    override suspend fun snapshot(environmentId: String): DashboardSnapshot =
+        error("snapshot should not be called")
+}
+
+private class FailingStreamClient : DashboardStreamClient {
+    var started = 0
+
+    override fun stream(): Flow<DashboardStreamEvent> = flow {
+        started++
+        throw ArcaneError.Transport("offline")
+    }
+
+    override suspend fun snapshot(environmentId: String): DashboardSnapshot =
+        error("snapshot should not be called")
 }

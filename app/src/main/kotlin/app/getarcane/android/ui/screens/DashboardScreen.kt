@@ -76,6 +76,7 @@ import app.getarcane.android.core.ArcaneDashboardStreamClient
 import app.getarcane.android.core.DashboardActionItemKind
 import app.getarcane.android.core.DashboardActionItemSeverity
 import app.getarcane.android.core.DashboardEnvironmentStreamState
+import app.getarcane.android.core.DashboardStreamAggregateCounts
 import app.getarcane.android.core.DashboardStreamStore
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
@@ -129,6 +130,21 @@ internal data class DashTotals(
     val updates: Int?,
     val stopped: Int,
 )
+
+internal fun displayedDashboardTotals(
+    streamAggregate: DashboardStreamAggregateCounts?,
+    restFallback: DashTotals?,
+    streamUpdateCount: Int?,
+): DashTotals? = streamAggregate?.let { aggregate ->
+    DashTotals(
+        running = aggregate.runningContainers,
+        total = aggregate.totalContainers,
+        images = aggregate.totalImages,
+        volumes = restFallback?.volumes,
+        updates = streamUpdateCount,
+        stopped = aggregate.stoppedContainers,
+    )
+} ?: restFallback
 
 internal enum class NeedsAttentionSeverity { Critical, Warning }
 
@@ -196,8 +212,7 @@ fun DashboardScreen(
             .forEach { statsHistory.remove(it) }
 
         coroutineScope {
-            enabledEnvironmentIds
-                .take(DashboardStatsMaxStreams)
+            dashboardStatsStreamEnvironmentIds(enabledEnvironmentIds)
                 .forEachIndexed { index, id ->
                     launch {
                         delay(150L * (index + 1))
@@ -379,16 +394,11 @@ fun DashboardScreen(
                     )
                 }
                 item {
-                    val t = streamStore.aggregate?.let { aggregate ->
-                        DashTotals(
-                            running = aggregate.runningContainers,
-                            total = aggregate.totalContainers,
-                            images = aggregate.totalImages,
-                            volumes = totals?.volumes,
-                            updates = displayedImageUpdateCount,
-                            stopped = aggregate.stoppedContainers,
-                        )
-                    } ?: totals
+                    val t = displayedDashboardTotals(
+                        streamAggregate = streamStore.aggregate,
+                        restFallback = totals,
+                        streamUpdateCount = displayedImageUpdateCount,
+                    )
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             DashboardTile("Updates", t?.updates?.let { "$it" } ?: "—", Icons.Filled.Autorenew, ArcaneGreen, Modifier.weight(1f)) {
