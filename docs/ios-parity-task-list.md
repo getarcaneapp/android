@@ -227,7 +227,10 @@ The standard checks are:
   - A 2026-08-21 physical-device comparison found Android reporting 11 dashboard updates while the
     Arcane dashboard reported 4. Android was counting raw images with updates instead of Arcane's
     impacted-resource action items. The mapping now uses initial and streamed dashboard action-item
-    totals and has focused regression coverage; follow-up device confirmation is pending.
+    totals and has focused regression coverage. The first retest remained at the loading placeholder
+    because the SDK's action-items-only and aggregate-overview endpoints are not exposed by the
+    pinned Arcane server revision; Android now reads action items from the supported per-environment
+    dashboard snapshot instead. Follow-up device confirmation is pending.
 
 - [ ] **PAR-005 — Revalidate OIDC and admin-tab navigation**
 

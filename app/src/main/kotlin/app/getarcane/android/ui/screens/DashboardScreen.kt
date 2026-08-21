@@ -532,7 +532,7 @@ private suspend fun loadDashboardImageUpdateCount(
         coroutineScope {
             envs.map { environment ->
                 async {
-                    client.dashboard.actionItems(EnvironmentId(environment.id)).imageUpdateActionCount()
+                    client.dashboard.snapshot(EnvironmentId(environment.id)).actionItems.imageUpdateActionCount()
                 }
             }.awaitAll().sum()
         }
