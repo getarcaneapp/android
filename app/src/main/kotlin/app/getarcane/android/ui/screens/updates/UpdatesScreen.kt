@@ -29,10 +29,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.loadCompleteEnvironments
 import app.getarcane.android.nav.PopToRootOnSignal
 import app.getarcane.android.ui.components.StatusBadge
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.environment.Environment
+import kotlinx.coroutines.CancellationException
 
 /**
  * Updates tab with its own nested back stack. Mirrors the iOS `UpdatesView`:
@@ -49,7 +51,13 @@ fun UpdatesScreen(popToRootSignal: Int = 0) {
 
     LaunchedEffect(client) {
         if (client == null) return@LaunchedEffect
-        environments = runCatching { client.environments.list().data }.getOrDefault(emptyList())
+        environments = try {
+            loadCompleteEnvironments { query -> client.environments.list(query) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            emptyList()
+        }
     }
 
     fun launch(mode: PickerMode) {

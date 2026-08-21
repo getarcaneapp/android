@@ -15,6 +15,24 @@ import org.junit.Test
 
 class DashboardNeedsAttentionMapperTest {
     @Test
+    fun failedActivityRowUsesTheCompleteFleetCount() {
+        val items = buildNeedsAttentionItems(
+            environments = emptyList(),
+            streamStates = emptyMap(),
+            totals = null,
+            failedActivityCount = 27,
+            onOpenEnvironment = {},
+            onOpenContainers = {},
+            onOpenUpdates = {},
+            onOpenVulnerabilities = {},
+            onOpenApiKeys = {},
+            onOpenActivities = {},
+        )
+
+        assertEquals(27, items.single { it.id == "failed-activities" }.count)
+    }
+
+    @Test
     fun actionItemsAddVulnerabilitiesAndApiKeysWithoutDroppingExistingRows() {
         val vulnerabilityTargets = mutableListOf<DashboardActionTargetEnvironment>()
         var openedApiKeys = false
@@ -46,7 +64,7 @@ class DashboardNeedsAttentionMapperTest {
                 updates = 4,
                 stopped = 3,
             ),
-            failedActivities = emptyList(),
+            failedActivityCount = 0,
             onOpenEnvironment = {},
             onOpenContainers = {},
             onOpenUpdates = {},
@@ -113,7 +131,7 @@ class DashboardNeedsAttentionMapperTest {
                 ),
             ),
             totals = null,
-            failedActivities = emptyList(),
+            failedActivityCount = null,
             onOpenEnvironment = {},
             onOpenContainers = {},
             onOpenUpdates = {},

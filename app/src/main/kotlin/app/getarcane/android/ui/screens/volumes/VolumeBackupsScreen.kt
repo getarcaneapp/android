@@ -58,10 +58,12 @@ import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.completeListQuery
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.theme.ArcaneTeal
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.volume.BackupEntry
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,7 +95,13 @@ fun VolumeBackupsScreen(name: String, onBack: () -> Unit) {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            Loadable.Success(client.volumes.listBackups(envId = envId, name = name, query = SearchPaginationSort(limit = 100)).data)
+            Loadable.Success(
+                loadCompletePaginatedCollection("Volume backup", BackupEntry::id) {
+                    client.volumes.listBackups(envId = envId, name = name, query = completeListQuery())
+                },
+            )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

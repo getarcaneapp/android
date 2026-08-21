@@ -2,17 +2,16 @@ package app.getarcane.android.ui.screens.containers
 
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.ResourceUpdateFilter
+import app.getarcane.android.core.CompleteListResponse
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.hasAvailableUpdate
+import app.getarcane.android.core.IncompleteCollectionException
 import app.getarcane.android.core.isRunning
+import app.getarcane.android.core.loadCompleteCollection
 import app.getarcane.sdk.models.container.ContainerSummary
 
-internal data class CompleteContainerResponse<T>(
-    val items: List<T>,
-    val totalItems: Long,
-)
-
-internal class IncompleteContainerCollectionException(message: String) : IllegalStateException(message)
+internal typealias CompleteContainerResponse<T> = CompleteListResponse<T>
+internal typealias IncompleteContainerCollectionException = IncompleteCollectionException
 
 /**
  * Normalizes the server's documented single-response "show all" result. The Arcane container
@@ -23,22 +22,7 @@ internal suspend fun <T> loadCompleteContainerCollection(
     idOf: (T) -> String,
     loadAll: suspend () -> CompleteContainerResponse<T>,
 ): List<T> {
-    val response = loadAll()
-    val itemsById = linkedMapOf<String, T>()
-    response.items.forEach { item -> itemsById.putIfAbsent(idOf(item), item) }
-
-    val rawItemCount = response.items.size.toLong()
-    val uniqueItemCount = itemsById.size.toLong()
-    if (response.totalItems >= 0 &&
-        response.totalItems != rawItemCount &&
-        response.totalItems != uniqueItemCount
-    ) {
-        throw IncompleteContainerCollectionException(
-            "Container response counts: raw=$rawItemCount, unique=$uniqueItemCount; " +
-                "server reported ${response.totalItems}",
-        )
-    }
-    return itemsById.values.toList()
+    return loadCompleteCollection("Container", idOf, loadAll)
 }
 
 internal data class ContainerListLoadState<T>(

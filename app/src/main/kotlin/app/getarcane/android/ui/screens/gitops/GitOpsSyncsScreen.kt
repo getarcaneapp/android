@@ -53,6 +53,8 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.COMPLETE_LIST_LIMIT
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ResourceIcon
 import app.getarcane.android.ui.screens.jobs.relativeTime
@@ -63,6 +65,7 @@ import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.models.gitops.CreateGitOpsSync
 import app.getarcane.sdk.models.gitops.GitOpsSync
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -85,7 +88,13 @@ fun GitOpsSyncsScreen() {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            Loadable.Success(client.gitops.listSyncsPaginated(limit = 100, envId = envId).data)
+            Loadable.Success(
+                loadCompletePaginatedCollection("GitOps sync", GitOpsSync::id) {
+                    client.gitops.listSyncsPaginated(limit = COMPLETE_LIST_LIMIT, envId = envId)
+                },
+            )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

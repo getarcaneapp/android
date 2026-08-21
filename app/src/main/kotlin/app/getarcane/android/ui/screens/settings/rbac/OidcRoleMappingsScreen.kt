@@ -49,7 +49,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.COMPLETE_LIST_LIMIT
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.loadCompleteEnvironments
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.screens.settings.FormErrorRow
@@ -60,7 +63,6 @@ import app.getarcane.android.ui.screens.settings.SettingsListScaffold
 import app.getarcane.android.ui.theme.ArcaneIndigo
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.errors.ArcaneError
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.environment.Environment
 import app.getarcane.sdk.models.role.CreateOidcRoleMapping
 import app.getarcane.sdk.models.role.OidcRoleMapping
@@ -70,6 +72,7 @@ import app.getarcane.sdk.models.role.UpdateOidcRoleMapping
 import app.getarcane.sdk.models.user.hasAnyPermission
 import app.getarcane.sdk.models.role.Permission
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -103,10 +106,18 @@ fun OidcRoleMappingsScreen() {
         state = try {
             coroutineScope {
                 val mappings = async { client.oidcRoleMappings.list() }
-                val roles = async { client.roles.listPaginated(limit = 100) }
-                val envs = async { client.environments.list(SearchPaginationSort(start = 0, limit = 100)) }
-                Loadable.Success(OidcData(mappings.await(), roles.await().data, envs.await().data))
+                val roles = async {
+                    loadCompletePaginatedCollection("Role", Role::id) {
+                        client.roles.listPaginated(limit = COMPLETE_LIST_LIMIT)
+                    }
+                }
+                val envs = async {
+                    loadCompleteEnvironments { query -> client.environments.list(query) }
+                }
+                Loadable.Success(OidcData(mappings.await(), roles.await(), envs.await()))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

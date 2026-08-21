@@ -55,6 +55,7 @@ import app.getarcane.android.core.LocalPinnedStore
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.PinnedItemsStore
 import app.getarcane.android.core.ResourceUpdateFilter
+import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.hasAvailableUpdate
@@ -66,7 +67,6 @@ import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.StatusRunning
 import app.getarcane.android.ui.theme.StatusUnknown
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.container.ContainerSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -107,11 +107,12 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
                     loadAll = {
                         val response = client.containers.list(
                             envId = envId,
-                            query = SearchPaginationSort(start = 0, limit = -1),
+                            query = completeListQuery(),
                         )
                         CompleteContainerResponse(
                             items = response.data,
                             totalItems = response.pagination.totalItems,
+                            success = response.success,
                         )
                     },
                 ),

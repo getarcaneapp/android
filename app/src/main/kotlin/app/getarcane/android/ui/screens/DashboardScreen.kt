@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
+import app.getarcane.android.core.loadCompleteEnvironments
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.getarcane.android.core.formatBytes
@@ -80,7 +81,6 @@ import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.nav.AppTab
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
-import app.getarcane.android.ui.screens.activities.sortTime
 import app.getarcane.android.ui.screens.settings.FormErrorRow
 import app.getarcane.android.ui.screens.settings.FormSuccessRow
 import app.getarcane.android.ui.screens.settings.LabeledPicker
@@ -92,7 +92,6 @@ import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.android.ui.theme.ArcaneTeal
 import app.getarcane.sdk.EnvironmentId
-import app.getarcane.sdk.models.activity.Activity
 import app.getarcane.sdk.models.activity.ActivityStatus
 import app.getarcane.sdk.models.base.SortOrder
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentOverview
@@ -165,7 +164,7 @@ fun DashboardScreen(
         mutableStateOf<Map<String, DashboardEnvironmentOverview>>(emptyMap())
     }
     var totals by remember { mutableStateOf<DashTotals?>(null) }
-    var failedActivities by remember { mutableStateOf<List<Activity>>(emptyList()) }
+    var failedActivityCount by remember { mutableStateOf<Int?>(null) }
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
     var statsRestartKey by remember { mutableStateOf(0) }
@@ -243,10 +242,24 @@ fun DashboardScreen(
     LaunchedEffect(refreshKey) {
         if (client == null) return@LaunchedEffect
         loading = true
-        val overview = runCatching { client.dashboard.environmentsOverview() }.getOrNull()
+        val overview = try {
+            client.dashboard.environmentsOverview()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
         val overviewEnvironments = overview?.environmentsForDashboard().orEmpty()
-        val envs = overviewEnvironments.ifEmpty {
-            runCatching { client.environments.list().data }.getOrElse {
+        var environmentLoadSucceeded = true
+        val envs = if (overviewEnvironments.isNotEmpty()) {
+            overviewEnvironments
+        } else {
+            try {
+                loadCompleteEnvironments { query -> client.environments.list(query) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                environmentLoadSucceeded = false
                 // Fall back to the active environment so the dashboard still shows a card.
                 listOf(Environment(id = envId.rawValue, name = manager.activeEnvironmentName, apiUrl = "", status = "active"))
             }
@@ -259,52 +272,58 @@ fun DashboardScreen(
         val overviewTotals = overview?.toDashTotals()
         totals = overviewTotals
 
-        // Aggregate the slow overview tiles across ALL environments (parallel, best-effort per env).
-        val volumesAndUpdates = runCatching {
+        // Aggregate the slow overview tiles across every environment. A partial fleet result is not
+        // displayed as a complete total.
+        val volumesAndUpdates = if (!environmentLoadSucceeded) {
+            null
+        } else try {
             coroutineScope {
                 envs.map { env ->
                     val e = EnvironmentId(env.id)
                     async {
-                        val vc = runCatching { client.volumes.counts(envId = e) }.getOrNull()
-                        val us = runCatching { client.images.updateSummary(envId = e) }.getOrNull()
+                        val vc = client.volumes.counts(envId = e)
+                        val us = client.images.updateSummary(envId = e)
                         intArrayOf(
-                            vc?.total ?: 0,
-                            us?.imagesWithUpdates ?: 0,
+                            vc.total,
+                            us.imagesWithUpdates,
                         )
                     }
                 }.awaitAll()
             }
-        }.getOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
         val volumes = volumesAndUpdates?.sumOf { it[0] }
         val updates = volumesAndUpdates?.sumOf { it[1] }
         totals = overviewTotals?.copy(volumes = volumes, updates = updates)
             ?: loadLegacyDashboardTotals(client, envs, volumes = volumes, updates = updates)
 
-        // Surface recent failed background work (RBAC servers only). Best-effort, per environment,
-        // limited to the 3 most recent failures across environments. Mirrors iOS `loadFailedWork()`.
-        failedActivities = if (supportsActivities) {
-            runCatching {
+        // Count failed background work across every environment. Do not publish a partial count when
+        // one environment fails, because the toolbar badge and attention row imply a fleet total.
+        failedActivityCount = if (supportsActivities && environmentLoadSucceeded) {
+            try {
                 coroutineScope {
                     envs.map { env ->
                         async {
-                            runCatching {
-                                client.activities.listPaginated(
-                                    envId = EnvironmentId(env.id),
-                                    order = SortOrder.DESCENDING,
-                                    start = 0,
-                                    limit = 20,
-                                    status = ActivityStatus.FAILED,
-                                ).data
-                            }.getOrDefault(emptyList())
+                            client.activities.listPaginated(
+                                envId = EnvironmentId(env.id),
+                                order = SortOrder.DESCENDING,
+                                start = 0,
+                                limit = 1,
+                                status = ActivityStatus.FAILED,
+                            ).pagination.totalItems
                         }
-                    }.awaitAll()
-                }.flatten()
-                    .filter { it.status == ActivityStatus.FAILED }
-                    .sortedByDescending { it.sortTime }
-                    .take(3)
-            }.getOrDefault(emptyList())
+                    }.awaitAll().sum()
+                }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                null
+            }
         } else {
-            emptyList()
+            0
         }
         loading = false
     }
@@ -316,7 +335,7 @@ fun DashboardScreen(
                 actions = {
                     if (supportsActivities) {
                         IconButton(onClick = { showActivities = true }) {
-                            ActivityCenterToolbarIcon(failedCount = failedActivities.size)
+                            ActivityCenterToolbarIcon(failedCount = failedActivityCount ?: 0)
                         }
                     }
                     IconButton(onClick = { pruneEnvironmentId = envId }) {
@@ -386,7 +405,7 @@ fun DashboardScreen(
                     environments = environments,
                     streamStates = streamStore.statesByEnvironmentId,
                     totals = totals,
-                    failedActivities = failedActivities,
+                    failedActivityCount = failedActivityCount,
                     onOpenEnvironment = { env ->
                         manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id)
                     },
@@ -511,18 +530,18 @@ private suspend fun loadLegacyDashboardTotals(
     volumes: Int?,
     updates: Int?,
 ): DashTotals? =
-    runCatching {
+    try {
         coroutineScope {
             envs.map { env ->
                 val e = EnvironmentId(env.id)
                 async {
-                    val sc = runCatching { client.containers.statusCounts(envId = e) }.getOrNull()
-                    val ic = runCatching { client.images.usageCounts(envId = e) }.getOrNull()
+                    val sc = client.containers.statusCounts(envId = e)
+                    val ic = client.images.usageCounts(envId = e)
                     intArrayOf(
-                        sc?.runningContainers ?: 0,
-                        sc?.totalContainers ?: 0,
-                        ic?.totalImages ?: 0,
-                        ((sc?.totalContainers ?: 0) - (sc?.runningContainers ?: 0)).coerceAtLeast(0),
+                        sc.runningContainers,
+                        sc.totalContainers,
+                        ic.totalImages,
+                        (sc.totalContainers - sc.runningContainers).coerceAtLeast(0),
                     )
                 }
             }.awaitAll()
@@ -536,7 +555,11 @@ private suspend fun loadLegacyDashboardTotals(
                 stopped = rows.sumOf { it[3] },
             )
         }
-    }.getOrNull()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        null
+    }
 
 @Composable
 private fun ActivityCenterToolbarIcon(failedCount: Int) {
@@ -685,7 +708,7 @@ internal fun buildNeedsAttentionItems(
     environments: List<Environment>,
     streamStates: Map<String, DashboardEnvironmentStreamState>,
     totals: DashTotals?,
-    failedActivities: List<Activity>,
+    failedActivityCount: Int?,
     onOpenEnvironment: (Environment) -> Unit,
     onOpenContainers: () -> Unit,
     onOpenUpdates: () -> Unit,
@@ -763,11 +786,11 @@ internal fun buildNeedsAttentionItems(
         )
     }
 
-    if (failedActivities.isNotEmpty()) {
+    if (failedActivityCount != null && failedActivityCount > 0) {
         items += NeedsAttentionItem(
             id = "failed-activities",
             title = "Failed activities",
-            count = failedActivities.size,
+            count = failedActivityCount,
             icon = Icons.Filled.Warning,
             severity = NeedsAttentionSeverity.Critical,
             action = onOpenActivities,

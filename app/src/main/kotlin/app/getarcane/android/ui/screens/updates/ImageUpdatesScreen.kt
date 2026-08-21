@@ -42,18 +42,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.CompleteListResponse
+import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.loadCompleteCollection
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.image.ImageUpdateInfo
+import app.getarcane.sdk.models.image.ImageSummary
 import app.getarcane.sdk.models.imageupdate.ImageUpdateResponse
 import app.getarcane.sdk.models.imageupdate.ImageUpdateSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-
-private const val IMAGES_PAGE_SIZE = 500
 
 /** True when the server's inline updateInfo carries an actual check result. Mirrors iOS `isDefinitive`. */
 private val ImageUpdateInfo.isDefinitive: Boolean
@@ -81,14 +83,22 @@ fun ImageUpdatesScreen(onRunUpdater: () -> Unit, onHistory: () -> Unit, actionsE
     suspend fun fetch() {
         if (client == null) return
         // Summary (best-effort).
-        summary = runCatching { client.images.updateSummary(envId = envId) }.getOrNull()
+        summary = try {
+            client.images.updateSummary(envId = envId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
 
         // Image list -> refs + inline update info.
         val refs: List<String>
         try {
-            val response = client.images.list(envId = envId, query = SearchPaginationSort(start = 0, limit = IMAGES_PAGE_SIZE))
-            val images = response.data
-            totalImages = response.pagination.totalItems.toInt()
+            val images = loadCompleteCollection("Image", ImageSummary::id) {
+                val response = client.images.list(envId = envId, query = completeListQuery())
+                CompleteListResponse(response.data, response.pagination.totalItems, response.success)
+            }
+            totalImages = images.size
             refs = images.flatMap { it.repoTags }.filter { it != "<none>:<none>" }
             errorMessage = if (summary == null) "Couldn't load images." else null
 
@@ -99,6 +109,8 @@ fun ImageUpdatesScreen(onRunUpdater: () -> Unit, onHistory: () -> Unit, actionsE
                 val response2 = info.asResponse()
                 for (tag in image.repoTags) if (tag != "<none>:<none>") byRef[tag] = response2
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             taggedRefs = emptyList()
             totalImages = 0
@@ -109,9 +121,14 @@ fun ImageUpdatesScreen(onRunUpdater: () -> Unit, onHistory: () -> Unit, actionsE
 
         // Merge with by-refs cache (its keys take precedence).
         if (refs.isNotEmpty()) {
-            runCatching { client.images.updateInfoByRefs(envId = envId, imageRefs = refs) }
-                .getOrNull()
-                ?.forEach { (k, v) -> if (v != null) byRef[k] = v.asResponse() }
+            try {
+                client.images.updateInfoByRefs(envId = envId, imageRefs = refs)
+                    .forEach { (k, v) -> if (v != null) byRef[k] = v.asResponse() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                // Inline update information remains usable when the cache lookup fails.
+            }
         }
     }
 

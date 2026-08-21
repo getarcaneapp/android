@@ -192,9 +192,9 @@ The standard checks are:
   - `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug` passed all 98 unit tests and produced
     the debug APK; `git diff --check` passed.
 
-- [ ] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
+- [x] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** PAR-003
 - **Scope:** Inventory every list call whose UI or calculation claims fleet-wide or complete
@@ -204,11 +204,27 @@ The standard checks are:
   show-all request or stable offset traversal and consistently handles count validation,
   de-duplication, cancellation, and atomic failure. Keep call-site inventory and changes within
   PAR-004.
+- **Audit record:** [Complete-list loading and checked caller inventory](complete-list-loading.md)
 - **Acceptance criteria:**
-  - [ ] A checked inventory records each caller as intentionally paged, intentionally bounded, or fixed.
-  - [ ] All complete-environment callers work with more than 20 environments.
-  - [ ] Shared paging logic has duplicate/empty/short/final-page, cancellation, and error coverage.
-  - [ ] UI copy does not claim complete totals when a view is intentionally bounded.
+  - [x] A checked inventory records each caller as intentionally paged, intentionally bounded, or fixed.
+  - [x] All complete-environment callers work with more than 20 environments.
+  - [x] Shared paging logic has duplicate/empty/short/final-page, cancellation, and error coverage.
+  - [x] UI copy does not claim complete totals when a view is intentionally bounded.
+- **Validation evidence (2026-08-21):**
+  - Source pins: Android base `fb0ac8f91b0acee6f0771a4f880208b74513beb8`,
+    libarcane-kotlin `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
+    `0fd8820822f49e2da25739306bc9bc401253fa9e`.
+  - Arcane's shared pagination contract documents `limit = -1` as a finite show-all request. The
+    shared Android loader uses that request, de-duplicates stable identities, validates success and
+    raw/unique totals, rejects malformed responses atomically, and propagates cancellation.
+  - Focused runs passed 26 tests across `CompleteListLoaderTest`, `ContainerPaginationTest`, and
+    `DashboardNeedsAttentionMapperTest` (0 failures, 0 errors, 0 skipped). The environment fixture
+    contains 125 rows and verifies the exact show-all query.
+  - `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 130 unit tests and assembled the
+    debug APK; `git diff --check` passed.
+  - No device/emulator or live server with more than 20 environments was available. This task has no
+    required device criterion; the server contract, shared 125-row test, call-site audit, and full
+    build provide the completion evidence.
 
 - [ ] **PAR-005 — Revalidate OIDC and admin-tab navigation**
 

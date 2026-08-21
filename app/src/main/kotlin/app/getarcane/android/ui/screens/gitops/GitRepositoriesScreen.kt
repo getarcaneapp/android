@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.COMPLETE_LIST_LIMIT
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ResourceIcon
 import app.getarcane.android.ui.theme.ArcaneGreen
@@ -55,6 +57,7 @@ import app.getarcane.android.ui.theme.ArcaneIndigo
 import app.getarcane.sdk.models.gitops.CreateGitRepository
 import app.getarcane.sdk.models.gitops.GitRepository
 import app.getarcane.sdk.models.gitops.UpdateGitRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -82,7 +85,13 @@ fun GitRepositoriesScreen() {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            Loadable.Success(client.gitops.listRepositoriesPaginated(limit = 100).data)
+            Loadable.Success(
+                loadCompletePaginatedCollection("Git repository", GitRepository::id) {
+                    client.gitops.listRepositoriesPaginated(limit = COMPLETE_LIST_LIMIT)
+                },
+            )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

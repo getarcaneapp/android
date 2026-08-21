@@ -59,8 +59,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.CompleteListResponse
+import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.loadCompleteCollection
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.screens.settings.FormSectionHeader
@@ -71,13 +75,13 @@ import app.getarcane.android.ui.screens.settings.Pill
 import app.getarcane.android.ui.screens.settings.SettingsListScaffold
 import app.getarcane.android.ui.screens.settings.CircleIcon
 import app.getarcane.android.ui.theme.ArcaneGreen
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.container.ContainerSummary
 import app.getarcane.sdk.models.project.ProjectDetails
 import app.getarcane.sdk.models.webhook.CreateWebhook
 import app.getarcane.sdk.models.webhook.UpdateWebhook
 import app.getarcane.sdk.models.webhook.Webhook
 import app.getarcane.sdk.models.webhook.WebhookCreated
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -258,11 +262,26 @@ private fun CreateWebhookDialog(onDismiss: () -> Unit, onCreated: (WebhookCreate
     LaunchedEffect(Unit) {
         if (client == null) return@LaunchedEffect
         loadingTargets = true
-        coroutineScope {
-            val c = async { runCatching { client.containers.list(envId = envId, query = SearchPaginationSort(start = 0, limit = 500)).data }.getOrDefault(emptyList()) }
-            val p = async { runCatching { client.projects.list(envId = envId, query = SearchPaginationSort(start = 0, limit = 500)).data }.getOrDefault(emptyList()) }
-            containers = c.await()
-            projects = p.await()
+        try {
+            coroutineScope {
+                val c = async {
+                    loadCompleteCollection("Container", ContainerSummary::id) {
+                        val response = client.containers.list(envId = envId, query = completeListQuery())
+                        CompleteListResponse(response.data, response.pagination.totalItems, response.success)
+                    }
+                }
+                val p = async {
+                    loadCompletePaginatedCollection("Project", ProjectDetails::id) {
+                        client.projects.list(envId = envId, query = completeListQuery())
+                    }
+                }
+                containers = c.await()
+                projects = p.await()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            error = friendlyErrorMessage(e)
         }
         loadingTargets = false
     }

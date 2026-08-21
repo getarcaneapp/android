@@ -38,12 +38,15 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.COMPLETE_LIST_LIMIT
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneIndigo
 import app.getarcane.sdk.models.user.User
 import app.getarcane.sdk.models.user.isAdmin
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Users list. Port of iOS `UsersView`. */
@@ -64,7 +67,13 @@ fun UsersScreen(onOpenUser: (String) -> Unit) {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            Loadable.Success(client.users.listPaginated(limit = 100).data)
+            Loadable.Success(
+                loadCompletePaginatedCollection("User", User::id) {
+                    client.users.listPaginated(limit = COMPLETE_LIST_LIMIT)
+                },
+            )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }
