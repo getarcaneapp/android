@@ -1,6 +1,6 @@
 # iOS-to-Android gap analysis
 
-Last reviewed: 2026-07-17
+Last reviewed: 2026-08-21
 
 This document compares Arcane's iOS application with the Android application to guide Android
 product planning. It is a source-analysis snapshot, not a promise that Android will reproduce every
@@ -12,27 +12,27 @@ The analysis is pinned to these product revisions:
 
 | Component | Revision | Notes |
 | --- | --- | --- |
-| iOS | [`03f2f3d11e40f759ca62f0207bb3d59418a42933`](https://github.com/getarcaneapp/iOS/tree/03f2f3d11e40f759ca62f0207bb3d59418a42933) | `main`, app version 0.5.4, dated 2026-07-10 |
-| iOS resolved Swift SDK | [`c1016b2e0aaebffc112893179560c2462c1a013a`](https://github.com/getarcaneapp/libarcane-swift/tree/c1016b2e0aaebffc112893179560c2462c1a013a) | `libarcane-swift` revision resolved by the iOS project |
-| Android | [`c500c262e4e71b094e16ca8afc049f2286d22cfa`](https://github.com/getarcaneapp/android/tree/c500c262e4e71b094e16ca8afc049f2286d22cfa) | `origin/main` product baseline |
+| iOS | [`2d7f277fe322d67c88d62b826f068fa92785e3fe`](https://github.com/getarcaneapp/ios/tree/2d7f277fe322d67c88d62b826f068fa92785e3fe) | `main`, app version 0.7.0, dated 2026-08-18 |
+| iOS resolved Swift SDK | [`38b5c32dde5b17eb0bc22b1c13fb4204699c8faf`](https://github.com/getarcaneapp/libarcane-swift/tree/38b5c32dde5b17eb0bc22b1c13fb4204699c8faf) | `libarcane-swift` revision resolved by the iOS project |
+| Android | [`10b26b2275fb8b9772ff69f2e1f6418225be532a`](https://github.com/getarcaneapp/android/tree/10b26b2275fb8b9772ff69f2e1f6418225be532a) | Current `origin/main`; product code is unchanged after the container completeness work in `fdfabe3` |
 | Kotlin SDK | [`991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`](https://github.com/getarcaneapp/libarcane-kotlin/tree/991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8) | `origin/main` product baseline |
 
-The Android and Kotlin SDK checkouts also had `agent/add-agent-guidance` commits at review time.
-Those commits add only repository guidance and are not treated as product functionality.
+The previous analysis was pinned to iOS 0.5.4. This refresh inspected all 14 iOS commits through
+0.7.0, the resolved Swift SDK, the unchanged Kotlin SDK head, Android `origin/main`, and the
+canonical backlog. The Android commits after the old product pin are documentation plus the
+completed container-list hardening recorded as PAR-003.
+
+Parity status also reflects the locally validated PAR-001 session-restoration hardening and PAR-002
+server-session scoping layered on the pinned Android base. Their exact implementation and validation
+evidence is maintained in the canonical task list.
 
 ### Method and limitations
 
 This is a static source comparison of application structure, visible routes, stores, service calls,
-models, persistence, tests, and release automation. No iOS build was run because the review was
-performed on Windows. No emulator/device or live Arcane server was used, and neither application's
-complete runtime behavior was manually exercised. Items that depend on server version, runtime
-permissions, signing, background execution limits, or App Store/Play distribution should therefore
-be validated before implementation decisions are made.
-
-The current Android/Kotlin composite checkout did pass
-`./gradlew :app:testDebugUnitTest :app:assembleDebug` during this analysis. That result confirms the
-reviewed source compiles and its JVM unit tests pass; it does not validate device or live-server
-behavior.
+models, persistence, tests, release notes, and release automation. No iOS build, emulator/device,
+or live Arcane server was used. Items that depend on server version, WebAuthn/passkey configuration,
+runtime permissions, signing, background execution limits, or distribution must therefore be
+validated before implementation decisions are final.
 
 The comparison distinguishes product capabilities from platform-specific mechanisms. For example,
 an iOS Live Activity does not imply that Android needs a literal copy; the Android question is
@@ -63,27 +63,30 @@ The largest difference is depth and continuity, not the count of resource screen
 mature application shell and operational layer: disk-backed stale-while-revalidate caching,
 adaptive tablet navigation, profile management, a complete project-file workspace, richer log
 workflows, image attestations, persistent deployment progress, and several native entry points.
-iOS also contains an optional on-device AI assistant, although that implementation is tied to
-Apple's Foundation Models and should be treated as a product concept rather than a direct Android
-port.
+iOS 0.7.0 also adds passkey sign-in and MFA, scoped global variables, image layer history,
+configurable project deploy options, richer template discovery, activity-start feedback, and an
+interactive network-to-container topology. It removes the Arcane Assistant, so AI is no longer an
+iOS-parity gap.
 
-The most urgent Android work is smaller than those strategic gaps. Change-server can leave
-prior-server state or credentials alive; some admin destinations lose their drill-down callbacks
-when selected as main tabs; the appearance selector is non-persistent and does not drive the app
-theme; and Settings links point to the iOS repository. Those should be fixed before broad parity
-work. Separately, decide whether to expose the currently unreachable environment
-list/detail/test surface.
+The most urgent Android work is smaller than those strategic gaps. PAR-002 now closes the
+change-server state and credential-scoping defect. Some admin destinations still lose their
+drill-down callbacks when selected as main tabs; the appearance selector is non-persistent and does
+not drive the app theme; and Settings links point to the iOS repository. Those should be fixed
+before broad parity work. The old recommendation to expose a separate environment list is no longer
+a parity blocker: iOS 0.7.0 deliberately makes the dashboard its single fleet destination, which is
+compatible with Android's dashboard-plus-detail outcome.
 
 The recommended sequence is:
 
 1. Fix reachable-navigation and settings defects.
 2. Complete high-value daily workflows: project files, profile/account management, logs, image
-   attestations, and missing container actions.
+   attestations/history, passkeys, variables, deploy options, template discovery, and missing
+   container actions.
 3. Add resilient cached reads and persistent long-running operation state.
 4. Add Android-native equivalents for adaptive navigation, widgets, shortcuts, deep links, and
    ongoing-operation notifications.
-5. Consider optional strategic features such as AI assistance and multi-server profiles only after
-   the operational foundation is reliable.
+5. Consider optional product expansion such as multi-server profiles only after the operational
+   foundation is reliable.
 
 ## Detailed capability matrix
 
@@ -108,9 +111,10 @@ The recommended sequence is:
 | Server setup | Server URL setup with DNS/bootstrap retry and local-server allowances. | URL normalization and server setup exist. | **Parity** for the primary outcome; compare error recovery during live testing. |
 | Password authentication | Password login, secure persisted credentials/tokens, session restore, and logout. | Password login, encrypted token storage, restoration, and logout via `ArcaneClientManager`. | **Parity.** |
 | OIDC | Uses `ASWebAuthenticationSession` and public provider information. | Current and legacy OIDC callback/deep-link handling. | **Parity** at the product level; device-test provider variants. |
+| Passkeys and MFA | Passkey sign-in, passkey enrollment/rename/delete, password or passkey step-up, MFA policy, and recovery on supported Arcane servers. | No passkey or MFA flow exists, and the Kotlin SDK has no passkey service or Android credential bridge. | **Android plus SDK gap.** Add the typed Arcane contract to `libarcane-kotlin`, then use Android Credential Manager with capability-gated login, recovery, and account settings. |
 | Demo mode | Demo provisioning and session behavior. | Demo provisioning, heartbeat, and countdown. | **Parity**, with Android exposing explicit heartbeat/countdown behavior. |
 | User profile | View/update display name and email, change password, avatar/Gravatar handling, sign out, and change server. | Current-user data is held for authorization, but no comparable end-user profile/account workflow was found. | **Android gap.** Add a profile route distinct from admin user management. |
-| Multiple server profiles | No complete multi-profile manager was identified; change-server flow exists. | One active server is persisted. `changeServer` only transitions to setup; stale client, user, capabilities, cookies, or tokens may survive, and stored tokens are not scoped by server. | **Shared profile gap plus Android security/correctness defect.** Immediately invalidate all prior-server state and scope credentials by server before considering profiles. |
+| Multiple server profiles | No complete multi-profile manager was identified; change-server flow exists. | One active server is persisted. PAR-002 canonicalizes its origin, scopes tokens and process caches, rotates client/session ownership, and durably clears the saved server and credential binding before exposing setup. | **Shared profile gap; single-server switching is hardened.** Keep multi-profile work deferred until cache, operation, and route identity are equally scoped. |
 | Biometric application lock | No core capability identified. | No core capability identified. | **Shared gap**, not required for iOS parity. Consider separately if threat modeling supports it. |
 
 ### Dashboard and environment management
@@ -120,7 +124,7 @@ The recommended sequence is:
 | Fleet dashboard | Fleet totals, server cards, stats/sparklines, needs-attention groups, failed activities, pinned resources/actions, update-all, and card actions for environment sync/system/upgrade/prune. | Fleet totals/cards, stats/sparklines, needs attention, failed activities, pins/actions, update-all, and per-environment prune/detail/active behavior; sync/system/upgrade card actions are absent. | **Partial.** Add the missing high-value card actions with permission and server-capability gating. |
 | Live dashboard updates | v2 stream with legacy fallback and bounded concurrent stats streams. | Dashboard streaming with reconnect behavior and resource statistics streams. | **Partial.** Validate fallback/version behavior and connection limits under many environments. |
 | Environment selection | Active environment selection and environment-aware navigation. | Active environment selection, detail/test, persistence, and client rebuild. | **Parity** for selection. |
-| Environment management | Neither pinned client exposes a confirmed full create/edit/delete workflow. | `ui/screens/environments/EnvironmentsScreen.kt` contains an unreachable list/detail/set-active/metadata/version/test surface; it is not full CRUD. | **Shared/undefined capability.** Decide the supported server workflow before adding full management. Android may separately expose its existing read/detail/test surface if that has product value. |
+| Environment management | The dashboard is the single fleet destination and opens environment details/actions; it does not claim full CRUD. | Dashboard cards open environment details and selection; a separate list/detail/test surface exists but is not a primary route or full CRUD. | **Parity** for the current read/select/detail outcome. Exposing the extra Android list is a product choice, not a parity prerequisite. |
 | Fleet pagination | Environment-backed views load the complete relevant fleet. | The SDK environment list defaults to 20. `DashboardScreen`, `UpdatesScreen`, `AllEnvironmentsImageUpdatesScreen`, and `EnvironmentListScreen` call it without pagination, silently omitting environments above 20. | **Android correctness defect.** Implement explicit paging or a deliberate complete-fleet query and test fleets of 0, 20, 21, and multiple pages. |
 | Offline dashboard snapshot | Disk cache and last-known server snapshots support stale display. | No disk-backed response cache/database was found. | **Android gap.** See the resilience section. |
 
@@ -134,7 +138,6 @@ The recommended sequence is:
 | Statistics | Live CPU, memory, network, and I/O presentation. | Live statistics and charts. | **Parity.** |
 | Logs | Search/filter, pause, timestamps, retention, ANSI rendering, copy/share/export. | Live logs and ANSI handling are present, but the iOS-level copy/share/export workflow was not identified. | **Partial.** Add select/copy/share/export and verify cancellation/reconnect behavior. |
 | Terminal | Interactive terminal with special keys, copy, and clear. | Interactive terminal exists. | **Partial to parity.** Device-test IME, lifecycle, special-key, and reconnect behavior. |
-| Ask AI from resource context | Resource-aware entry to the on-device assistant. | No AI assistant. | **Android gap**, but strategic and optional rather than core container parity. |
 
 ### Projects and Compose workflows
 
@@ -142,6 +145,7 @@ The recommended sequence is:
 | --- | --- | --- | --- |
 | Project list and lifecycle | Active/archived projects, create, deploy/redeploy, start/stop/restart, logs, archive/delete. | Active/archived projects, create from blank/template, lifecycle streams, logs, archive/delete. | **Parity** for broad lifecycle coverage. |
 | Project creation | Compose and `.env` input, templates, variable-resolution support. | Blank/template creation with Compose and `.env` input. | **Parity** for initial creation. |
+| Deploy options | Per-project deploy supports pull-policy and force-recreate choices and remembers them by server/environment/project. | The Kotlin SDK exposes `DeployOptions`, but Android always starts the default deploy stream and has no options UI or scoped preference. | **Android UI/state gap.** Add capability-safe options and scope persistence so settings cannot bleed across servers or projects. |
 | Existing project files | File tree, Compose/`.env` editor, save, create, rename, move, and delete. GitOps/archived projects are read-only where appropriate. | Existing-project Compose is effectively read-only; there is no complete file workspace. | **Major Android gap.** This is the highest-value feature-depth gap for users managing projects from mobile. |
 | Variable resolution | Resolution preview plus resolved YAML in the editing workflow. | Preview exists, but it is not part of a full editable existing-project workspace. | **Partial.** Fold it into the file editor rather than building another isolated preview. |
 | Persistent deployment progress | Operation store survives sheet dismissal; floating progress pill, activity IDs, reconnect/cancel, and background grace. | Streaming action screens exist, but no equivalent process-resilient or app-wide operation presentation was found. | **Android gap.** Add application-owned operation state and an ongoing notification where appropriate. |
@@ -160,6 +164,7 @@ release. Do not add application-local HTTP calls or duplicate DTOs.
 | Image inventory and lifecycle | List/detail, pull, streamed tar upload through `UploadImageView`, delete/prune, inspect/config/layers, and update workflows. | Filtered inventory, streamed pull, tar upload, remove/prune, inspect/config/layers, and update flows. | **Parity.** |
 | Vulnerability scanning | Scan, filter, ignore, and inspect vulnerabilities. Some DTOs are app-local raw REST because of an iOS SDK mismatch. | Scan/filter/ignore and aggregate/detail vulnerability flows are present through the Kotlin stack. | **Parity/Android strength.** Keep DTOs in the SDK and verify unknown values defensively. |
 | Image attestations | Attestation list/filter/detail and statement copy. | No attestation UI was identified; the pinned Kotlin SDK exposes attestation operations. | **Android UI gap.** Add the workflow using SDK types and confirm payload behavior against the target server. |
+| Image layer history | Image detail shows Docker layer history with command, size, date, and tags. | No image layer-history route exists. The Kotlin SDK exposes image build history, which is a different API, but not per-image Docker layer history. | **Android plus SDK gap.** Add the typed history endpoint first, then an environment- and digest-scoped detail tab. |
 | Image updates | Per-image and fleet update flows. | Per-image, update overview, updater, and fleet-update flows. | **Parity/Android strength.** Android has substantial explicit updater behavior. |
 
 ### Volumes, networks, and ports
@@ -167,7 +172,7 @@ release. Do not add application-local HTTP calls or duplicate DTOs.
 | Capability | iOS baseline | Android baseline | Status and action |
 | --- | --- | --- | --- |
 | Volumes | Create/remove/prune, detail, browser, backups, restore/delete/download. | Create/remove/prune, detail, browser, backups, restore/delete/download. | **Parity.** |
-| Network management | List/create/delete/detail plus a topology view. The current topology is a list rather than a graph. | List/create/delete/detail plus topology presented as nodes/list. | **Parity with a shared gap.** A graph is a future product enhancement, not an Android parity defect. |
+| Network management | List/create/delete/detail plus an interactive network-to-container diagram. | List/create/delete/detail plus topology presented as grouped rows. | **Partial/Android gap.** Preserve the readable list as an accessibility/fallback mode while adding a bounded interactive graph for useful topology parity. |
 | Network summary accuracy | Some internal/container-count values are stubbed in the iOS app. | Android data should be compared with server responses rather than copied from iOS summaries. | **Validate.** Do not treat known iOS stubs as a target. |
 | Ports | Read-only port inventory. | Read-only port inventory. | **Parity.** |
 
@@ -176,6 +181,7 @@ release. Do not add application-local HTTP calls or duplicate DTOs.
 | Capability | iOS baseline | Android baseline | Status and action |
 | --- | --- | --- | --- |
 | Activities | v2 activity stream, filtering, cancellation/clearing, environment context. | All-environment v2 live stream, filtering, cancel, and clear. | **Parity.** The pinned Kotlin SDK includes activity error/heartbeat support; validate event behavior against the target server. |
+| Activity-start feedback | User-configurable toasts surface user/system activity and open the app-wide Activity Center. | Activity Center and failed-count badge exist, but no configurable app-wide activity-start surface was found. | **Partial.** Treat this as a projection of the future operation/activity store, with bounded noise and permission-safe environment context. |
 | Events | Event inventory and details. | Event inventory and details. | **Parity.** |
 | Live event updates | Event presentation refreshes as server events arrive. | The Android screen loads paginated snapshots; no live polling or event stream refresh was identified. | **Partial.** Add lifecycle-aware polling or a server-supported stream, with visible refresh/error state. |
 | Jobs | Job inventory and actions/details. | Job surfaces are present. | **Parity at screen level; validate** live lifecycle operations. |
@@ -191,6 +197,9 @@ release. Do not add application-local HTTP calls or duplicate DTOs.
 | API keys | API key management. | API key management. | **Parity.** |
 | Roles and OIDC mappings | Role/RBAC and OIDC mapping administration. | Roles/RBAC and OIDC mapping administration. | **Parity** at screen level. |
 | Notification providers and webhooks | Provider-specific notification configuration and webhooks. | Notification and webhook configuration. | **Parity** in broad coverage; compare provider-specific validation. |
+| Global variables | v2 global variables support create/edit/delete, secret values, all/specific-environment scoping, sync status, and explicit sync. | Only Compose placeholder resolution and older per-environment template-variable SDK calls exist; there is no global-variable management route. | **Android plus SDK gap.** Model the current variables contract in the Kotlin SDK before adding permission-gated Android state and UI. |
+| Template discovery | Search, source filtering, metadata, preview, remote download, deploy, and registry management. | Registry CRUD, grouped browsing, preview, and deploy exist; search, source filters, rich metadata, and remote download are absent. | **Partial.** Complete the discovery/import workflow using existing typed template APIs and add paging/error coverage. |
+| Container registry names | Registries expose a user-facing repository name in addition to URL and credentials. | Android and the Kotlin SDK model URL/credentials but not the current optional name field. | **Android plus SDK gap.** Add the optional field defensively in the SDK and expose it in create/edit/list UI. |
 | Authentication/system/build/upgrade | Server authentication settings, system information/settings, builds, and upgrade. | Authentication, system, build, and upgrade surfaces. | **Parity** in broad coverage. |
 | Admin destinations as swappable tabs | Destinations retain their expected drill-down behavior. | Users, Notifications, System, and Roles use empty drill-down callbacks when selected as primary tabs in `nav/MainTabView.kt`; they work through Settings. | **Android defect.** Reuse one route owner or pass functional callbacks in both entry contexts. |
 | Documentation/support links | iOS repository links are appropriate to the app. | App Settings GitHub/issue links point to the iOS repository. | **Android defect.** Point source and issue links to the Android repository or a deliberate cross-project destination. |
@@ -224,7 +233,7 @@ These rows compare user outcomes, not identical APIs.
 | Share/export | Native log sharing/export. | Android Sharesheet and Storage Access Framework/MediaStore as appropriate. | **Partial.** Android already uses MediaStore/download and share primitives in some flows, but not consistently for logs. |
 | File input/output | Native pickers and share sheets. | Android file picker, MediaStore downloads, clipboard, share, and autofill are already used. | **Parity/Android strength.** |
 | Alternate application icon | Supported. | Launcher alias approach is possible but launcher-dependent. | **Optional platform difference**, not a parity priority. |
-| On-device AI | Apple Foundation Models on supported iOS 26 hardware, with streaming, read tools, and staged confirmed mutations. | If pursued, define provider, privacy boundary, device/server capability, tool permissions, and mandatory confirmation independently. | **Strategic Android gap**, not a literal port. |
+| AI assistant | Removed in iOS 0.7.0. | No AI assistant. | **No current parity gap.** Any future assistant is an independent product/security project. |
 
 No Android notification, widget, shortcut, share-in, resource app-link, QR setup, or biometric-lock
 system was identified at the baseline. These should not be delivered as one monolithic “native
@@ -243,12 +252,12 @@ features” project; each needs a clear user scenario and data-security review.
 
 | Capability | iOS baseline | Android baseline | Status and action |
 | --- | --- | --- | --- |
-| Unit tests | Approximately 19 XCTest methods across five files, focused mainly on utilities. | 19 JVM test files and roughly 84 test methods, with useful coverage of navigation, dashboard/updater logic, URL handling, and ANSI parsing. | **Android strength.** |
+| Unit tests | 29 XCTest methods across six files, still focused mainly on utilities and post-0.6 pagination/security regressions. | 24 JVM test files and 120 test methods, with useful coverage of authentication restoration, server credential/cache scoping, navigation, dashboard/updater logic, URL handling, ANSI parsing, and container completeness. | **Android strength.** |
 | UI/instrumented tests | No meaningful UI test suite identified. | Only the template/example instrumentation test was identified. | **Shared gap.** Add a small navigation/auth/destructive-confirmation suite before attempting broad UI automation. |
 | Integration/network contract tests | No broad suite identified. | No broad end-to-end contract suite identified. | **Shared gap.** SDK serialization/service tests should carry most wire-contract coverage. |
 | CI | No repository CI workflow was identified in the inspected iOS baseline. | CI uses JDK 21/API 35 and runs unit tests/build, with optional signed tag release support. | **Android strength.** |
 | Static quality/security gates | No comprehensive suite identified. | No lint, detekt, ktlint, instrumentation, or security scan gate was identified in CI. | **Android gap.** Add targeted gates incrementally; do not create a noisy all-at-once migration. |
-| Release maturity | Version 0.5.4/build 260710 and more distribution-oriented product surfaces. App Store status was not confirmed. | Version 0.1.0; minification disabled; repository messaging still warns that the app is not intended for devices. | **Android maturity gap.** Define alpha/beta support criteria before production claims. |
+| Release maturity | Version 0.7.0 and more distribution-oriented product surfaces. App Store status was not confirmed. | Version 0.1.0; minification disabled; repository messaging still warns that the app is not intended for devices. | **Android maturity gap.** Define alpha/beta support criteria before production claims. |
 | Release-note integrity | Notes correspond to iOS releases and platform behavior. | `ui/screens/whatsnew/ReleaseNotes.kt` begins at 0.2.1 while the app reports 0.1.0 and contains copied iOS-specific claims. | **Android release-hygiene defect.** Replace with Android-verified notes and enforce version ordering. |
 
 ## SDK/API prerequisites versus Android-only work
@@ -266,8 +275,7 @@ tests, then build the Android UI.
 These items appear to have sufficient application or SDK foundations and are primarily Android
 composition, persistence, or platform work:
 
-- decide whether to expose the currently unreachable environment list/detail/test surface, and
-  repair admin-tab drill-down callbacks;
+- repair admin-tab drill-down callbacks;
 - persist and apply Light/Dark/Auto appearance;
 - correct Android source/issue links;
 - add an end-user profile route using the SDK's existing user update, password-change, and avatar
@@ -278,6 +286,8 @@ composition, persistence, or platform work:
 - add response caching around existing read services;
 - fix all complete-fleet callers to page through `EnvironmentsService` explicitly;
 - implement the project-file workspace using the pinned typed SDK operations;
+- expose project deploy options already supported by `ProjectsService`;
+- complete template search/filter/metadata/download with the existing template service;
 - harden coroutine cancellation and stream ownership;
 - define Android backup/extraction rules.
 
@@ -285,6 +295,10 @@ composition, persistence, or platform work:
 
 These need an explicit SDK/server capability check at the pinned revisions:
 
+- passkey sign-in, step-up, MFA policy, recovery, and Android Credential Manager ceremony support;
+- v2 scoped global-variable models, permissions, mutation, and sync status;
+- per-image Docker layer history (distinct from the Kotlin SDK's image-build history);
+- the optional container-registry name field;
 - exact activity stream error, heartbeat, and forward-compatible event handling;
 - dynamic/generic resource descriptors, if a generic fallback UI is desired;
 - server-version fallbacks for dashboard and fleet updates.
@@ -295,18 +309,20 @@ changes, and activity/stream APIs. Profile, attestation, container-action, and p
 gaps should therefore begin as Android UI/state work, while still receiving focused serialization
 and contract tests against the target server version.
 
-No current SDK blocker was identified for these top gaps. The pinned SDK revision, the sibling
-composite-build revision, and the target server version must nevertheless be recorded together
-because active SDK development can change that conclusion.
+The Kotlin SDK remains at its 2026-07-10 parity commit while the Swift SDK advanced through
+2026-08-17. Passkeys/MFA, current global variables, image layer history, and registry names are
+confirmed SDK prerequisites. Profile, attestations, container actions, project files, deploy
+options, and template download already have typed Kotlin foundations. The pinned SDK revision, the
+sibling composite-build revision, and the target server version must be recorded together because
+active SDK development can change those conclusions.
 
 ### Server or product-definition prerequisites
 
 - Swarm remains a placeholder in both clients and needs a defined product/API workflow.
-- A true network topology graph is not present in either app and should be specified as a shared
-  enhancement.
 - Multi-server profiles require an explicit credential, cache, deep-link, and active-operation
   model.
-- AI assistance requires a separate product/security design, especially for mutations.
+- AI assistance is not present in either current mobile client; any future work needs a separate
+  product/security design.
 
 ## Android strengths to preserve
 
@@ -329,21 +345,20 @@ views, create a second client/cache owner, or reproduce Apple-specific UI metaph
 
 ### P0: Correctness and reachable functionality
 
-1. Make change-server safe: clear the prior client, current user, capabilities, cookies, and active
-   environment, and store credentials/tokens under a normalized server identity.
-2. Repair the empty callbacks for Users, Notifications, System, and Roles when used as swappable
+PAR-002 completed the change-server foundation: prior client/user/capability/environment state is
+invalidated and credentials are scoped to a normalized server identity. Remaining P0 work is:
+
+1. Repair the empty callbacks for Users, Notifications, System, and Roles when used as swappable
    main tabs.
-3. Decide whether to expose Android's existing environment list/detail/test surface; do not label
-   it full CRUD without a defined shared workflow.
-4. Persist Light/Dark/Auto and apply it at the application theme root.
-5. Correct source, documentation, and issue links that point to the iOS repository.
-6. Fix silent 20-environment truncation in dashboard, updates, all-environment image updates, and
+2. Persist Light/Dark/Auto and apply it at the application theme root.
+3. Correct source, documentation, and issue links that point to the iOS repository.
+4. Fix silent 20-environment truncation in dashboard, updates, all-environment image updates, and
    environment management; add multi-page tests.
-7. Replace copied iOS release notes with Android-specific, version-consistent notes, then add
+5. Replace copied iOS release notes with Android-specific, version-consistent notes, then add
    version-gated automatic presentation.
-8. Define backup/data-extraction exclusions for tokens, server data, future caches, and operation
+6. Define backup/data-extraction exclusions for tokens, server data, future caches, and operation
    state.
-9. Audit broad coroutine exception catches and rethrow cancellation.
+7. Audit broad coroutine exception catches and rethrow cancellation.
 
 ### P1: Complete high-frequency operational workflows
 
@@ -353,9 +368,13 @@ views, create a second client/cache owner, or reproduce Apple-specific UI metaph
 3. Complete log search/copy/share/export and lifecycle consistency across container/project logs.
 4. Add image attestation list/detail/filter/copy using the existing SDK support.
 5. Fill missing container lifecycle/detail actions that the server and SDK support.
-6. Add application-owned long-running operation state with reconnect/cancel and an in-app progress
+6. Add passkey sign-in/MFA through a typed Kotlin SDK and Android Credential Manager.
+7. Add scoped global-variable management through a typed Kotlin SDK.
+8. Add image layer history, deploy options, registry names, and the remaining template
+   search/filter/download workflow.
+9. Add application-owned long-running operation state with reconnect/cancel and an in-app progress
    surface.
-7. Add lifecycle-aware event refresh and an explicit Activity Center retry path.
+10. Add lifecycle-aware event refresh and an explicit Activity Center retry path.
 
 ### P2: Resilience and Android-native continuity
 
@@ -366,15 +385,14 @@ views, create a second client/cache owner, or reproduce Apple-specific UI metaph
 4. Add authenticated resource deep links and dynamic shortcuts.
 5. Add adaptive navigation and list-detail layouts for tablets/foldables.
 6. Add one or two privacy-reviewed Glance widgets using sanitized snapshots.
+7. Add an interactive, bounded network topology with a readable list fallback.
 
 ### P3: Product expansion
 
 1. Evaluate a multi-server profile model.
 2. Establish a localization path and move existing text incrementally to resources.
-3. Evaluate AI assistance as a platform-neutral product capability with read-only tools first and
-   explicit confirmation for mutations.
-4. Add broader UI/integration testing and incremental lint/static-analysis gates.
-5. Revisit Swarm and topology visualization only after shared product requirements exist.
+3. Add broader UI/integration testing and incremental lint/static-analysis gates.
+4. Revisit Swarm only after shared product requirements exist.
 
 ## Acceptance criteria for parity work
 

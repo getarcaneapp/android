@@ -1,6 +1,6 @@
 # Android iOS-parity task list
 
-Last updated: 2026-07-17
+Last updated: 2026-08-21
 
 This is the working backlog for bringing Arcane Android to product-outcome parity with iOS. It
 turns the findings in [the pinned gap analysis](ios-android-gap-analysis.md) into issue-sized work;
@@ -11,13 +11,35 @@ this canonical backlog through local validation and a review-ready pull request.
 
 The source comparison is pinned to:
 
-- iOS `03f2f3d11e40f759ca62f0207bb3d59418a42933`
-- libarcane-swift `c1016b2e0aaebffc112893179560c2462c1a013a`
-- Android `c500c262e4e71b094e16ca8afc049f2286d22cfa`
+- iOS `2d7f277fe322d67c88d62b826f068fa92785e3fe`
+- libarcane-swift `38b5c32dde5b17eb0bc22b1c13fb4204699c8faf`
+- Android `10b26b2275fb8b9772ff69f2e1f6418225be532a`
 - libarcane-kotlin `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`
 
 Revalidate conclusions against current source before starting an item. Record the Android, Kotlin
 SDK, and Arcane server revisions in the resulting issue or pull request.
+
+The 2026-08-21 refresh advances the iOS comparison from 0.5.4 to 0.7.0. It adds explicit backlog
+coverage for passkeys/MFA, current scoped variables, image layer history, deploy options, template
+discovery, container-registry names, and appearance persistence. It also promotes topology from a
+shared enhancement to an Android gap and removes AI from the active parity roadmap because iOS 0.7.0
+removed the Arcane Assistant.
+
+## Recommended starting queue
+
+Work the correctness foundation before selecting a large feature:
+
+1. **PAR-003 verification**, then **PAR-004** — finish the pending device check and remove silent
+   complete-list truncation outside Containers.
+2. **PAR-005**, **PAR-008**, and **PAR-009** — repair reachable navigation, cancellation ownership,
+   and app-wide theme state.
+3. **PAR-006** and **PAR-007** — correct release/support metadata and establish the sensitive-data
+   backup boundary.
+4. **PAR-101** — validate System Prune now that PAR-002's server scoping is proven.
+
+After that foundation, the highest-value feature slice is **PAR-103** (project files), followed by
+**PAR-104** (account/profile), **PAR-110** (passkeys/MFA), and **PAR-111** (global variables). Tasks
+without dependencies can move sooner when they do not distract from the P0 queue.
 
 ## Status legend
 
@@ -78,38 +100,64 @@ The standard checks are:
 
 ## Phase 0: Revalidate active history and stop correctness leaks
 
-- [ ] **PAR-001 — Revalidate PR #29 authentication/session unlock**
+- [x] **PAR-001 — Revalidate PR #29 authentication/session unlock**
 
-- **Status:** Needs revalidation
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Inspect the current branch, PR #29 state, review feedback, and final CI results. Reproduce
   the original session-unlock failure before deciding whether any code remains.
 - **Acceptance criteria:**
-  - [ ] The PR's merge/close state, head revision, reviews, and CI conclusion are recorded.
-  - [ ] Login restoration and unlock are exercised for fresh login, restored session, invalid token,
+  - [x] The PR's merge/close state, head revision, reviews, and CI conclusion are recorded.
+  - [x] Login restoration and unlock are exercised for fresh login, restored session, invalid token,
     logout, and process recreation.
-  - [ ] The task is closed if current code already fixes the issue; otherwise a new issue describes the
+  - [x] The task is closed if current code already fixes the issue; otherwise a new issue describes the
     still-reproducible behavior and contains focused regression coverage.
+- **Evidence:** PR #29 merged as `7a99c89` from final head
+  `6a04b3bc514702aef10726f8aeb2793328bef2c2`; its Android workflow run 29106832332 succeeded. The
+  sole P1 review thread was fixed, replied to, and resolved. Current-source revalidation found no
+  later changes to the restore path. On 2026-08-21,
+  `./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug` passed all 104 tests, including
+  six focused restore tests, and assembled the debug APK; `git diff --check` passed. A follow-up
+  focused run passed after changing the invalid-session case to the SDK's exact
+  `ArcaneError.Unauthorized`. Michael confirmed password login on 2026-08-21; OIDC is not configured
+  on the test server and is not required for this task. A force-stop/relaunch restored the valid
+  session without flashing login; logout/relaunch did not flash authenticated content; and process
+  recreation restored without a login flash. The current source fixes the reported behavior, so no
+  new issue is required.
 
-- [ ] **PAR-002 — Make change-server state and credential scoping safe**
+- [x] **PAR-002 — Make change-server state and credential scoping safe**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** PAR-001
 - **Scope:** Ensure changing servers cannot reuse the prior server's client, current user,
   capabilities, cookies, active environment, token, cache, or operation state. Normalize server
   identity and scope credentials by that identity.
 - **Acceptance criteria:**
-  - [ ] Selecting change server immediately invalidates all in-memory state belonging to the old server.
-  - [ ] Persisted tokens and other sensitive state cannot be loaded for a different normalized server.
-  - [ ] Tests cover two servers, equivalent URL spellings, logout, invalid credentials, and process
+  - [x] Selecting change server immediately invalidates all in-memory state belonging to the old server.
+  - [x] Persisted tokens and other sensitive state cannot be loaded for a different normalized server.
+  - [x] Tests cover two servers, equivalent URL spellings, logout, invalid credentials, and process
     recreation.
-  - [ ] Device testing confirms no prior-server data flashes or actions remain available.
+  - [x] Device testing confirms no prior-server data flashes or actions remain available.
+- **Evidence:** Canonical HTTP(S) origins and SHA-256 token namespaces follow the current iOS model.
+  SDK `AndroidSecureTokenStore` accounts are origin-bound with guarded one-time legacy migration.
+  Change server rotates the session scope/client generation and immediately resets client, user,
+  capabilities, cookies, environment, loading/demo state, and visible navigation state. The saved
+  URL, environment, and credential-origin binding are durably cleared before setup is shown; token,
+  remote-session, and old-client cleanup then continue independently. The process port cache is
+  origin-scoped. The focused auth/server/cache matrix passed 28 tests. On 2026-08-21,
+  `./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug` passed all 120 tests and assembled
+  the debug APK; `git diff --check` passed. On a physical device, Michael confirmed that sign-out
+  retained only the intended server selection, Change Server exposed blank setup without prior
+  credentials/content, and an immediate force-stop/relaunch still restored blank setup. That test
+  exposed and then verified the persistence-ordering fix in `bc0368d`. A live switch to a second
+  server origin and manual equivalent-URL check were not performed; those cases are covered by the
+  focused JVM matrix rather than claimed as device evidence.
 
-- [x] **PAR-003 — Fix complete-container loading before local filtering**
+- [ ] **PAR-003 — Fix complete-container loading before local filtering**
 
-- **Status:** Complete
+- **Status:** Done/verify
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Make the Containers tab filter a complete result set rather than the SDK's default
@@ -123,9 +171,12 @@ The standard checks are:
   - [x] Search/status filters are proven to run after complete loading, or are moved server-side with
     equivalent semantics.
   - [x] Loading, partial-page failure, refresh, cancellation, and empty states are covered.
-- **Completion evidence (2026-07-17):**
-  - Review: draft PR [#41](https://github.com/getarcaneapp/android/pull/41); automated validation
-    is complete and focused manual device validation is pending.
+  - [ ] A device/emulator against a live server with more than 20 containers confirms display,
+    filtering, refresh, and environment-change behavior without duplicates or omissions.
+- **Validation evidence (updated 2026-08-21):**
+  - Review: PR [#41](https://github.com/getarcaneapp/android/pull/41) merged as `fdfabe3`; its focused
+    Greptile finding was fixed and verified in `2d97dad`. Automated validation is complete and focused
+    manual device/live-server validation remains pending.
   - Source pins: Android base `ca211804fcb3223b7b65abb0d13a97afad81799e`,
     libarcane-kotlin `89c8dd58886a099cdbea9cb9362c9262ba5851d9`, and Arcane
     `b501c49cc9f3d3433494f8334178ac65a59a013d`.
@@ -212,6 +263,21 @@ The standard checks are:
   - [ ] Tests cover cancellation during refresh, paging, reconnect, and environment/server changes.
   - [ ] At most one intended stream/job owner remains for each screen-level operation.
   - [ ] No stale result from a canceled prior environment can overwrite current state.
+
+- [ ] **PAR-009 — Persist and apply Light/Dark/Auto appearance**
+
+- **Status:** Ready
+- **Priority:** P0
+- **Dependencies:** None
+- **Scope:** Replace the screen-local theme selection with one persisted preference owned at the app
+  level and applied at the `ArcaneTheme` root. Preserve the existing accent-color behavior and
+  system-theme default.
+- **Acceptance criteria:**
+  - [ ] Light, Dark, and Auto update the whole application immediately and survive process recreation.
+  - [ ] Auto follows system night-mode changes without reopening Settings.
+  - [ ] Invalid or missing persisted values fall back to Auto, and migration does not disturb accent.
+  - [ ] State mapping and persistence have focused tests; representative screens are device-checked in
+    light/dark mode.
 
 ## Phase 1: Validate destructive behavior and complete daily workflows
 
@@ -339,6 +405,107 @@ The standard checks are:
   - [ ] Tests cover terminal stream error, heartbeat timeout, one-environment failure, full failure, and
     successful recovery.
 
+- [ ] **PAR-110 — Add passkey sign-in and MFA management**
+
+- **Status:** Ready
+- **Priority:** P1
+- **Dependencies:** PAR-001, PAR-002
+- **Scope:** Inspect the current Arcane passkey/WebAuthn handlers and Swift SDK, add typed passkey,
+  step-up, MFA-policy, and recovery support to `libarcane-kotlin`, then integrate Android Credential
+  Manager for login and signed-in account management. Do not duplicate ceremony JSON or endpoints in
+  the app.
+- **Acceptance criteria:**
+  - [ ] Server capabilities gate passkey login, enrollment, rename/delete, step-up, MFA policy, and
+    recovery; older/unsupported servers retain password/OIDC paths.
+  - [ ] Credential creation/assertion maps origin, RP ID, challenge, cancellation, and provider errors
+    through typed SDK models without logging sensitive ceremony data.
+  - [ ] Login, pending MFA, account management, last-passkey restrictions, recovery, process recreation,
+    and server/account changes fail safely.
+  - [ ] SDK contract tests, Android state tests, and device/live-server passkey validation are recorded
+    separately with Android, SDK, and Arcane revisions.
+
+- [ ] **PAR-111 — Add scoped global-variable management**
+
+- **Status:** Ready
+- **Priority:** P1
+- **Dependencies:** PAR-002, PAR-004
+- **Scope:** Model the current v2 variables API in `libarcane-kotlin`, then add permission-gated Android
+  list/search/create/edit/delete/sync flows for secret and non-secret values scoped to all or selected
+  environments. The older template-variable endpoints are not the same contract.
+- **Acceptance criteria:**
+  - [ ] Variable models, permission constants, mutations, sync requests, and per-environment sync status
+    are typed and tested in the SDK first.
+  - [ ] Secret values never appear in logs, clipboard actions, accessibility text, or stale UI; copying
+    non-secret keys/values is explicit.
+  - [ ] Unsupported, unauthorized, empty, partial-sync, failed-sync, concurrent edit, and server change
+    states preserve scope and report accurate outcomes.
+  - [ ] More than 20 environments can be selected and reported without omissions or duplicate sync work.
+
+- [ ] **PAR-112 — Add image layer history**
+
+- **Status:** Ready
+- **Priority:** P1
+- **Dependencies:** None
+- **Scope:** Add the typed per-image Docker layer-history contract to `libarcane-kotlin`, then expose a
+  History destination in image detail. Keep this distinct from the existing image-build history API.
+- **Acceptance criteria:**
+  - [ ] Layer ID/missing-layer, command, size, created time, and tags decode unknown/optional fields
+    defensively in SDK tests.
+  - [ ] Loading, empty, error, unauthorized, and unsupported-server states identify the image and
+    environment without leaking a prior selection.
+  - [ ] Refresh and environment/server changes cannot publish history for the wrong image digest.
+  - [ ] Focused Android tests and live-server validation cover a multi-layer image and a history-less
+    image.
+
+- [ ] **PAR-113 — Add scoped project deploy options**
+
+- **Status:** Ready
+- **Priority:** P1
+- **Dependencies:** PAR-002
+- **Scope:** Use the Kotlin SDK's existing `DeployOptions` to let users choose pull policy and force
+  recreation before deploy. Store defaults by normalized server, user, environment, and project.
+  PAR-202 will later adopt the same options when it becomes the operation owner.
+- **Acceptance criteria:**
+  - [ ] Default, always-pull, never-pull, force-recreate, cancel, unsupported, and server-error behavior
+    are explicit and map to typed SDK values.
+  - [ ] Preferences cannot cross servers, accounts, environments, or projects and are cleared or
+    migrated according to PAR-002.
+  - [ ] The launched stream receives exactly the selected options and reports the server result without
+    fabricating success after failure or cancellation.
+  - [ ] Mapping/persistence tests and device/live-server deploy evidence are recorded.
+
+- [ ] **PAR-114 — Complete template discovery, import, and deployment**
+
+- **Status:** Ready
+- **Priority:** P1
+- **Dependencies:** PAR-004
+- **Scope:** Extend the existing Android registry CRUD, grouped browser, preview, and deploy flow with
+  current iOS outcomes: search, local/remote source filtering, metadata, remote download, and complete
+  result loading through the typed Kotlin template service.
+- **Acceptance criteria:**
+  - [ ] Search and source filters cover all loaded templates and clearly distinguish local, configured-
+    registry, and remote entries.
+  - [ ] Metadata/preview and remote download handle unsupported, malformed, duplicate, unauthorized,
+    offline, and partial-page states without losing the current selection.
+  - [ ] Deploying a selected template preserves its identity and content through project creation and
+    hands long-running work to PAR-202 when applicable.
+  - [ ] Pagination/filter/download state has focused tests and a live-server import/deploy check.
+
+- [ ] **PAR-115 — Add container-registry display names**
+
+- **Status:** Ready
+- **Priority:** P1
+- **Dependencies:** None
+- **Scope:** Add the current optional registry `name` field to Kotlin SDK read/create/update/sync models,
+  then expose it in Android list and form UI while retaining URL fallback for older records.
+- **Acceptance criteria:**
+  - [ ] Missing, blank, duplicate, and unknown-server values decode safely and display a stable URL/ID
+    fallback.
+  - [ ] Create/edit preserves credentials and unrelated registry fields and never logs token/secret
+    values.
+  - [ ] List, preview, pull-usage, and destructive confirmations identify the same registry clearly.
+  - [ ] SDK serialization plus Android mapping/form tests pass against old and current payload fixtures.
+
 ## Phase 2: Own long-running operations before adding system surfaces
 
 - [ ] **PAR-201 — Specify the app-level operation store**
@@ -365,12 +532,15 @@ The standard checks are:
 - **Priority:** P1
 - **Dependencies:** PAR-201
 - **Scope:** Implement the approved store and an in-app operation center/floating progress surface.
-  Migrate one representative operation first, then the remaining approved operation types.
+  Migrate one representative operation first, then the remaining approved operation types. Treat
+  configurable activity-start feedback as a bounded projection of this store, not a second owner.
 - **Acceptance criteria:**
   - [ ] Operations survive screen changes and expose progress, bounded logs, reconnect, cancel, success,
     failure, and indeterminate/unknown states from one owner.
   - [ ] Server, account, and environment changes cannot cross-contaminate operation state.
   - [ ] Process-death recovery follows the spec and never fabricates successful completion.
+  - [ ] Optional activity-start feedback distinguishes user/system work, keeps environment context, and
+    opens the authoritative operation/activity destination without notification spam.
   - [ ] State-machine, persistence, concurrent-operation, cancellation, and migration tests pass.
 
 - [ ] **PAR-203 — Add Android ongoing operation notifications**
@@ -461,6 +631,22 @@ The standard checks are:
   - [ ] Cold start, warm start, login-required, stale shortcut, and wrong-server paths fail safely.
   - [ ] Shortcut publication removes stale or unauthorized entities.
   - [ ] Navigation and device tests cover external intents and back-stack construction.
+
+- [ ] **PAR-505 — Add interactive network topology visualization**
+
+- **Status:** Ready
+- **Priority:** P2
+- **Dependencies:** None
+- **Scope:** iOS 0.7.0 now renders an interactive network-to-container diagram while Android presents
+  the same typed graph as grouped rows. Add a bounded, zoomable/pannable Android visualization while
+  retaining the current list as an accessible and large-graph fallback. Do not copy known iOS summary
+  stubs.
+- **Acceptance criteria:**
+  - [ ] Node, edge, grouping, scale, interaction, and accessibility requirements are defined.
+  - [ ] Counts and relationships come from authoritative server data.
+  - [ ] Large, cyclic, malformed, and partially unavailable graphs remain bounded and have a usable
+    non-graph fallback.
+  - [ ] Selection, environment changes, rotation, font scaling, and TalkBack are device-tested.
 
 ## Phase 4: Quality, accessibility, localization, and distribution
 
@@ -588,10 +774,11 @@ The standard checks are:
 - [ ] **PAR-503 — Evaluate an Android AI assistant**
 
 - **Status:** Deferred
-- **Priority:** P3
+- **Priority:** Not an Android-parity priority
 - **Dependencies:** Stable operational foundation
-- **Scope:** Treat iOS Foundation Models as a product concept, not a portable implementation. Define
-  provider/device support, privacy, cost, context, tool permissions, and confirmation independently.
+- **Scope:** iOS 0.7.0 removed the Arcane Assistant, so there is no current parity gap. Retain this only
+  as a possible independent product/security investigation; define provider/device support, privacy,
+  cost, context, tool permissions, and confirmation before any implementation.
 - **Acceptance criteria:**
   - [ ] A product/security design establishes data boundaries and starts with read-only tools.
   - [ ] Every mutation is staged, explained, scoped, and explicitly confirmed.
@@ -609,18 +796,6 @@ The standard checks are:
   - [ ] Shared user workflows, Arcane API contract, authorization, and server compatibility are defined.
   - [ ] SDK work precedes Android UI where required.
   - [ ] The gap analysis is updated from **Shared gap** only after a real product target exists.
-
-- [ ] **PAR-505 — Network topology visualization**
-
-- **Status:** Deferred
-- **Priority:** Not an Android-parity priority
-- **Dependencies:** Shared product definition and accurate server data
-- **Scope:** Both clients present topology primarily as a list. A graph is a shared enhancement and
-  must not copy known iOS summary stubs.
-- **Acceptance criteria:**
-  - [ ] Node, edge, grouping, scale, interaction, and accessibility requirements are defined.
-  - [ ] Counts and relationships come from authoritative server data.
-  - [ ] Large and partially unavailable environments have a usable non-graph fallback.
 
 ## Done/verify candidates
 
