@@ -6,6 +6,7 @@ internal data class SavedAuthState(
     val serverUrl: String?,
     val activeEnvironmentId: String?,
     val activeEnvironmentName: String?,
+    val credentialOrigin: String? = null,
 )
 
 /**

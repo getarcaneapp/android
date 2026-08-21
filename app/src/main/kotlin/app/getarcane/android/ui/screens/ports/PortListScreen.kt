@@ -62,13 +62,14 @@ fun PortListScreen(onOpen: (String) -> Unit) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
+    val serverIdentity = manager.serverSessionIdentity
 
     var state by remember { mutableStateOf<Loadable<List<PortMapping>>>(Loadable.Loading) }
     var search by remember { mutableStateOf("") }
     var refreshKey by remember { mutableStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
 
-    LaunchedEffect(envId.rawValue, refreshKey) {
+    LaunchedEffect(serverIdentity, envId.rawValue, refreshKey) {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
@@ -76,7 +77,7 @@ fun PortListScreen(onOpen: (String) -> Unit) {
                 envId = envId,
                 query = SearchPaginationSort(start = 0, limit = 500)
             ).data
-            PortStore.put(ports)
+            PortStore.put(serverIdentity, ports)
             Loadable.Success(ports)
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
@@ -300,10 +301,19 @@ internal fun protocolTint(protocol: String): Color = when (protocol.lowercase())
  * list -> detail navigation within the Ports tab.
  */
 internal object PortStore {
+    private var serverIdentity: String = ""
     private var byId: Map<String, PortMapping> = emptyMap()
-    fun put(ports: List<PortMapping>) {
+
+    fun put(serverIdentity: String, ports: List<PortMapping>) {
+        this.serverIdentity = serverIdentity
         byId = ports.associateBy { it.id }
     }
 
-    fun get(id: String): PortMapping? = byId[id]
+    fun get(serverIdentity: String, id: String): PortMapping? =
+        if (this.serverIdentity == serverIdentity) byId[id] else null
+
+    fun clear() {
+        serverIdentity = ""
+        byId = emptyMap()
+    }
 }
