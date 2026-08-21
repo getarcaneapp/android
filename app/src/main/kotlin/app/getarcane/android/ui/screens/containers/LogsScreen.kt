@@ -59,6 +59,7 @@ import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.streaming.LogLine
+import kotlinx.coroutines.CancellationException
 
 /** Standalone logs screen (own back stack route). Wraps [LogsContent] in a Scaffold. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -127,6 +128,7 @@ private fun LogsContent(
     var autoScroll by remember { mutableStateOf(true) }
     var newWhilePaused by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
+    var streamGeneration by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(clearSignal) {
         if (clearSignal > 0) {
@@ -135,19 +137,29 @@ private fun LogsContent(
         }
     }
 
-    LaunchedEffect(id) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(client, envId.rawValue, id) {
+        val generation = ++streamGeneration
+        lines.clear()
+        newWhilePaused = 0
+        error = null
+        if (client == null) {
+            onStreamingChange(false)
+            return@LaunchedEffect
+        }
         onStreamingChange(true)
         try {
             client.containers.logs(envId = envId, id = id, follow = true, tail = "200").collect { line ->
+                if (generation != streamGeneration) return@collect
                 lines.add(line)
                 if (lines.size > 5000) repeat(100) { if (lines.isNotEmpty()) lines.removeAt(0) }
                 if (!autoScroll) newWhilePaused++
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
-            error = friendlyErrorMessage(e)
+            if (generation == streamGeneration) error = friendlyErrorMessage(e)
         } finally {
-            onStreamingChange(false)
+            if (generation == streamGeneration) onStreamingChange(false)
         }
     }
 

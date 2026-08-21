@@ -9,11 +9,13 @@ import app.getarcane.sdk.errors.ArcaneError
 import app.getarcane.sdk.models.environment.Environment
 import app.getarcane.sdk.streaming.ndjsonFlow
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -77,6 +79,9 @@ class DashboardStreamStore(
     private var streamJob: Job? = null
     private var shouldRun = false
     private var generation = 0
+    private var nextSnapshotRequest = 0L
+    private val snapshotRequestsByEnvironmentId = HashMap<String, Long>()
+    private val snapshotJobsByEnvironmentId = HashMap<String, Job>()
 
     val aggregate: DashboardStreamAggregateCounts?
         get() {
@@ -120,6 +125,7 @@ class DashboardStreamStore(
                 )
             }
         }
+        snapshotRequestsByEnvironmentId.clear()
         streamUnsupported = false
         streamFailed = false
     }
@@ -139,6 +145,9 @@ class DashboardStreamStore(
     fun stop() {
         shouldRun = false
         generation += 1
+        snapshotRequestsByEnvironmentId.clear()
+        snapshotJobsByEnvironmentId.values.forEach { it.cancel() }
+        snapshotJobsByEnvironmentId.clear()
         streamJob?.cancel()
         streamJob = null
         connected = false
@@ -172,13 +181,14 @@ class DashboardStreamStore(
             }
         }
         val newIds = next.keys - statesByEnvironmentId.keys
+        val removedIds = statesByEnvironmentId.keys - targetIds
         statesByEnvironmentId = next
+        snapshotRequestsByEnvironmentId.keys.retainAll(targetIds)
+        removedIds.forEach { id -> snapshotJobsByEnvironmentId.remove(id)?.cancel() }
 
         if (streamJob != null) {
             val currentGeneration = generation
-            newIds.forEach { id ->
-                scope.launch { refreshEnvironment(id, currentGeneration) }
-            }
+            newIds.forEach { id -> launchSnapshotRefresh(id, currentGeneration) }
         }
     }
 
@@ -261,6 +271,12 @@ class DashboardStreamStore(
     }
 
     private fun applySnapshot(snapshot: DashboardSnapshot, environmentId: String) {
+        snapshotRequestsByEnvironmentId.remove(environmentId)
+        snapshotJobsByEnvironmentId.remove(environmentId)?.cancel()
+        applySnapshotState(snapshot, environmentId)
+    }
+
+    private fun applySnapshotState(snapshot: DashboardSnapshot, environmentId: String) {
         val state = statesByEnvironmentId[environmentId] ?: return
         statesByEnvironmentId = statesByEnvironmentId + (environmentId to state.copy(
             snapshot = snapshot,
@@ -273,6 +289,12 @@ class DashboardStreamStore(
     }
 
     private fun applyError(message: String?, code: DashboardStreamErrorCode?, environmentId: String) {
+        snapshotRequestsByEnvironmentId.remove(environmentId)
+        snapshotJobsByEnvironmentId.remove(environmentId)?.cancel()
+        applyErrorState(message, code, environmentId)
+    }
+
+    private fun applyErrorState(message: String?, code: DashboardStreamErrorCode?, environmentId: String) {
         val state = statesByEnvironmentId[environmentId] ?: return
         statesByEnvironmentId = statesByEnvironmentId + (environmentId to state.copy(
             loading = false,
@@ -290,19 +312,50 @@ class DashboardStreamStore(
 
     private suspend fun refreshEnvironment(environmentId: String, currentGeneration: Int) {
         val activeClient = client ?: return
+        val request = ++nextSnapshotRequest
+        snapshotRequestsByEnvironmentId[environmentId] = request
         try {
             val snapshot = activeClient.snapshot(environmentId)
-            if (currentGeneration == generation && statesByEnvironmentId.containsKey(environmentId)) {
-                applySnapshot(snapshot, environmentId)
+            if (isCurrentSnapshotRequest(activeClient, environmentId, currentGeneration, request)) {
+                snapshotRequestsByEnvironmentId.remove(environmentId)
+                applySnapshotState(snapshot, environmentId)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            if (currentGeneration == generation && statesByEnvironmentId.containsKey(environmentId)) {
-                applyError(friendlyErrorMessage(e), null, environmentId)
+            if (isCurrentSnapshotRequest(activeClient, environmentId, currentGeneration, request)) {
+                snapshotRequestsByEnvironmentId.remove(environmentId)
+                applyErrorState(friendlyErrorMessage(e), null, environmentId)
             }
         }
     }
+
+    private fun launchSnapshotRefresh(environmentId: String, currentGeneration: Int) {
+        snapshotJobsByEnvironmentId.remove(environmentId)?.cancel()
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            val owningJob = currentCoroutineContext()[Job]
+            try {
+                refreshEnvironment(environmentId, currentGeneration)
+            } finally {
+                if (snapshotJobsByEnvironmentId[environmentId] === owningJob) {
+                    snapshotJobsByEnvironmentId.remove(environmentId)
+                }
+            }
+        }
+        snapshotJobsByEnvironmentId[environmentId] = job
+        job.start()
+    }
+
+    private fun isCurrentSnapshotRequest(
+        expectedClient: DashboardStreamClient,
+        environmentId: String,
+        expectedGeneration: Int,
+        request: Long,
+    ): Boolean =
+        client === expectedClient &&
+            generation == expectedGeneration &&
+            snapshotRequestsByEnvironmentId[environmentId] == request &&
+            statesByEnvironmentId.containsKey(environmentId)
 
     private companion object {
         const val MAX_RECONNECT_ATTEMPTS = 20

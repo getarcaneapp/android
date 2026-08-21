@@ -25,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -69,6 +70,10 @@ internal fun PullImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
     val layerOrder = remember { mutableStateListOf<String>() }
     val layers = remember { mutableStateMapOf<String, PullProgressEvent>() }
     var pullJob by remember { mutableStateOf<Job?>(null) }
+
+    DisposableEffect(client, envId.rawValue) {
+        onDispose { pullJob?.cancel() }
+    }
 
     fun parseNameAndTag(raw: String): Pair<String, String?> {
         val trimmed = raw.trim()
@@ -120,8 +125,9 @@ internal fun PullImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
                     statusLine = "Pull complete"
                     onComplete()
                 }
-            } catch (_: CancellationException) {
+            } catch (e: CancellationException) {
                 statusLine = "Cancelled"
+                throw e
             } catch (e: Throwable) {
                 errorMessage = friendlyErrorMessage(e)
                 statusLine = ""

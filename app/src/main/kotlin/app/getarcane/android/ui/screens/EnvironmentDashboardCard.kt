@@ -51,6 +51,7 @@ import app.getarcane.android.core.DashboardActionItem
 import app.getarcane.android.core.DashboardActionItemKind
 import app.getarcane.android.core.DashboardActionItemSeverity
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.runSuspendCatching
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
@@ -100,8 +101,9 @@ fun EnvironmentDashboardCard(
     var dockerInfo by remember(env.id) { mutableStateOf<DockerInfo?>(null) }
     var showMenu by remember { mutableStateOf(false) }
 
-    LaunchedEffect(env.id, refreshToken) {
-        dockerInfo = runCatching { client?.system?.dockerInfo(envId) }.getOrNull()
+    LaunchedEffect(client, env.id, refreshToken) {
+        dockerInfo = null
+        dockerInfo = runSuspendCatching { client?.system?.dockerInfo(envId) }.getOrNull()
     }
 
     val stats = statsSeries?.latest

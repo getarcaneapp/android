@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,6 +68,10 @@ internal fun UploadImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
     var output by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var uploadJob by remember { mutableStateOf<Job?>(null) }
+
+    DisposableEffect(client, envId.rawValue) {
+        onDispose { uploadJob?.cancel() }
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -121,8 +126,9 @@ internal fun UploadImageSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
                 progress = 1f
                 output = aggregated.toString().trim().ifEmpty { "Upload complete." }
                 onComplete()
-            } catch (_: CancellationException) {
+            } catch (e: CancellationException) {
                 errorMessage = "Cancelled"
+                throw e
             } catch (e: Throwable) {
                 errorMessage = friendlyErrorMessage(e)
             } finally {

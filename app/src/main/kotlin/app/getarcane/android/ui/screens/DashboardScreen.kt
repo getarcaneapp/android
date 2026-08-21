@@ -79,6 +79,7 @@ import app.getarcane.android.core.DashboardEnvironmentStreamState
 import app.getarcane.android.core.DashboardStreamStore
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.runSuspendCatching
 import app.getarcane.android.nav.AppTab
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
 import app.getarcane.android.ui.screens.settings.FormErrorRow
@@ -168,6 +169,8 @@ fun DashboardScreen(
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
     var statsRestartKey by remember { mutableStateOf(0) }
+    var statsGeneration by remember { mutableStateOf(0) }
+    var statsClient by remember { mutableStateOf(client) }
     var showActivities by remember { mutableStateOf(false) }
     var showUpdateAll by remember { mutableStateOf(false) }
     var pruneEnvironmentId by remember { mutableStateOf<EnvironmentId?>(null) }
@@ -181,6 +184,11 @@ fun DashboardScreen(
     val snackbar = remember { SnackbarHostState() }
 
     LaunchedEffect(client, enabledEnvironmentIds, refreshKey, statsRestartKey) {
+        val generation = ++statsGeneration
+        if (statsClient !== client) {
+            statsHistory.clear()
+            statsClient = client
+        }
         if (client == null) return@LaunchedEffect
 
         statsHistory.keys
@@ -193,17 +201,21 @@ fun DashboardScreen(
                 .forEachIndexed { index, id ->
                     launch {
                         delay(150L * (index + 1))
+                        if (generation != statsGeneration) return@launch
                         val env = EnvironmentId(id)
                         statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).reconnecting()
-                        runCatching {
+                        runSuspendCatching {
                             client.system.statsStream(env).collect { stats ->
-                                statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).append(stats)
+                                if (generation == statsGeneration) {
+                                    statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).append(stats)
+                                }
                             }
                         }.onFailure { error ->
-                            if (error is CancellationException) throw error
-                            statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).copy(
-                                error = "Live stats unavailable: ${friendlyErrorMessage(error)}",
-                            )
+                            if (generation == statsGeneration) {
+                                statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).copy(
+                                    error = "Live stats unavailable: ${friendlyErrorMessage(error)}",
+                                )
+                            }
                         }
                     }
                 }
@@ -239,7 +251,7 @@ fun DashboardScreen(
         streamStore.reconcile(environments)
     }
 
-    LaunchedEffect(refreshKey) {
+    LaunchedEffect(client, refreshKey) {
         if (client == null) return@LaunchedEffect
         loading = true
         val overview = try {

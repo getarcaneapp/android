@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.runSuspendCatching
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGray
@@ -74,7 +75,6 @@ import app.getarcane.sdk.errors.ArcaneError
 import app.getarcane.sdk.models.updater.UpdaterResourceResult
 import app.getarcane.sdk.models.updater.UpdaterResult
 import app.getarcane.sdk.models.updater.UpdaterStatus
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -139,12 +139,7 @@ internal fun shouldContinuePollingAfterRunFailure(
 ): Boolean = observedServerStart && latestStatus?.hasActiveWork == true
 
 internal suspend fun runUpdaterRequestCatching(block: suspend () -> UpdaterResult): Result<UpdaterResult> =
-    try {
-        Result.success(block())
-    } catch (error: Throwable) {
-        if (error is CancellationException && !coroutineContext.isActive) throw error
-        Result.failure(error)
-    }
+    runSuspendCatching(block)
 
 private fun logUpdaterDebug(message: String) {
     Log.d(UpdaterRunLogTag, message)
@@ -202,12 +197,12 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
 
         var observedServerStart = false
         var requestFailureHandled = false
-        val baselineStatus = runCatching { client.updater.status(envId = envId) }
+        val baselineStatus = runSuspendCatching { client.updater.status(envId = envId) }
             .onFailure { error -> logUpdaterError("Baseline status probe failed envId=${envId.rawValue}", error) }
             .getOrNull()
         val baselineSnapshot = baselineStatus?.let(UpdaterRunStatusSnapshot::from)
         logUpdaterDebug("Baseline status envId=${envId.rawValue} snapshot=$baselineSnapshot")
-        val baselineHistoryIds = runCatching {
+        val baselineHistoryIds = runSuspendCatching {
             loadUpdaterHistory(client = client, envId = envId, limit = 5).mapTo(mutableSetOf()) { it.id }
         }
             .onFailure { error -> logUpdaterError("Baseline history probe failed envId=${envId.rawValue}", error) }
@@ -229,7 +224,7 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
         while (coroutineContext.isActive) {
             if (runJob.isCompleted && !requestFailureHandled) {
                 var finalStatusProbeSucceeded = false
-                val finalStatusSnapshot = runCatching { client.updater.status(envId = envId) }
+                val finalStatusSnapshot = runSuspendCatching { client.updater.status(envId = envId) }
                     .onSuccess { finalStatusProbeSucceeded = true }
                     .onFailure { error -> logUpdaterError("Final status probe failed envId=${envId.rawValue}", error) }
                     .getOrNull()
@@ -237,7 +232,7 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                     ?.let(UpdaterRunStatusSnapshot::from)
                 val finalStatusStartEvidence = finalStatusSnapshot?.isNewActiveWorkComparedTo(baselineSnapshot) ?: false
                 var finalHistoryProbeSucceeded = false
-                val finalHistoryStartEvidence = runCatching {
+                val finalHistoryStartEvidence = runSuspendCatching {
                     loadUpdaterHistory(client = client, envId = envId, limit = 5).mapTo(mutableSetOf()) { it.id }
                 }
                     .onSuccess { finalHistoryProbeSucceeded = true }
@@ -278,7 +273,7 @@ fun UpdaterRunScreen(onBack: () -> Unit, environmentId: EnvironmentId? = null, e
                 if (!requestFailureHandled) break
             }
 
-            runCatching { client.updater.status(envId = envId) }
+            runSuspendCatching { client.updater.status(envId = envId) }
                 .onFailure { error -> logUpdaterError("Polling status failed envId=${envId.rawValue}", error) }
                 .getOrNull()
                 ?.let { status ->

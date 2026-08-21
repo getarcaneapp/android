@@ -91,7 +91,7 @@ fun DashboardPinnedSection(
     var runningId by remember { mutableStateOf<String?>(null) }
     var reloadKey by remember { mutableStateOf(0) }
 
-    LaunchedEffect(envId.rawValue, pinned.version, refreshToken, reloadKey) {
+    LaunchedEffect(client, envId.rawValue, pinned.version, refreshToken, reloadKey) {
         if (client == null) return@LaunchedEffect
         val pinnedContainers = pinned.pinnedIds(PinnedItemsStore.Kind.CONTAINER, envId)
         val pinnedProjects = pinned.pinnedIds(PinnedItemsStore.Kind.PROJECT, envId)
