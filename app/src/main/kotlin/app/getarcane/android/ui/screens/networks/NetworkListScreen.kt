@@ -53,13 +53,15 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.completeListQuery
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.theme.ArcaneTeal
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.network.NetworkCreateOptions
 import app.getarcane.sdk.models.network.NetworkCreateRequest
 import app.getarcane.sdk.models.network.NetworkSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Docker built-in networks that can't be deleted. Mirrors iOS `systemNetworkNames`. */
@@ -92,7 +94,13 @@ fun NetworkListScreen(onOpen: (String) -> Unit) {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            Loadable.Success(client.networks.list(envId = envId, query = SearchPaginationSort(limit = 200)).data)
+            Loadable.Success(
+                loadCompletePaginatedCollection("Network", NetworkSummary::id) {
+                    client.networks.list(envId = envId, query = completeListQuery())
+                },
+            )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

@@ -15,7 +15,6 @@ import app.getarcane.sdk.models.activity.Activity
 import app.getarcane.sdk.models.activity.ActivityMessage
 import app.getarcane.sdk.models.activity.ActivityStreamEvent
 import app.getarcane.sdk.models.activity.ActivityStreamEventType
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.base.SortOrder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -319,11 +318,7 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         values.filter { it.isNotEmpty() }.toSortedSet(String.CASE_INSENSITIVE_ORDER).toList()
 
     private suspend fun resolveEnvironments(client: ArcaneClient): List<ActivityEnvironment> {
-        val items = runCatching {
-            client.environments.list(
-                query = SearchPaginationSort(start = 0, limit = 100, sortOrder = SortOrder.ASCENDING),
-            ).data
-        }.getOrNull().orEmpty()
+        val items = loadCompleteEnvironments { query -> client.environments.list(query) }
         return items.map { environment ->
             ActivityEnvironment(
                 id = EnvironmentId(environment.id),

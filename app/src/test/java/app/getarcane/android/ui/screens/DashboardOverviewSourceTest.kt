@@ -2,6 +2,9 @@ package app.getarcane.android.ui.screens
 
 import app.getarcane.sdk.models.base.JsonValue
 import app.getarcane.sdk.models.container.ContainerStatusCounts
+import app.getarcane.sdk.models.dashboard.ActionItem
+import app.getarcane.sdk.models.dashboard.ActionItemKind
+import app.getarcane.sdk.models.dashboard.ActionItemSeverity
 import app.getarcane.sdk.models.dashboard.ActionItems
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentOverview
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentsOverview
@@ -65,6 +68,15 @@ class DashboardOverviewSourceTest {
                 overviewRow(
                     containers = ContainerStatusCounts(2, 1, 3),
                     imageUsageCounts = ImageUsageCounts(2, 4, 6, 99),
+                    actionItems = ActionItems(
+                        listOf(
+                            ActionItem(
+                                kind = ActionItemKind.IMAGE_UPDATES,
+                                count = 4,
+                                severity = ActionItemSeverity.WARNING,
+                            ),
+                        ),
+                    ),
                 ),
             ),
         )
@@ -77,18 +89,20 @@ class DashboardOverviewSourceTest {
             DashboardEnvironmentCardOverviewCounts(running = 2, stopped = 1, images = 6),
             overview.environments.single().cardOverviewCounts(),
         )
+        assertEquals(4, overview.imageUpdateActionCount())
     }
 
     private fun overviewRow(
         environment: JsonValue = JsonValue.Obj(mapOf("id" to JsonValue.Str("0"), "name" to JsonValue.Str("Local"))),
         containers: ContainerStatusCounts = ContainerStatusCounts(0, 0, 0),
         imageUsageCounts: ImageUsageCounts = ImageUsageCounts(0, 0, 0, 0),
+        actionItems: ActionItems = ActionItems(),
     ): DashboardEnvironmentOverview =
         DashboardEnvironmentOverview(
             environment = environment,
             containers = containers,
             imageUsageCounts = imageUsageCounts,
-            actionItems = ActionItems(),
+            actionItems = actionItems,
             settings = DashboardSnapshotSettings(),
             snapshotState = EnvironmentSnapshotState.READY,
         )

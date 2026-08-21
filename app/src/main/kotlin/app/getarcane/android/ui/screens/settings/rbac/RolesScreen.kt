@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.COMPLETE_LIST_LIMIT
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.screens.settings.CircleIcon
@@ -51,6 +53,7 @@ import app.getarcane.sdk.models.role.PermissionsManifest
 import app.getarcane.sdk.models.role.Role
 import app.getarcane.sdk.models.user.hasAnyPermission
 import app.getarcane.sdk.models.role.Permission
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -79,10 +82,16 @@ fun RolesScreen(onOpenRole: (roleId: String) -> Unit, onCreateRole: () -> Unit) 
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
             coroutineScope {
-                val rolesPage = async { client.roles.listPaginated(limit = 100) }
+                val roles = async {
+                    loadCompletePaginatedCollection("Role", Role::id) {
+                        client.roles.listPaginated(limit = COMPLETE_LIST_LIMIT)
+                    }
+                }
                 val manifest = async { client.roles.availablePermissions() }
-                Loadable.Success(RolesData(rolesPage.await().data, manifest.await()))
+                Loadable.Success(RolesData(roles.await(), manifest.await()))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

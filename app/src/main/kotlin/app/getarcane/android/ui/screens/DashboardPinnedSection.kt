@@ -49,9 +49,13 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.LocalPinnedStore
 import app.getarcane.android.core.PinnedItemsStore
+import app.getarcane.android.core.CompleteListResponse
+import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.isRunning
+import app.getarcane.android.core.loadCompleteCollection
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ResourceStatusBadge
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
@@ -60,10 +64,10 @@ import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.android.ui.theme.ArcaneTeal
 import app.getarcane.android.ui.theme.StatusRunning
 import app.getarcane.android.ui.theme.StatusUnknown
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.container.ContainerSummary
 import app.getarcane.sdk.models.project.ProjectDetails
 import app.getarcane.sdk.models.volume.Volume as SdkVolume
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -101,28 +105,42 @@ fun DashboardPinnedSection(
 
         loading = containers.isEmpty() && projects.isEmpty() && volumes.isEmpty()
         containers = if (pinnedContainers.isNotEmpty()) {
-            runCatching { client.containers.list(envId = envId).data.filter { it.id in pinnedContainers } }
-                .getOrDefault(emptyList())
+            try {
+                loadCompleteCollection("Container", ContainerSummary::id) {
+                    val response = client.containers.list(envId = envId, query = completeListQuery())
+                    CompleteListResponse(response.data, response.pagination.totalItems, response.success)
+                }.filter { it.id in pinnedContainers }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                emptyList()
+            }
         } else {
             emptyList()
         }
         projects = if (pinnedProjects.isNotEmpty()) {
-            runCatching {
-                client.projects.list(
-                    envId = envId,
-                    query = SearchPaginationSort(start = 0, limit = 500),
-                ).data.filter { it.id in pinnedProjects }
-            }.getOrDefault(emptyList())
+            try {
+                loadCompletePaginatedCollection("Project", ProjectDetails::id) {
+                    client.projects.list(envId = envId, query = completeListQuery())
+                }.filter { it.id in pinnedProjects }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                emptyList()
+            }
         } else {
             emptyList()
         }
         volumes = if (pinnedVolumes.isNotEmpty()) {
-            runCatching {
-                client.volumes.list(
-                    envId = envId,
-                    query = SearchPaginationSort(start = 0, limit = 500),
-                ).data.filter { it.id in pinnedVolumes }
-            }.getOrDefault(emptyList())
+            try {
+                loadCompletePaginatedCollection("Volume", SdkVolume::id) {
+                    client.volumes.list(envId = envId, query = completeListQuery())
+                }.filter { it.id in pinnedVolumes }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                emptyList()
+            }
         } else {
             emptyList()
         }

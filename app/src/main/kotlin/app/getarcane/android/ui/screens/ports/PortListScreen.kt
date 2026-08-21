@@ -46,6 +46,8 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.completeListQuery
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.theme.ArcaneBlue
@@ -53,8 +55,8 @@ import app.getarcane.android.ui.theme.ArcaneGray
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcanePink
 import app.getarcane.android.ui.theme.ArcanePurple
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.port.PortMapping
+import kotlinx.coroutines.CancellationException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,12 +75,13 @@ fun PortListScreen(onOpen: (String) -> Unit) {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            val ports = client.ports.list(
-                envId = envId,
-                query = SearchPaginationSort(start = 0, limit = 500)
-            ).data
+            val ports = loadCompletePaginatedCollection("Port mapping", PortMapping::id) {
+                client.ports.list(envId = envId, query = completeListQuery())
+            }
             PortStore.put(serverIdentity, ports)
             Loadable.Success(ports)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

@@ -155,9 +155,9 @@ The standard checks are:
   server origin and manual equivalent-URL check were not performed; those cases are covered by the
   focused JVM matrix rather than claimed as device evidence.
 
-- [ ] **PAR-003 — Fix complete-container loading before local filtering**
+- [x] **PAR-003 — Fix complete-container loading before local filtering**
 
-- **Status:** Done/verify
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Make the Containers tab filter a complete result set rather than the SDK's default
@@ -171,12 +171,11 @@ The standard checks are:
   - [x] Search/status filters are proven to run after complete loading, or are moved server-side with
     equivalent semantics.
   - [x] Loading, partial-page failure, refresh, cancellation, and empty states are covered.
-  - [ ] A device/emulator against a live server with more than 20 containers confirms display,
+  - [x] A device/emulator against a live server with more than 20 containers confirms display,
     filtering, refresh, and environment-change behavior without duplicates or omissions.
 - **Validation evidence (updated 2026-08-21):**
   - Review: PR [#41](https://github.com/getarcaneapp/android/pull/41) merged as `fdfabe3`; its focused
-    Greptile finding was fixed and verified in `2d97dad`. Automated validation is complete and focused
-    manual device/live-server validation remains pending.
+    Greptile finding was fixed and verified in `2d97dad`.
   - Source pins: Android base `ca211804fcb3223b7b65abb0d13a97afad81799e`,
     libarcane-kotlin `89c8dd58886a099cdbea9cb9362c9262ba5851d9`, and Arcane
     `b501c49cc9f3d3433494f8334178ac65a59a013d`.
@@ -191,10 +190,13 @@ The standard checks are:
     14 focused tests (0 failures, 0 errors, 0 skipped).
   - `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug` passed all 98 unit tests and produced
     the debug APK; `git diff --check` passed.
+  - On 2026-08-21, Michael verified the merged implementation on a physical device against a live
+    environment with approximately 90 containers. Complete display, search, running/stopped filters,
+    refresh, and environment switching all passed without duplicates or omissions.
 
-- [ ] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
+- [x] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
 
-- **Status:** Ready
+- **Status:** Done
 - **Priority:** P0
 - **Dependencies:** PAR-003
 - **Scope:** Inventory every list call whose UI or calculation claims fleet-wide or complete
@@ -204,11 +206,32 @@ The standard checks are:
   show-all request or stable offset traversal and consistently handles count validation,
   de-duplication, cancellation, and atomic failure. Keep call-site inventory and changes within
   PAR-004.
+- **Audit record:** [Complete-list loading and checked caller inventory](complete-list-loading.md)
 - **Acceptance criteria:**
-  - [ ] A checked inventory records each caller as intentionally paged, intentionally bounded, or fixed.
-  - [ ] All complete-environment callers work with more than 20 environments.
-  - [ ] Shared paging logic has duplicate/empty/short/final-page, cancellation, and error coverage.
-  - [ ] UI copy does not claim complete totals when a view is intentionally bounded.
+  - [x] A checked inventory records each caller as intentionally paged, intentionally bounded, or fixed.
+  - [x] All complete-environment callers work with more than 20 environments.
+  - [x] Shared paging logic has duplicate/empty/short/final-page, cancellation, and error coverage.
+  - [x] UI copy does not claim complete totals when a view is intentionally bounded.
+- **Validation evidence (2026-08-21):**
+  - Source pins: Android base `fb0ac8f91b0acee6f0771a4f880208b74513beb8`,
+    libarcane-kotlin `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
+    `0fd8820822f49e2da25739306bc9bc401253fa9e`.
+  - Arcane's shared pagination contract documents `limit = -1` as a finite show-all request. The
+    shared Android loader uses that request, de-duplicates stable identities, validates success and
+    raw/unique totals, rejects malformed responses atomically, and propagates cancellation.
+  - Focused runs passed 26 tests across `CompleteListLoaderTest`, `ContainerPaginationTest`, and
+    `DashboardNeedsAttentionMapperTest` (0 failures, 0 errors, 0 skipped). The environment fixture
+    contains 125 rows and verifies the exact show-all query.
+  - `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 131 unit tests and assembled the
+    debug APK; `git diff --check` passed.
+  - A 2026-08-21 physical-device comparison found Android reporting 11 dashboard updates while the
+    Arcane dashboard reported 4. Android was counting raw images with updates instead of Arcane's
+    impacted-resource action items. The mapping now uses initial and streamed dashboard action-item
+    totals and has focused regression coverage. The first retest remained at the loading placeholder
+    because the SDK's action-items-only and aggregate-overview endpoints are not exposed by the
+    pinned Arcane server revision; Android now reads action items from the supported per-environment
+    dashboard snapshot instead. Michael's second physical-device retest showed the expected update
+    count and verified the remaining PAR-004 items.
 
 - [ ] **PAR-005 — Revalidate OIDC and admin-tab navigation**
 

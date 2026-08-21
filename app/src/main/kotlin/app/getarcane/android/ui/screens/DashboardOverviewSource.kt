@@ -5,8 +5,11 @@ import app.getarcane.sdk.models.base.arrayValue
 import app.getarcane.sdk.models.base.boolValue
 import app.getarcane.sdk.models.base.objectValue
 import app.getarcane.sdk.models.base.stringValue
+import app.getarcane.sdk.models.dashboard.ActionItemKind
+import app.getarcane.sdk.models.dashboard.ActionItems
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentOverview
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentsOverview
+import app.getarcane.sdk.models.dashboard.EnvironmentSnapshotState
 import app.getarcane.sdk.models.environment.Environment
 
 data class DashboardEnvironmentCardOverviewCounts(
@@ -30,6 +33,19 @@ internal fun DashboardEnvironmentsOverview.toDashTotals(
         updates = updates,
         stopped = summary.containers.stoppedContainers,
     )
+
+internal fun ActionItems.imageUpdateActionCount(): Int =
+    items.firstOrNull { it.kind == ActionItemKind.IMAGE_UPDATES }
+        ?.count
+        ?.coerceAtLeast(0)
+        ?: 0
+
+internal fun DashboardEnvironmentsOverview.imageUpdateActionCount(): Int? {
+    if (environments.any { it.snapshotState == EnvironmentSnapshotState.ERROR }) return null
+    return environments
+        .filter { it.snapshotState == EnvironmentSnapshotState.READY }
+        .sumOf { it.actionItems.imageUpdateActionCount() }
+}
 
 internal fun DashboardEnvironmentOverview.cardOverviewCounts(): DashboardEnvironmentCardOverviewCounts =
     DashboardEnvironmentCardOverviewCounts(

@@ -40,23 +40,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.CompleteListResponse
+import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.loadCompleteCollection
+import app.getarcane.android.core.loadCompleteEnvironments
+import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.ArcaneClient
 import app.getarcane.sdk.EnvironmentId
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.environment.Environment
+import app.getarcane.sdk.models.image.ImageSummary
 import app.getarcane.sdk.models.image.ImageUpdateInfo
 import app.getarcane.sdk.models.imageupdate.ImageUpdateResponse
 import app.getarcane.sdk.models.imageupdate.ImageUpdateSummary
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-
-private const val ALL_ENV_IMAGES_PAGE_SIZE = 500
 
 private val ImageUpdateInfo.hasDefinitiveUpdateInfo: Boolean
     get() = hasUpdate ||
@@ -75,6 +79,7 @@ fun AllEnvironmentsImageUpdatesScreen(onBack: () -> Unit) {
     var buckets by remember { mutableStateOf<List<ImageUpdateEnvironmentBucket>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var hasLoadedOnce by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
     var checkingKey by remember { mutableStateOf<String?>(null) }
     var rescanningEnvironmentId by remember { mutableStateOf<String?>(null) }
@@ -82,9 +87,17 @@ fun AllEnvironmentsImageUpdatesScreen(onBack: () -> Unit) {
     suspend fun load() {
         if (client == null) return
         if (!hasLoadedOnce) loading = true
-        val environments = runCatching { client.environments.list().data }
-            .getOrDefault(emptyList())
-            .filter { it.enabled }
+        val environments = try {
+            loadCompleteEnvironments { query -> client.environments.list(query) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            loadError = friendlyErrorMessage(e)
+            loading = false
+            hasLoadedOnce = true
+            return
+        }.filter { it.enabled }
+        loadError = null
         buckets = coroutineScope {
             environments.map { environment ->
                 async {
@@ -157,6 +170,11 @@ fun AllEnvironmentsImageUpdatesScreen(onBack: () -> Unit) {
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when {
+                loadError != null -> {
+                    Box(Modifier.fillMaxSize().padding(16.dp)) {
+                        ErrorBanner(loadError!!, onRetry = { refreshKey++ })
+                    }
+                }
                 !hasLoadedOnce && loading -> {
                     Row(
                         Modifier.fillMaxSize(),
@@ -176,7 +194,9 @@ fun AllEnvironmentsImageUpdatesScreen(onBack: () -> Unit) {
                     )
                 }
                 else -> {
-                    val totalUpdates = buckets.sumOf { it.updateRefs.size }
+                    val totalUpdates = buckets
+                        .takeIf { values -> values.none { it.errorMessage != null } }
+                        ?.sumOf { it.updateRefs.size }
                     LazyColumn(
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(16.dp),
@@ -202,7 +222,7 @@ fun AllEnvironmentsImageUpdatesScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun UpdatesOverviewCard(totalUpdates: Int, environmentCount: Int) {
+private fun UpdatesOverviewCard(totalUpdates: Int?, environmentCount: Int) {
     Card(Modifier.fillMaxWidth()) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
@@ -210,14 +230,18 @@ private fun UpdatesOverviewCard(totalUpdates: Int, environmentCount: Int) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                if (totalUpdates > 0) Icons.Filled.Warning else Icons.Filled.CheckCircle,
+                if (totalUpdates == null || totalUpdates > 0) Icons.Filled.Warning else Icons.Filled.CheckCircle,
                 contentDescription = null,
-                tint = if (totalUpdates > 0) ArcaneOrange else ArcaneGreen,
+                tint = if (totalUpdates == null || totalUpdates > 0) ArcaneOrange else ArcaneGreen,
                 modifier = Modifier.size(28.dp),
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    if (totalUpdates == 1) "1 update available" else "$totalUpdates updates available",
+                    when (totalUpdates) {
+                        null -> "Update total unavailable"
+                        1 -> "1 update available"
+                        else -> "$totalUpdates updates available"
+                    },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -348,22 +372,28 @@ private suspend fun loadImageUpdateBucket(
 ): ImageUpdateEnvironmentBucket {
     val envId = EnvironmentId(environment.id)
 
-    val summary = runCatching { client.images.updateSummary(envId = envId) }.getOrNull()
+    val summary = try {
+        client.images.updateSummary(envId = envId)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        null
+    }
     val updateInfoByRef = mutableMapOf<String, ImageUpdateResponse>()
     var taggedRefs = emptyList<String>()
     var totalImages = 0
     var errorMessage: String? = null
 
     try {
-        val response = client.images.list(
-            envId = envId,
-            query = SearchPaginationSort(start = 0, limit = ALL_ENV_IMAGES_PAGE_SIZE),
-        )
-        totalImages = response.pagination.totalItems.toInt()
-        taggedRefs = response.data
+        val images = loadCompleteCollection("Image", ImageSummary::id) {
+            val response = client.images.list(envId = envId, query = completeListQuery())
+            CompleteListResponse(response.data, response.pagination.totalItems, response.success)
+        }
+        totalImages = images.size
+        taggedRefs = images
             .flatMap { it.repoTags }
             .filter { it != "<none>:<none>" }
-        for (image in response.data) {
+        for (image in images) {
             val info = image.updateInfo ?: continue
             if (!info.hasDefinitiveUpdateInfo) continue
             val updateResponse = info.toUpdateResponse()
@@ -371,16 +401,23 @@ private suspend fun loadImageUpdateBucket(
                 if (tag != "<none>:<none>") updateInfoByRef[tag] = updateResponse
             }
         }
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Throwable) {
         errorMessage = friendlyErrorMessage(e)
     }
 
     if (taggedRefs.isNotEmpty()) {
-        runCatching { client.images.updateInfoByRefs(envId = envId, imageRefs = taggedRefs) }
-            .getOrNull()
-            ?.forEach { (ref, info) ->
+        try {
+            client.images.updateInfoByRefs(envId = envId, imageRefs = taggedRefs)
+                .forEach { (ref, info) ->
                 if (info != null) updateInfoByRef[ref] = info.toUpdateResponse()
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            // Inline update information remains usable when the cache lookup fails.
+        }
     }
 
     return ImageUpdateEnvironmentBucket(

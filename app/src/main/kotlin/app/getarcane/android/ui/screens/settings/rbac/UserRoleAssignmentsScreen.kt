@@ -46,7 +46,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.COMPLETE_LIST_LIMIT
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.loadCompleteEnvironments
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.screens.settings.FormErrorRow
@@ -56,13 +59,13 @@ import app.getarcane.android.ui.screens.settings.LabeledPicker
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.IconButton
 import app.getarcane.sdk.errors.ArcaneError
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.environment.Environment
 import app.getarcane.sdk.models.role.Role
 import app.getarcane.sdk.models.role.RoleAssignment
 import app.getarcane.sdk.models.role.RoleAssignmentSource
 import app.getarcane.sdk.models.role.UserAssignmentInput
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
@@ -92,10 +95,18 @@ fun UserRoleAssignmentsScreen(userId: String, onBack: () -> Unit) {
         state = try {
             coroutineScope {
                 val a = async { client.users.getRoleAssignments(userId) }
-                val r = async { client.roles.listPaginated(limit = 100) }
-                val e = async { client.environments.list(SearchPaginationSort(start = 0, limit = 100)) }
-                Loadable.Success(AssignmentsData(a.await(), r.await().data, e.await().data))
+                val r = async {
+                    loadCompletePaginatedCollection("Role", Role::id) {
+                        client.roles.listPaginated(limit = COMPLETE_LIST_LIMIT)
+                    }
+                }
+                val e = async {
+                    loadCompleteEnvironments { query -> client.environments.list(query) }
+                }
+                Loadable.Success(AssignmentsData(a.await(), r.await(), e.await()))
             }
+        } catch (ex: CancellationException) {
+            throw ex
         } catch (ex: Throwable) {
             Loadable.Error(friendlyErrorMessage(ex))
         }

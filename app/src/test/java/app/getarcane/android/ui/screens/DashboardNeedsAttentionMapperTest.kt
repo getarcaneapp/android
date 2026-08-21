@@ -15,6 +15,50 @@ import org.junit.Test
 
 class DashboardNeedsAttentionMapperTest {
     @Test
+    fun failedActivityRowUsesTheCompleteFleetCount() {
+        val items = buildNeedsAttentionItems(
+            environments = emptyList(),
+            streamStates = emptyMap(),
+            totals = null,
+            failedActivityCount = 27,
+            onOpenEnvironment = {},
+            onOpenContainers = {},
+            onOpenUpdates = {},
+            onOpenVulnerabilities = {},
+            onOpenApiKeys = {},
+            onOpenActivities = {},
+        )
+
+        assertEquals(27, items.single { it.id == "failed-activities" }.count)
+    }
+
+    @Test
+    fun imageUpdateRowUsesDashboardActionItemsInsteadOfRawImageUpdateTotal() {
+        val streamStates = mapOf(
+            "0" to streamState(
+                id = "0",
+                name = "Local",
+                actionItems = listOf(DashboardActionItem("image_updates", 4, "warning")),
+            ),
+        )
+        val items = buildNeedsAttentionItems(
+            environments = emptyList(),
+            streamStates = streamStates,
+            totals = DashTotals(96, 97, 112, 5, 11, 1),
+            failedActivityCount = 0,
+            onOpenEnvironment = {},
+            onOpenContainers = {},
+            onOpenUpdates = {},
+            onOpenVulnerabilities = {},
+            onOpenApiKeys = {},
+            onOpenActivities = {},
+        )
+
+        assertEquals(4, items.single { it.id == "image-updates" }.count)
+        assertEquals(4, completeStreamImageUpdateCount(streamStates))
+    }
+
+    @Test
     fun actionItemsAddVulnerabilitiesAndApiKeysWithoutDroppingExistingRows() {
         val vulnerabilityTargets = mutableListOf<DashboardActionTargetEnvironment>()
         var openedApiKeys = false
@@ -27,6 +71,7 @@ class DashboardNeedsAttentionMapperTest {
                     actionItems = listOf(
                         DashboardActionItem("actionable_vulnerabilities", 2, "warning"),
                         DashboardActionItem("expiring_keys", 1, "warning"),
+                        DashboardActionItem("image_updates", 4, "warning"),
                     ),
                 ),
                 "edge" to streamState(
@@ -46,7 +91,7 @@ class DashboardNeedsAttentionMapperTest {
                 updates = 4,
                 stopped = 3,
             ),
-            failedActivities = emptyList(),
+            failedActivityCount = 0,
             onOpenEnvironment = {},
             onOpenContainers = {},
             onOpenUpdates = {},
@@ -113,7 +158,7 @@ class DashboardNeedsAttentionMapperTest {
                 ),
             ),
             totals = null,
-            failedActivities = emptyList(),
+            failedActivityCount = null,
             onOpenEnvironment = {},
             onOpenContainers = {},
             onOpenUpdates = {},
