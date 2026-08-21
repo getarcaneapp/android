@@ -80,26 +80,35 @@ class ArcaneClientManager(context: Context) {
 
     init {
         scope.launch {
-            try {
-                val saved = prefs.serverUrl.first()
-                prefs.activeEnvId.first()?.let { id ->
-                    activeEnvironmentId = EnvironmentId(id)
-                    activeEnvironmentName = prefs.activeEnvName.first() ?: "Local Docker"
-                }
-                if (!saved.isNullOrBlank()) {
-                    serverUrl = saved
-                    client = makeClient(saved)
-                    authStatus = AuthStatus.AUTHENTICATING
-                    checkExistingAuth()
-                } else {
-                    authStatus = AuthStatus.SETUP
-                }
-            } catch (e: CancellationException) {
-                authStatus = AuthStatus.SETUP
-                throw e
-            } catch (e: Throwable) {
-                authStatus = AuthStatus.SETUP
-            }
+            restoreAuthenticationSession(
+                loadSavedState = {
+                    val savedServer = prefs.serverUrl.first()
+                    val activeEnvironmentId = prefs.activeEnvId.first()
+                    SavedAuthState(
+                        serverUrl = savedServer,
+                        activeEnvironmentId = activeEnvironmentId,
+                        activeEnvironmentName =
+                            if (activeEnvironmentId == null) null else prefs.activeEnvName.first(),
+                    )
+                },
+                applySavedState = { savedState ->
+                    savedState.activeEnvironmentId?.let { id ->
+                        activeEnvironmentId = EnvironmentId(id)
+                        activeEnvironmentName = savedState.activeEnvironmentName ?: "Local Docker"
+                    }
+                },
+                openSavedServer = { savedServer ->
+                    serverUrl = savedServer
+                    client = makeClient(savedServer)
+                },
+                validateSavedSession = {
+                    val c = requireNotNull(client)
+                    currentUser = c.auth.me()
+                    capabilities = c.serverCapabilities()
+                },
+                refreshLoginMethods = ::refreshOidc,
+                updateStatus = { authStatus = it },
+            )
         }
     }
 
@@ -316,22 +325,22 @@ class ArcaneClientManager(context: Context) {
         scope.launch { prefs.setActiveEnv(id.rawValue, name) }
     }
 
-    private suspend fun checkExistingAuth() {
-        val c = client ?: run { authStatus = AuthStatus.LOGIN; return }
-        try {
-            currentUser = c.auth.me()
-            capabilities = c.serverCapabilities()
-            authStatus = AuthStatus.AUTHENTICATED
-        } catch (e: Throwable) {
-            authStatus = AuthStatus.LOGIN
-            refreshOidc()
-        }
-    }
-
     private suspend fun refreshOidc() {
         val c = client ?: return
-        val settings = runCatching { c.settings.getPublicSettings() }.getOrNull()
-        val status = runCatching { c.auth.oidcStatus() }.getOrNull()
+        val settings = try {
+            c.settings.getPublicSettings()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
+        val status = try {
+            c.auth.oidcStatus()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
         if (settings == null) {
             oidc = status
             return
