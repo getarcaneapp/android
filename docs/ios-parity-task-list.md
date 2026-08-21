@@ -155,9 +155,9 @@ The standard checks are:
   server origin and manual equivalent-URL check were not performed; those cases are covered by the
   focused JVM matrix rather than claimed as device evidence.
 
-- [ ] **PAR-003 — Fix complete-container loading before local filtering**
+- [x] **PAR-003 — Fix complete-container loading before local filtering**
 
-- **Status:** Done/verify
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Make the Containers tab filter a complete result set rather than the SDK's default
@@ -171,12 +171,11 @@ The standard checks are:
   - [x] Search/status filters are proven to run after complete loading, or are moved server-side with
     equivalent semantics.
   - [x] Loading, partial-page failure, refresh, cancellation, and empty states are covered.
-  - [ ] A device/emulator against a live server with more than 20 containers confirms display,
+  - [x] A device/emulator against a live server with more than 20 containers confirms display,
     filtering, refresh, and environment-change behavior without duplicates or omissions.
 - **Validation evidence (updated 2026-08-21):**
   - Review: PR [#41](https://github.com/getarcaneapp/android/pull/41) merged as `fdfabe3`; its focused
-    Greptile finding was fixed and verified in `2d97dad`. Automated validation is complete and focused
-    manual device/live-server validation remains pending.
+    Greptile finding was fixed and verified in `2d97dad`.
   - Source pins: Android base `ca211804fcb3223b7b65abb0d13a97afad81799e`,
     libarcane-kotlin `89c8dd58886a099cdbea9cb9362c9262ba5851d9`, and Arcane
     `b501c49cc9f3d3433494f8334178ac65a59a013d`.
@@ -191,6 +190,9 @@ The standard checks are:
     14 focused tests (0 failures, 0 errors, 0 skipped).
   - `.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug` passed all 98 unit tests and produced
     the debug APK; `git diff --check` passed.
+  - On 2026-08-21, Michael verified the merged implementation on a physical device against a live
+    environment with approximately 90 containers. Complete display, search, running/stopped filters,
+    refresh, and environment switching all passed without duplicates or omissions.
 
 - [x] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
 
