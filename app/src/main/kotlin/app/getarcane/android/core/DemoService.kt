@@ -72,7 +72,7 @@ object DemoService {
             while (isActive) {
                 delay(15_000)
                 if (!isActive) break
-                runCatching { post("demo-kuma/heartbeat", timeoutMs = 10_000, withCookie = true) }
+                runSuspendCatching { post("demo-kuma/heartbeat", timeoutMs = 10_000, withCookie = true) }
             }
         }
     }
@@ -86,7 +86,7 @@ object DemoService {
     suspend fun endSession() {
         stopHeartbeat()
         withContext(Dispatchers.IO) {
-            runCatching { post("demo-kuma/end-session", timeoutMs = 10_000, withCookie = true) }
+            runSuspendCatching { post("demo-kuma/end-session", timeoutMs = 10_000, withCookie = true) }
         }
         sessionId = null
     }

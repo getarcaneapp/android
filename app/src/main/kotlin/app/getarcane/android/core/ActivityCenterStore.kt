@@ -22,6 +22,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 
 /**
@@ -55,6 +56,11 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
     private val activityBuckets = LinkedHashMap<String, List<Activity>>()
     private val environmentNames = HashMap<String, String>()
     private val streamJobs = HashMap<String, Job>()
+    private var loadJob: Job? = null
+    private var clientGeneration = 0L
+    private var loadGeneration = 0L
+    private var streamGeneration = 0L
+    private var streamingRequested = false
 
     val filteredActivities: List<Activity>
         get() {
@@ -74,41 +80,42 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         get() = sortedUnique(activities.mapNotNull { it.resourceType })
 
     fun configure(client: ArcaneClient?) {
-        val changed = this.client == null
+        if (this.client === client) return
+        clientGeneration++
+        loadGeneration++
+        loadJob?.cancel()
+        loadJob = null
+        stopStream()
         this.client = client
-        if (changed) {
-            stopStream()
-            activities = emptyList()
-            activityBuckets.clear()
-            environmentNames.clear()
-            environmentIds = emptyList()
-            limit = PAGE_SIZE
-            hasMore = false
-            errorMessage = null
-            streamErrorMessage = null
-        }
+        activities = emptyList()
+        activityBuckets.clear()
+        environmentNames.clear()
+        environmentIds = emptyList()
+        limit = PAGE_SIZE
+        hasMore = false
+        isLoading = false
+        isLoadingMore = false
+        errorMessage = null
+        streamErrorMessage = null
     }
 
     /** Fan out `listPaginated` across all environments, bucket per env, merge + sort. */
     suspend fun load(reset: Boolean = true, refresh: Boolean = false) {
         val client = client ?: return
-        if (reset) {
-            limit = PAGE_SIZE
-            hasMore = false
-        }
+        val owningJob = currentCoroutineContext()[Job]
+        loadJob?.takeIf { it !== owningJob }?.cancel()
+        loadJob = owningJob
+        val expectedClientGeneration = clientGeneration
+        val operationGeneration = ++loadGeneration
+        val pageLimit = if (reset) PAGE_SIZE else limit
         if (activities.isEmpty() || refresh) isLoading = true
         errorMessage = null
         try {
             val environments = resolveEnvironments(client)
-            environmentIds = environments.map { it.id.rawValue }
-            environmentNames.clear()
-            environments.forEach { environmentNames[it.id.rawValue] = it.name }
-
-            val pageLimit = limit
             val results: List<Pair<ActivityEnvironment, List<Activity>?>> = coroutineScope {
                 environments.map { environment ->
                     async {
-                        val data = runCatching {
+                        val data = runSuspendCatching {
                             client.activities.listPaginated(
                                 envId = environment.id,
                                 order = SortOrder.DESCENDING,
@@ -131,9 +138,14 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
                 }
                 val normalized = data.map { normalize(it, environment) }
                 buckets[environment.id.rawValue] = sortActivities(normalized)
-                if (data.size >= limit) anyHasMore = true
+                if (data.size >= pageLimit) anyHasMore = true
             }
 
+            if (!isCurrentLoad(client, expectedClientGeneration, operationGeneration)) return
+            limit = pageLimit
+            environmentIds = environments.map { it.id.rawValue }
+            environmentNames.clear()
+            environments.forEach { environmentNames[it.id.rawValue] = it.name }
             activityBuckets.clear()
             activityBuckets.putAll(buckets)
             hasMore = anyHasMore
@@ -141,21 +153,30 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
             if (failures > 0) {
                 streamErrorMessage = "Some environments could not load. Pull to refresh."
             }
+            if (streamingRequested) restartStreams()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            if (activities.isEmpty()) errorMessage = friendlyErrorMessage(e)
+            if (isCurrentLoad(client, expectedClientGeneration, operationGeneration) && activities.isEmpty()) {
+                errorMessage = friendlyErrorMessage(e)
+            }
         } finally {
-            isLoading = false
+            if (isCurrentLoad(client, expectedClientGeneration, operationGeneration)) isLoading = false
+            if (loadJob === owningJob) loadJob = null
         }
     }
 
     suspend fun loadMore() {
         if (isLoadingMore || !hasMore) return
         isLoadingMore = true
+        val previousLimit = limit
+        val requestedLimit = previousLimit + PAGE_SIZE
         try {
-            limit += PAGE_SIZE
+            limit = requestedLimit
             load(reset = false)
+        } catch (e: CancellationException) {
+            if (limit == requestedLimit) limit = previousLimit
+            throw e
         } finally {
             isLoadingMore = false
         }
@@ -163,8 +184,13 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
 
     /** One coroutine per environment collecting `client.activities.stream(...)`. */
     fun startStream() {
+        streamingRequested = true
+        restartStreams()
+    }
+
+    private fun restartStreams() {
         val client = client ?: return
-        stopStream()
+        cancelStreamJobs()
         streamErrorMessage = null
 
         val environments = environmentIds.map { id ->
@@ -172,15 +198,23 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         }
         if (environments.isEmpty()) return
 
+        val expectedClientGeneration = clientGeneration
+        val expectedStreamGeneration = streamGeneration
         isStreaming = true
         for (environment in environments) {
             streamJobs[environment.id.rawValue] = scope.launch {
-                consumeStream(client, environment)
+                consumeStream(client, environment, expectedClientGeneration, expectedStreamGeneration)
             }
         }
     }
 
     fun stopStream() {
+        streamingRequested = false
+        cancelStreamJobs()
+    }
+
+    private fun cancelStreamJobs() {
+        streamGeneration++
         streamJobs.values.forEach { it.cancel() }
         streamJobs.clear()
         isStreaming = false
@@ -215,7 +249,7 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         val results: List<Pair<Long?, Boolean>> = coroutineScope {
             targets.map { id ->
                 async {
-                    runCatching {
+                    runSuspendCatching {
                         client.activities.clearHistory(envId = EnvironmentId(id)).deleted
                     }.fold(
                         onSuccess = { it to true },
@@ -235,20 +269,45 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         return ClearHistoryResult(deleted = deleted, failed = failed)
     }
 
-    private suspend fun consumeStream(client: ArcaneClient, environment: ActivityEnvironment) {
+    private suspend fun consumeStream(
+        client: ArcaneClient,
+        environment: ActivityEnvironment,
+        expectedClientGeneration: Long,
+        expectedStreamGeneration: Long,
+    ) {
+        val owningJob = currentCoroutineContext()[Job]
         try {
             client.activities.stream(envId = environment.id, limit = PAGE_SIZE).collect { event ->
-                apply(event, environment)
+                if (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration)) {
+                    apply(event, environment)
+                }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            streamErrorMessage = "Live updates paused. Pull to refresh."
+            if (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration)) {
+                streamErrorMessage = "Live updates paused. Pull to refresh."
+            }
         } finally {
-            streamJobs.remove(environment.id.rawValue)
-            isStreaming = streamJobs.isNotEmpty()
+            val id = environment.id.rawValue
+            if (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration) &&
+                streamJobs[id] === owningJob
+            ) {
+                streamJobs.remove(id)
+                isStreaming = streamJobs.isNotEmpty()
+            }
         }
     }
+
+    private fun isCurrentLoad(client: ArcaneClient, clientGeneration: Long, loadGeneration: Long): Boolean =
+        this.client === client &&
+            this.clientGeneration == clientGeneration &&
+            this.loadGeneration == loadGeneration
+
+    private fun isCurrentStream(client: ArcaneClient, clientGeneration: Long, streamGeneration: Long): Boolean =
+        this.client === client &&
+            this.clientGeneration == clientGeneration &&
+            this.streamGeneration == streamGeneration
 
     private fun apply(event: ActivityStreamEvent, environment: ActivityEnvironment) {
         when (event.type) {

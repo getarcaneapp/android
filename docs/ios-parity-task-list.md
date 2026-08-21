@@ -196,7 +196,7 @@ The standard checks are:
 
 - [x] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
 
-- **Status:** Done
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** PAR-003
 - **Scope:** Inventory every list call whose UI or calculation claims fleet-wide or complete
@@ -276,16 +276,28 @@ The standard checks are:
 
 - [ ] **PAR-008 — Audit coroutine cancellation and stream ownership**
 
-- **Status:** Ready
+- **Status:** Done/verify
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Find broad exception handling in stores and streams, rethrow `CancellationException`,
   and ensure environment/server/screen changes cancel the correct work.
+- **Audit record:** [Coroutine and stream ownership](coroutine-stream-ownership.md)
 - **Acceptance criteria:**
-  - [ ] Broad catches no longer convert cancellation into user-visible failures or reconnect loops.
-  - [ ] Tests cover cancellation during refresh, paging, reconnect, and environment/server changes.
-  - [ ] At most one intended stream/job owner remains for each screen-level operation.
-  - [ ] No stale result from a canceled prior environment can overwrite current state.
+  - [x] Broad catches no longer convert cancellation into user-visible failures or reconnect loops.
+  - [x] Tests cover cancellation during refresh, paging, reconnect, and environment/server changes.
+  - [x] At most one intended stream/job owner remains for each screen-level operation.
+  - [x] No stale result from a canceled prior environment can overwrite current state.
+- **Validation evidence (2026-08-21):**
+  - Source pins: Android base `b49f4d3c36b224b865d423a0febe93a26ca42689`,
+    libarcane-kotlin `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
+    `0fd8820822f49e2da25739306bc9bc401253fa9e`.
+  - Focused runs passed 33 tests across `CoroutineFailuresTest`, `DashboardStreamStoreTest`,
+    `CompleteListLoaderTest`, and `UpdaterRunScreenTest` (0 failures, 0 errors, 0 skipped), including
+    refresh, paging, reconnect, environment-removal, and client-replacement cancellation.
+  - `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 143 unit tests and assembled the
+    debug APK; `git diff --check` passed.
+  - Physical-device/live-server verification is pending for reconnect, environment switching, and
+    leaving each affected streaming screen while work is active.
 
 - [ ] **PAR-009 — Persist and apply Light/Dark/Auto appearance**
 

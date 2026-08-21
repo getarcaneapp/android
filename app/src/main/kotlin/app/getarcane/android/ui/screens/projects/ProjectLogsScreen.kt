@@ -38,6 +38,7 @@ import app.getarcane.android.ui.components.buildAnsiAnnotatedString
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.streaming.LogLine
+import kotlinx.coroutines.CancellationException
 
 /** Live project log stream. Mirrors the iOS `LogsView` opened from the project detail. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,16 +52,23 @@ fun ProjectLogsScreen(projectId: String, title: String, onBack: () -> Unit) {
     val listState = rememberLazyListState()
     var autoScroll by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var streamGeneration by remember { mutableStateOf(0) }
 
-    LaunchedEffect(projectId) {
+    LaunchedEffect(client, envId.rawValue, projectId) {
+        val generation = ++streamGeneration
+        lines.clear()
+        error = null
         if (client == null) return@LaunchedEffect
         try {
             client.projects.logs(envId = envId, projectId = projectId, follow = true, tail = "200").collect { line ->
+                if (generation != streamGeneration) return@collect
                 lines.add(line)
                 if (lines.size > 5000) repeat(100) { if (lines.isNotEmpty()) lines.removeAt(0) }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
-            error = friendlyErrorMessage(e)
+            if (generation == streamGeneration) error = friendlyErrorMessage(e)
         }
     }
 

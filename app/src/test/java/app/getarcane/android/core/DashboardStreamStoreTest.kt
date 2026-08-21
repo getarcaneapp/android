@@ -4,11 +4,17 @@ import app.getarcane.sdk.models.container.ContainerStatusCounts
 import app.getarcane.sdk.models.environment.Environment
 import app.getarcane.sdk.models.image.ImageUsageCounts
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -115,6 +121,188 @@ class DashboardStreamStoreTest {
         }
     }
 
+    @Test
+    fun newerRefreshResultCannotBeOverwrittenByOlderRequest() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val client = ControlledSnapshotClient()
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(client)
+            store.reconcile(listOf(Environment(id = "edge", name = "Edge", apiUrl = "", status = "active")))
+
+            val first = async(start = CoroutineStart.UNDISPATCHED) { store.refresh() }
+            val second = async(start = CoroutineStart.UNDISPATCHED) { store.refresh() }
+            yield()
+            assertEquals(2, client.requests.size)
+
+            client.requests[1].complete(snapshot(running = 9))
+            second.await()
+            client.requests[0].complete(snapshot(running = 1))
+            first.await()
+
+            assertEquals(9, store.statesByEnvironmentId.getValue("edge").snapshot?.containers?.counts?.runningContainers)
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun cancelledRefreshPropagatesWithoutPublishingAnError() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val client = ControlledSnapshotClient()
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(client)
+            store.reconcile(listOf(Environment(id = "edge", name = "Edge", apiUrl = "", status = "active")))
+
+            val refresh = async(start = CoroutineStart.UNDISPATCHED) { store.refresh() }
+            yield()
+            refresh.cancelAndJoin()
+
+            val state = store.statesByEnvironmentId.getValue("edge")
+            assertFalse(state.streamError)
+            assertNull(state.errorMessage)
+            assertFalse(state.hasLoaded)
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun removedEnvironmentRejectsAnInFlightSnapshot() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val client = ControlledSnapshotClient()
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(client)
+            store.reconcile(listOf(Environment(id = "edge", name = "Edge", apiUrl = "", status = "active")))
+            val refresh = async(start = CoroutineStart.UNDISPATCHED) { store.refresh() }
+            yield()
+
+            store.reconcile(emptyList())
+            client.requests.single().complete(snapshot(running = 7))
+            refresh.await()
+
+            assertTrue(store.statesByEnvironmentId.isEmpty())
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun replacementClientRejectsAnInFlightSnapshotFromThePriorServer() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val originalClient = ControlledSnapshotClient()
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(originalClient)
+            store.reconcile(listOf(Environment(id = "edge", name = "Edge", apiUrl = "", status = "active")))
+            val refresh = async(start = CoroutineStart.UNDISPATCHED) { store.refresh() }
+            yield()
+
+            store.configure(AlternateDashboardStreamClient)
+            originalClient.requests.single().complete(snapshot(running = 7))
+            refresh.await()
+
+            val state = store.statesByEnvironmentId.getValue("edge")
+            assertTrue(state.loading)
+            assertFalse(state.hasLoaded)
+            assertNull(state.snapshot)
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun environmentRemovalCancelsItsStoreOwnedSnapshotJob() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val client = CountingSnapshotClient()
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(client)
+            store.start()
+            store.reconcile(listOf(Environment(id = "edge", name = "Edge", apiUrl = "", status = "active")))
+            assertEquals(1, client.active)
+
+            store.reconcile(emptyList())
+            yield()
+
+            assertEquals(0, client.active)
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun clientReplacementCancelsStoreOwnedSnapshotJobs() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val client = CountingSnapshotClient()
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(client)
+            store.start()
+            store.reconcile(listOf(Environment(id = "edge", name = "Edge", apiUrl = "", status = "active")))
+            assertEquals(1, client.active)
+
+            store.configure(AlternateDashboardStreamClient)
+            yield()
+
+            assertEquals(0, client.active)
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun liveSnapshotCancelsTheRedundantStoreOwnedFallback() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val client = CountingSnapshotClient()
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(client)
+            store.start()
+            store.reconcile(listOf(Environment(id = "edge", name = "Edge", apiUrl = "", status = "active")))
+            assertEquals(1, client.active)
+
+            store.applyForTest(snapshotEvent("edge", running = 3, stopped = 0, images = 2))
+            yield()
+
+            assertEquals(0, client.active)
+            assertEquals(3, store.statesByEnvironmentId.getValue("edge").snapshot?.containers?.counts?.runningContainers)
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun reconnectReplacesTheSingleOwnedStreamJob() = runBlocking {
+        val scope = CoroutineScope(Dispatchers.Unconfined)
+        val client = CountingStreamClient()
+        val store = DashboardStreamStore(scope)
+        try {
+            store.configure(client)
+            store.start()
+            assertEquals(1, client.started)
+            assertEquals(1, client.active)
+
+            store.retry()
+
+            assertEquals(2, client.started)
+            assertEquals(1, client.active)
+        } finally {
+            store.stop()
+            scope.cancel()
+        }
+        assertEquals(0, client.active)
+    }
+
     private fun snapshotEvent(environmentId: String, running: Int, stopped: Int, images: Int): DashboardStreamEvent =
         DashboardStreamEvent(
             type = "snapshot",
@@ -144,6 +332,9 @@ class DashboardStreamStoreTest {
             error = "unreachable",
             errorCode = "unreachable",
         )
+
+    private fun snapshot(running: Int): DashboardSnapshot =
+        snapshotEvent("edge", running = running, stopped = 0, images = 0).snapshot!!
 }
 
 private object HangingDashboardStreamClient : DashboardStreamClient {
@@ -158,4 +349,46 @@ private object AlternateDashboardStreamClient : DashboardStreamClient {
 
     override suspend fun snapshot(environmentId: String): DashboardSnapshot =
         error("snapshot should not be called")
+}
+
+private class ControlledSnapshotClient : DashboardStreamClient {
+    val requests = mutableListOf<CompletableDeferred<DashboardSnapshot>>()
+
+    override fun stream(): Flow<DashboardStreamEvent> = flow { awaitCancellation() }
+
+    override suspend fun snapshot(environmentId: String): DashboardSnapshot =
+        CompletableDeferred<DashboardSnapshot>().also(requests::add).await()
+}
+
+private class CountingStreamClient : DashboardStreamClient {
+    var started = 0
+    var active = 0
+
+    override fun stream(): Flow<DashboardStreamEvent> = flow {
+        started++
+        active++
+        try {
+            awaitCancellation()
+        } finally {
+            active--
+        }
+    }
+
+    override suspend fun snapshot(environmentId: String): DashboardSnapshot =
+        error("snapshot should not be called")
+}
+
+private class CountingSnapshotClient : DashboardStreamClient {
+    var active = 0
+
+    override fun stream(): Flow<DashboardStreamEvent> = flow { awaitCancellation() }
+
+    override suspend fun snapshot(environmentId: String): DashboardSnapshot {
+        active++
+        try {
+            awaitCancellation()
+        } finally {
+            active--
+        }
+    }
 }
