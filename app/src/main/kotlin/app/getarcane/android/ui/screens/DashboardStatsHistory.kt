@@ -5,6 +5,9 @@ import app.getarcane.sdk.models.system.SystemStats
 const val DashboardStatsWindowSize = 60
 const val DashboardStatsMaxStreams = 6
 
+internal fun dashboardStatsStreamEnvironmentIds(environmentIds: List<String>): List<String> =
+    environmentIds.distinct().take(DashboardStatsMaxStreams)
+
 data class DashboardStatsSeries(
     val cpu: List<Double> = emptyList(),
     val memory: List<Double> = emptyList(),

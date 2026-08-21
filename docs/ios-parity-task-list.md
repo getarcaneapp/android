@@ -861,17 +861,33 @@ implementation work unless current-source or runtime verification finds a regres
   - [ ] Fleet pagination and partial environment failure do not create false totals.
   - [ ] Close as verified or reopen with a focused reproduction.
 
-- [ ] **PAR-V03 — Dashboard stream foundation and live-stats recovery**
+- [x] **PAR-V03 — Dashboard stream foundation and live-stats recovery**
 
-- **Status:** Done/verify
+- **Status:** Complete
 - **Priority:** P1 if reopened
 - **Dependencies:** PAR-008
 - **Scope:** Verify reconnect, version fallback, cancellation, connection bounds, and recovery after
   server/environment changes.
 - **Acceptance criteria:**
-  - [ ] A current target server demonstrates recovery without duplicate streams or stale overwrites.
-  - [ ] Unsupported/legacy behavior is explicit.
-  - [ ] Close as verified or reopen with a focused reproduction.
+  - [x] A current target server demonstrates recovery without duplicate streams or stale overwrites.
+  - [x] Unsupported/legacy behavior is explicit.
+  - [x] Close as verified or reopen with a focused reproduction.
+- **Validation evidence (2026-08-21):**
+  - Source pins: Android base `84f822b393e2b02e8dcaf200081105104d3eb151`,
+    libarcane-kotlin `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
+    `0fd8820822f49e2da25739306bc9bc401253fa9e`.
+  - Michael's physical-device/live-server smoke test on the current target passed dashboard network
+    loss and reconnect, environment switching without stale values, stream-screen departure and
+    reopen, and recovery after force-stop. The PAR-008 regression matrix separately proves one live
+    owner and rejects stale snapshots across refresh, environment removal, and client replacement.
+  - A typed `ArcaneError.NotFound` from `dashboard/stream` is explicitly treated as a legacy server:
+    reconnect stops without a failure banner, REST totals remain authoritative, and a replacement
+    client resets stream support. Repeated transport failures enter bounded idle retry, and live
+    system stats select at most six unique environments.
+  - Focused runs passed 21 tests across `DashboardStreamStoreTest`, `DashboardStatsHistoryTest`, and
+    `DashboardTotalsTest` (0 failures, 0 errors, 0 skipped).
+  - `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 148 unit tests and assembled the
+    debug APK; `git diff --check` passed.
 
 - [ ] **PAR-V04 — Update All environments**
 

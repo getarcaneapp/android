@@ -7,6 +7,15 @@ import org.junit.Test
 
 class DashboardStatsHistoryTest {
     @Test
+    fun liveStatsEnvironmentSelectionIsUniqueAndConnectionBounded() {
+        val selected = dashboardStatsStreamEnvironmentIds(
+            listOf("0", "edge-1", "edge-1", "edge-2", "edge-3", "edge-4", "edge-5", "edge-6"),
+        )
+
+        assertEquals(listOf("0", "edge-1", "edge-2", "edge-3", "edge-4", "edge-5"), selected)
+    }
+
+    @Test
     fun appendKeepsRollingCpuAndMemoryWindow() {
         val series = (0..DashboardStatsWindowSize).fold(DashboardStatsSeries()) { acc, index ->
             acc.append(stats(cpu = index.toDouble(), memoryUsage = index.toLong(), memoryTotal = 100))

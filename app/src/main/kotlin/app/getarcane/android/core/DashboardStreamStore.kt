@@ -224,6 +224,8 @@ class DashboardStreamStore(
                         apply(event)
                     }
                 } catch (e: ArcaneError.NotFound) {
+                    // Arcane versions without dashboard/stream continue on the REST dashboard path.
+                    // Do not retry or present a transport-failure banner until the client changes.
                     streamUnsupported = true
                     connected = false
                     return
