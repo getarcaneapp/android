@@ -194,9 +194,9 @@ The standard checks are:
     environment with approximately 90 containers. Complete display, search, running/stopped filters,
     refresh, and environment switching all passed without duplicates or omissions.
 
-- [ ] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
+- [x] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
 
-- **Status:** Done/verify
+- **Status:** Done
 - **Priority:** P0
 - **Dependencies:** PAR-003
 - **Scope:** Inventory every list call whose UI or calculation claims fleet-wide or complete
@@ -211,7 +211,7 @@ The standard checks are:
   - [x] A checked inventory records each caller as intentionally paged, intentionally bounded, or fixed.
   - [x] All complete-environment callers work with more than 20 environments.
   - [x] Shared paging logic has duplicate/empty/short/final-page, cancellation, and error coverage.
-  - [ ] UI copy does not claim complete totals when a view is intentionally bounded.
+  - [x] UI copy does not claim complete totals when a view is intentionally bounded.
 - **Validation evidence (2026-08-21):**
   - Source pins: Android base `fb0ac8f91b0acee6f0771a4f880208b74513beb8`,
     libarcane-kotlin `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
@@ -230,7 +230,8 @@ The standard checks are:
     totals and has focused regression coverage. The first retest remained at the loading placeholder
     because the SDK's action-items-only and aggregate-overview endpoints are not exposed by the
     pinned Arcane server revision; Android now reads action items from the supported per-environment
-    dashboard snapshot instead. Follow-up device confirmation is pending.
+    dashboard snapshot instead. Michael's second physical-device retest showed the expected update
+    count and verified the remaining PAR-004 items.
 
 - [ ] **PAR-005 — Revalidate OIDC and admin-tab navigation**
 
