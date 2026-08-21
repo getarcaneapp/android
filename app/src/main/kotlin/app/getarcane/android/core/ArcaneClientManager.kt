@@ -350,6 +350,7 @@ class ArcaneClientManager(context: Context) {
         demoExpiryJob?.cancel()
         demoExpiryJob = null
         clientGeneration++
+        val resetGeneration = clientGeneration
         client = null
         serverUrl = ""
         currentUser = null
@@ -362,11 +363,33 @@ class ArcaneClientManager(context: Context) {
         resetEnvironment()
         cookieJar.clear()
         errorMessage = null
-        authStatus = AuthStatus.SETUP
 
         if (endingIdentity != null) {
-            cleanupServer(endingUrl, endingIdentity, endingClient, endDemoSession = endingDemo)
+            // Keep the loading surface up until DataStore has durably removed the server and
+            // credential binding. Setup must never become visible while an immediate process stop
+            // could still restore the old server. The slower token/client cleanup remains
+            // asynchronous after this persistence boundary.
+            authStatus = AuthStatus.AUTHENTICATING
+            cleanupScope.launch {
+                try {
+                    prefs.clearServerState(endingUrl, endingIdentity.canonicalOrigin)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Throwable) {
+                    if (isCurrentClient(resetGeneration)) {
+                        serverUrl = endingUrl
+                        client = endingClient
+                        errorMessage = "Couldn't clear the saved server. Try again."
+                        authStatus = AuthStatus.LOGIN
+                    }
+                    return@launch
+                }
+                if (!isCurrentClient(resetGeneration)) return@launch
+                authStatus = AuthStatus.SETUP
+                cleanupServer(endingUrl, endingIdentity, endingClient, endDemoSession = endingDemo)
+            }
         } else {
+            authStatus = AuthStatus.SETUP
             runCatching { endingClient?.close() }
             cleanupScope.launch { mainTabSelectionStore.clear() }
         }
