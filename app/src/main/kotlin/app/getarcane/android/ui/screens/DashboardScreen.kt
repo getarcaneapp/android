@@ -265,6 +265,7 @@ fun DashboardScreen(
             }
         }
         environments = envs
+        val loadableEnvironments = envs.filter { it.enabled }
         overviewByEnvironmentId = overview?.environments.orEmpty()
             .associateBy { it.environmentForDashboard()?.id }
             .filterKeys { it != null }
@@ -274,19 +275,14 @@ fun DashboardScreen(
 
         // Aggregate the slow overview tiles across every environment. A partial fleet result is not
         // displayed as a complete total.
-        val volumesAndUpdates = if (!environmentLoadSucceeded) {
+        val volumesByEnvironment = if (!environmentLoadSucceeded) {
             null
         } else try {
             coroutineScope {
-                envs.map { env ->
+                loadableEnvironments.map { env ->
                     val e = EnvironmentId(env.id)
                     async {
-                        val vc = client.volumes.counts(envId = e)
-                        val us = client.images.updateSummary(envId = e)
-                        intArrayOf(
-                            vc.total,
-                            us.imagesWithUpdates,
-                        )
+                        client.volumes.counts(envId = e).total
                     }
                 }.awaitAll()
             }
@@ -295,17 +291,18 @@ fun DashboardScreen(
         } catch (_: Throwable) {
             null
         }
-        val volumes = volumesAndUpdates?.sumOf { it[0] }
-        val updates = volumesAndUpdates?.sumOf { it[1] }
+        val volumes = volumesByEnvironment?.sum()
+        val updates = overview?.imageUpdateActionCount()
+            ?: if (environmentLoadSucceeded) loadDashboardImageUpdateCount(client, loadableEnvironments) else null
         totals = overviewTotals?.copy(volumes = volumes, updates = updates)
-            ?: loadLegacyDashboardTotals(client, envs, volumes = volumes, updates = updates)
+            ?: loadLegacyDashboardTotals(client, loadableEnvironments, volumes = volumes, updates = updates)
 
         // Count failed background work across every environment. Do not publish a partial count when
         // one environment fails, because the toolbar badge and attention row imply a fleet total.
         failedActivityCount = if (supportsActivities && environmentLoadSucceeded) {
             try {
                 coroutineScope {
-                    envs.map { env ->
+                    loadableEnvironments.map { env ->
                         async {
                             client.activities.listPaginated(
                                 envId = EnvironmentId(env.id),
@@ -327,6 +324,9 @@ fun DashboardScreen(
         }
         loading = false
     }
+
+    val displayedImageUpdateCount = completeStreamImageUpdateCount(streamStore.statesByEnvironmentId)
+        ?: totals?.updates
 
     Scaffold(
         topBar = {
@@ -373,7 +373,7 @@ fun DashboardScreen(
                             total = aggregate.totalContainers,
                             images = aggregate.totalImages,
                             volumes = totals?.volumes,
-                            updates = totals?.updates,
+                            updates = displayedImageUpdateCount,
                             stopped = aggregate.stoppedContainers,
                         )
                     } ?: totals
@@ -523,6 +523,24 @@ fun DashboardScreen(
         )
     }
 }
+
+private suspend fun loadDashboardImageUpdateCount(
+    client: app.getarcane.sdk.ArcaneClient,
+    envs: List<Environment>,
+): Int? =
+    try {
+        coroutineScope {
+            envs.map { environment ->
+                async {
+                    client.dashboard.actionItems(EnvironmentId(environment.id)).imageUpdateActionCount()
+                }
+            }.awaitAll().sum()
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        null
+    }
 
 private suspend fun loadLegacyDashboardTotals(
     client: app.getarcane.sdk.ArcaneClient,
@@ -763,7 +781,7 @@ internal fun buildNeedsAttentionItems(
         )
     }
 
-    val updates = totals?.updates ?: 0
+    val updates = completeStreamImageUpdateCount(streamStates) ?: totals?.updates ?: 0
     if (updates > 0) {
         items += NeedsAttentionItem(
             id = "image-updates",
@@ -859,6 +877,23 @@ private fun aggregateStreamActionItems(
         vulnerabilities = vulnerabilities,
         expiringKeys = expiringKeys,
     )
+}
+
+internal fun completeStreamImageUpdateCount(
+    streamStates: Map<String, DashboardEnvironmentStreamState>,
+): Int? {
+    if (streamStates.isEmpty()) return null
+    var total = 0
+    for (state in streamStates.values) {
+        val snapshot = state.snapshot
+        if (!state.hasLoaded || state.streamError || snapshot == null) return null
+        total += snapshot.actionItems.items
+            .firstOrNull { it.itemKind == DashboardActionItemKind.ImageUpdates }
+            ?.count
+            ?.coerceAtLeast(0)
+            ?: 0
+    }
+    return total
 }
 
 private val Environment.displayName: String

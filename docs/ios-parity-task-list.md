@@ -194,9 +194,9 @@ The standard checks are:
     environment with approximately 90 containers. Complete display, search, running/stopped filters,
     refresh, and environment switching all passed without duplicates or omissions.
 
-- [x] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
+- [ ] **PAR-004 — Audit all complete-list call sites for silent pagination truncation**
 
-- **Status:** Complete
+- **Status:** Done/verify
 - **Priority:** P0
 - **Dependencies:** PAR-003
 - **Scope:** Inventory every list call whose UI or calculation claims fleet-wide or complete
@@ -211,7 +211,7 @@ The standard checks are:
   - [x] A checked inventory records each caller as intentionally paged, intentionally bounded, or fixed.
   - [x] All complete-environment callers work with more than 20 environments.
   - [x] Shared paging logic has duplicate/empty/short/final-page, cancellation, and error coverage.
-  - [x] UI copy does not claim complete totals when a view is intentionally bounded.
+  - [ ] UI copy does not claim complete totals when a view is intentionally bounded.
 - **Validation evidence (2026-08-21):**
   - Source pins: Android base `fb0ac8f91b0acee6f0771a4f880208b74513beb8`,
     libarcane-kotlin `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
@@ -222,11 +222,12 @@ The standard checks are:
   - Focused runs passed 26 tests across `CompleteListLoaderTest`, `ContainerPaginationTest`, and
     `DashboardNeedsAttentionMapperTest` (0 failures, 0 errors, 0 skipped). The environment fixture
     contains 125 rows and verifies the exact show-all query.
-  - `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 130 unit tests and assembled the
+  - `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 131 unit tests and assembled the
     debug APK; `git diff --check` passed.
-  - No device/emulator or live server with more than 20 environments was available. This task has no
-    required device criterion; the server contract, shared 125-row test, call-site audit, and full
-    build provide the completion evidence.
+  - A 2026-08-21 physical-device comparison found Android reporting 11 dashboard updates while the
+    Arcane dashboard reported 4. Android was counting raw images with updates instead of Arcane's
+    impacted-resource action items. The mapping now uses initial and streamed dashboard action-item
+    totals and has focused regression coverage; follow-up device confirmation is pending.
 
 - [ ] **PAR-005 — Revalidate OIDC and admin-tab navigation**
 
