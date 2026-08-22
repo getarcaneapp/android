@@ -300,20 +300,32 @@ The standard checks are:
     switching without stale stream content, Activity Center refresh and screen departure, container
     Logs/Stats/Terminal departure and reopen, and recovery after force-stop.
 
-- [ ] **PAR-009 — Persist and apply Light/Dark/Auto appearance**
+- [x] **PAR-009 — Persist and apply Light/Dark/Auto appearance**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Replace the screen-local theme selection with one persisted preference owned at the app
   level and applied at the `ArcaneTheme` root. Preserve the existing accent-color behavior and
   system-theme default.
 - **Acceptance criteria:**
-  - [ ] Light, Dark, and Auto update the whole application immediately and survive process recreation.
-  - [ ] Auto follows system night-mode changes without reopening Settings.
-  - [ ] Invalid or missing persisted values fall back to Auto, and migration does not disturb accent.
-  - [ ] State mapping and persistence have focused tests; representative screens are device-checked in
+  - [x] Light, Dark, and Auto update the whole application immediately and survive process recreation.
+  - [x] Auto follows system night-mode changes without reopening Settings.
+  - [x] Invalid or missing persisted values fall back to Auto, and migration does not disturb accent.
+  - [x] State mapping and persistence have focused tests; representative screens are device-checked in
     light/dark mode.
+- **Validation evidence (2026-08-22):**
+  - Source pins: Android base `519adca53d5e08d83133ef8ea6a77ccd94b9db71`,
+    libarcane-kotlin `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
+    `0fd8820822f49e2da25739306bc9bc401253fa9e` (no SDK or server changes were required).
+  - `PrefsAppearanceTest` passed 5 focused tests covering stable Light/Dark/Auto values, system-mode
+    resolution, missing and invalid fallback, app-owned asynchronous persistence, and isolation from
+    the existing accent preference.
+  - `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 153 unit tests and assembled the
+    debug APK; `git diff --check` passed.
+  - Michael's physical-device check passed immediate whole-app Light/Dark switching, readable system
+    bars, Back/re-entry and rapid-departure persistence, force-stop restoration of theme and accent,
+    and Auto tracking Android system light/dark changes without reopening Appearance.
 
 ## Phase 1: Validate destructive behavior and complete daily workflows
 
