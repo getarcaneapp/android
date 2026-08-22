@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.nav.AppTab
@@ -64,7 +65,7 @@ import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.models.notification.NotificationProvider
 import app.getarcane.sdk.models.user.isAdmin
 
-private object SettingsRoutes {
+internal object SettingsRoutes {
     const val ROOT = "root"
     const val APP_SETTINGS = "app-settings"
     const val APPEARANCE = "appearance"
@@ -89,28 +90,86 @@ private object SettingsRoutes {
     const val UPGRADE = "upgrade"
 }
 
+internal fun settingsRouteAccessOwner(route: String?): AppTab? {
+    AppTab.byId(route.orEmpty())?.let { tab ->
+        if (tab.requiresAdmin || tab.requiresV2) return tab
+    }
+    return when (route) {
+        SettingsRoutes.USER_DETAIL,
+        SettingsRoutes.USER_ROLE_ASSIGNMENTS -> AppTab.Users
+        SettingsRoutes.ROLE_CREATE,
+        SettingsRoutes.ROLE_DETAIL -> AppTab.Roles
+        SettingsRoutes.NOTIFICATION_PROVIDER -> AppTab.Notifications
+        SettingsRoutes.SYSTEM_CATEGORY,
+        SettingsRoutes.UPGRADE -> AppTab.SystemSettings
+        else -> null
+    }
+}
+
+internal fun shouldResetUnauthorizedSettingsRoute(
+    route: String?,
+    isAdmin: Boolean,
+    supportsV2: Boolean,
+): Boolean {
+    val owner = settingsRouteAccessOwner(route) ?: return false
+    return (owner.requiresAdmin && !isAdmin) || (owner.requiresV2 && !supportsV2)
+}
+
+internal fun isEnvironmentScopedSettingsDetail(route: String?): Boolean = route in setOf(
+    SettingsRoutes.NOTIFICATION_PROVIDER,
+    SettingsRoutes.SYSTEM_CATEGORY,
+    SettingsRoutes.UPGRADE,
+)
+
 enum class SettingsInitialDestination {
     Root,
     Upgrade,
 }
 
 /**
- * The Settings tab. A self-contained nested [NavHost] over the whole settings hierarchy. Port of the
- * iOS `SettingsView` navigation stack; the entry composable is `SettingsScreen()` (no args).
+ * A self-contained nested [NavHost] over the settings hierarchy. The normal Settings entry starts
+ * at its catalog; a supported legacy/programmatic primary admin tab starts at [rootTab] while using
+ * the exact same detail routes and Back stack.
  */
 @Composable
 fun SettingsScreen(
     popToRootSignal: Int = 0,
     initialDestination: SettingsInitialDestination = SettingsInitialDestination.Root,
     onInitialDestinationHandled: () -> Unit = {},
+    rootTab: AppTab? = null,
 ) {
+    val manager = LocalArcaneManager.current
     val nav = rememberNavController()
-    nav.PopToRootOnSignal(popToRootSignal, rootRoute = SettingsRoutes.ROOT)
-    LaunchedEffect(initialDestination) {
+    val rootRoute = rootTab?.id ?: SettingsRoutes.ROOT
+    val currentEntry by nav.currentBackStackEntryAsState()
+    val currentRoute = currentEntry?.destination?.route
+    val isAdmin = manager.currentUser?.isAdmin ?: false
+    val supportsV2 = manager.capabilities.mode == ServerCapabilities.Mode.RBAC
+    val environmentId = manager.activeEnvironmentId.rawValue
+    var navigationEnvironmentId by remember { mutableStateOf(environmentId) }
+
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = rootRoute)
+    LaunchedEffect(currentRoute, isAdmin, supportsV2, rootTab) {
+        if (
+            rootTab == null &&
+            shouldResetUnauthorizedSettingsRoute(currentRoute, isAdmin, supportsV2)
+        ) {
+            nav.popBackStack(SettingsRoutes.ROOT, inclusive = false)
+        }
+    }
+    LaunchedEffect(environmentId, currentRoute, rootRoute) {
+        if (environmentId != navigationEnvironmentId) {
+            navigationEnvironmentId = environmentId
+            if (isEnvironmentScopedSettingsDetail(currentRoute)) {
+                nav.popBackStack(rootRoute, inclusive = false)
+            }
+        }
+    }
+    LaunchedEffect(initialDestination, rootRoute) {
         when (initialDestination) {
             SettingsInitialDestination.Root -> Unit
             SettingsInitialDestination.Upgrade -> nav.navigate(SettingsRoutes.UPGRADE) {
-                popUpTo(SettingsRoutes.ROOT)
+                popUpTo(rootRoute)
                 launchSingleTop = true
             }
         }
@@ -118,7 +177,7 @@ fun SettingsScreen(
             onInitialDestinationHandled()
         }
     }
-    NavHost(navController = nav, startDestination = SettingsRoutes.ROOT) {
+    NavHost(navController = nav, startDestination = rootRoute) {
         composable(SettingsRoutes.ROOT) { SettingsRoot(nav) }
         AppTab.entries.forEach { tab ->
             composable(tab.id) { SettingsTabDestination(tab = tab, nav = nav) }
