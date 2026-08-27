@@ -34,6 +34,22 @@ For Android parity work, follow the full
 - Never merge without separate explicit authorization. Honor the active task's scope, dependencies,
   and holds.
 
+## iOS Parity Authority
+
+The product target is outcome parity with the current Arcane iOS app, expressed through
+Android-native conventions. Before implementing or revising parity behavior, inspect the current
+iOS source in the sibling `../ios` checkout and record the compared revision in the task or PR.
+
+- Treat current iOS source as the primary authority for mobile product behavior, flows, terminology,
+  aggregation, and navigation unless the canonical task records an intentional Android deviation.
+- Use the sibling `../arcane` checkout to verify server contracts, capabilities, and wire semantics;
+  do not silently substitute Arcane web UX or aggregation semantics for iOS behavior.
+- When iOS and web differ, surface and document the discrepancy before changing Android. Preserve
+  the iOS outcome unless Michael or an upstream product decision explicitly selects another target.
+- For Updates, the current parity decision is the iOS image-oriented model: dashboard and Updates
+  details count outdated images. Projects and containers are consumer context; the web's count of
+  updateable resources must not replace the image total without an explicit product decision.
+
 ## Architecture
 
 - `app/src/main/kotlin/app/getarcane/android/core/` — client ownership, authentication, preferences,
