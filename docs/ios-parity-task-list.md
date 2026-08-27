@@ -246,6 +246,20 @@ The standard checks are:
   - [ ] Each affected admin screen opens all supported details/actions from both navigation entry points.
   - [ ] Back behavior, tab switching, authorization loss, and environment changes do not strand a route.
   - [ ] Any remaining defect has a focused navigation regression test.
+- **Implementation and validation evidence (2026-08-27):** Android `38d00e3`, iOS
+  `a3440b05238d2620b91d984557c87994ab15fb28`, libarcane-swift
+  `38b5c32dde5b17eb0bc22b1c13fb4204699c8faf`, Arcane
+  `8d10b7db2d34aefa44f0f9a684f3b84b2ae355d7`, and libarcane-kotlin `9ab5001` were compared.
+  Live-server testing exposed Settings > Notifications rejecting the complete settings response.
+  Contract comparison found that any configured Arcane 2.7+ `googlechat` provider was undecodable by
+  the Kotlin SDK. SDK PR #3 adds Google Chat, the Swift SDK's 2.7.0 feature gate, and tolerant
+  future-provider decoding. Android now hides unsupported providers while retaining recognized rows
+  and exposes Google Chat only when the connected server supports post-2.6 mobile features. The SDK
+  baseline, focused Android notification tests, and `:app:assembleDebug` pass. The exact Android full
+  baseline still exposes the pre-existing
+  `PrefsAppearanceTest.appOwnedAppearanceStatePersistsAfterSetterReturns` suite-order race (159 of
+  160 tests pass; the class passes independently). Notification retest, the broader admin-navigation
+  matrix, and OIDC device evidence remain pending.
 
 - [ ] **PAR-006 — Correct Android links, release notes, and version hygiene**
 
