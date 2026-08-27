@@ -33,18 +33,25 @@ class DashboardNeedsAttentionMapperTest {
     }
 
     @Test
-    fun imageUpdateRowUsesDashboardActionItemsInsteadOfRawImageUpdateTotal() {
+    fun imageUpdateRowUsesImageSummaryTotalInsteadOfResourceActionItems() {
         val streamStates = mapOf(
             "0" to streamState(
                 id = "0",
                 name = "Local",
-                actionItems = listOf(DashboardActionItem("image_updates", 4, "warning")),
+                actionItems = listOf(DashboardActionItem("image_updates", 1, "warning")),
             ),
         )
         val items = buildNeedsAttentionItems(
             environments = emptyList(),
             streamStates = streamStates,
-            totals = DashTotals(96, 97, 112, 5, 11, 1),
+            totals = DashTotals(
+                running = 96,
+                total = 97,
+                images = 112,
+                volumes = 5,
+                updates = 4,
+                stopped = 1,
+            ),
             failedActivityCount = 0,
             onOpenEnvironment = {},
             onOpenContainers = {},
@@ -55,7 +62,6 @@ class DashboardNeedsAttentionMapperTest {
         )
 
         assertEquals(4, items.single { it.id == "image-updates" }.count)
-        assertEquals(4, completeStreamImageUpdateCount(streamStates))
     }
 
     @Test
