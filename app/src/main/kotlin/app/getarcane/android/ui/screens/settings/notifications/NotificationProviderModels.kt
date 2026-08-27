@@ -35,7 +35,9 @@ val NotificationProvider.displayName: String
         NotificationProvider.PUSHOVER -> "Pushover"
         NotificationProvider.GOTIFY -> "Gotify"
         NotificationProvider.MATRIX -> "Matrix"
+        NotificationProvider.GOOGLE_CHAT -> "Google Chat"
         NotificationProvider.GENERIC -> "Generic"
+        NotificationProvider.UNKNOWN -> "Unsupported Provider"
     }
 
 /** Leading icon for a provider. Mirrors iOS `NotificationProvider.systemImage`. */
@@ -50,7 +52,9 @@ val NotificationProvider.iconVector: ImageVector
         NotificationProvider.PUSHOVER -> Icons.Filled.PhoneIphone
         NotificationProvider.GOTIFY -> Icons.AutoMirrored.Filled.Send
         NotificationProvider.MATRIX -> Icons.Filled.Apps
+        NotificationProvider.GOOGLE_CHAT -> Icons.AutoMirrored.Filled.Chat
         NotificationProvider.GENERIC -> Icons.Filled.Link
+        NotificationProvider.UNKNOWN -> Icons.Filled.Link
     }
 
 /** Tint for a provider. Mirrors iOS `NotificationProvider.iconColor`. */
@@ -65,7 +69,9 @@ val NotificationProvider.iconTint: Color
         NotificationProvider.PUSHOVER -> ArcaneTeal
         NotificationProvider.GOTIFY -> ArcaneOrange
         NotificationProvider.MATRIX -> ArcaneGreen
+        NotificationProvider.GOOGLE_CHAT -> ArcaneBlue
         NotificationProvider.GENERIC -> ArcaneGray
+        NotificationProvider.UNKNOWN -> ArcaneGray
     }
 
 // MARK: - Dynamic form field descriptors
@@ -144,6 +150,9 @@ fun fieldsForProvider(provider: NotificationProvider): List<ProviderFieldDescrip
         ProviderFieldDescriptor("accessToken", "Access Token", kind = ProviderFieldKind.Password, required = true),
         ProviderFieldDescriptor("roomId", "Room ID", "!roomId:matrix.org", required = true),
     )
+    NotificationProvider.GOOGLE_CHAT -> listOf(
+        ProviderFieldDescriptor("webhookUrl", "Webhook URL", "https://chat.googleapis.com/...", ProviderFieldKind.Url, required = true),
+    )
     NotificationProvider.GENERIC -> listOf(
         ProviderFieldDescriptor("url", "Webhook URL", kind = ProviderFieldKind.Url, required = true),
         ProviderFieldDescriptor(
@@ -156,6 +165,7 @@ fun fieldsForProvider(provider: NotificationProvider): List<ProviderFieldDescrip
         ),
         ProviderFieldDescriptor("customHeaders", "Custom Headers", "key1:value1, key2:value2", ProviderFieldKind.Textarea),
     )
+    NotificationProvider.UNKNOWN -> emptyList()
 }
 
 /** Event subscription flags. Mirrors iOS `EventSubscriptions`. */

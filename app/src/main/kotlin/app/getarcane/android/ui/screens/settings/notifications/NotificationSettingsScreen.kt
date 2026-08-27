@@ -44,6 +44,7 @@ import app.getarcane.android.ui.screens.settings.SettingsSectionHeader
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.sdk.models.notification.NotificationProvider
 import app.getarcane.sdk.models.notification.NotificationSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Notification providers list with per-provider status + delete. Port of iOS `NotificationSettingsView`. */
@@ -65,6 +66,8 @@ fun NotificationSettingsScreen(onOpenProvider: (NotificationProvider) -> Unit) {
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
             Loadable.Success(client.notifications.listSettings(envId))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }
@@ -86,7 +89,7 @@ fun NotificationSettingsScreen(onOpenProvider: (NotificationProvider) -> Unit) {
                 is Loadable.Success -> {
                     LazyColumn(Modifier.fillMaxSize()) {
                         item(key = "header") { SettingsSectionHeader("Notification Providers") }
-                        items(NotificationProvider.entries, key = { it.name }) { provider ->
+                        items(notificationProviders(manager.supportsPost26MobileFeatures), key = { it.name }) { provider ->
                             val existing = configured(provider)
                             ProviderRow(
                                 provider = provider,
@@ -98,6 +101,8 @@ fun NotificationSettingsScreen(onOpenProvider: (NotificationProvider) -> Unit) {
                                             try {
                                                 client?.notifications?.deleteSettings(provider, envId)
                                                 refreshKey++
+                                            } catch (e: CancellationException) {
+                                                throw e
                                             } catch (e: Throwable) {
                                                 error = friendlyErrorMessage(e)
                                             }
@@ -121,6 +126,12 @@ fun NotificationSettingsScreen(onOpenProvider: (NotificationProvider) -> Unit) {
         app.getarcane.android.ui.screens.settings.InfoAlert("Error", msg, { error = null })
     }
 }
+
+fun notificationProviders(supportsPost26Features: Boolean): List<NotificationProvider> =
+    NotificationProvider.entries.filter {
+        it != NotificationProvider.UNKNOWN &&
+            (it != NotificationProvider.GOOGLE_CHAT || supportsPost26Features)
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
