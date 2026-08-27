@@ -253,10 +253,10 @@ The standard checks are:
   Live-server testing exposed Settings > Notifications rejecting the complete settings response.
   Contract comparison found that any configured Arcane 2.7+ `googlechat` provider was undecodable by
   the Kotlin SDK. SDK PR #3 adds Google Chat, the Swift SDK's 2.7.0 feature gate, and tolerant
-  future-provider decoding. Android now hides unsupported
-  providers while retaining recognized rows and exposes Google Chat only when the connected server
-  supports post-2.6 mobile features. The SDK baseline and focused Android notification tests plus
-  `:app:assembleDebug` pass. The exact Android full baseline still exposes the pre-existing
+  future-provider decoding. Android now hides unsupported providers while retaining recognized rows
+  and exposes Google Chat only when the connected server supports post-2.6 mobile features. The SDK
+  baseline, focused Android notification tests, and `:app:assembleDebug` pass. The exact Android full
+  baseline still exposes the pre-existing
   `PrefsAppearanceTest.appOwnedAppearanceStatePersistsAfterSetterReturns` suite-order race (159 of
   160 tests pass; the class passes independently). Notification retest, the broader admin-navigation
   matrix, and OIDC device evidence remain pending.
@@ -807,17 +807,36 @@ The standard checks are:
 
 - [ ] **PAR-501 — Arcane Updates counts and navigation**
 
-- **Status:** Blocked/Hold
-- **Priority:** P1 after hold clears
-- **Dependencies:** Kyle/upstream Arcane Updates changes
-- **Scope:** Do not modify current counts, aggregation, or navigation based on prior conclusions.
-  When upstream work lands, restart analysis from current Arcane handlers/types, SDKs, iOS, and
-  Android source rather than applying an old patch or assumption.
+- **Status:** Needs validation
+- **Priority:** P1
+- **Dependencies:** Explicit product decision to follow current iOS Updates semantics (cleared
+  2026-08-27)
+- **Scope:** Keep the Dashboard Updates tile, Needs Attention row, and opened Updates screen aligned
+  to the current iOS image-oriented model. Count outdated images across enabled environments; treat
+  projects and containers as consumer context. Arcane web's updateable-resource grouping is an
+  intentional product difference and must not replace the mobile image total.
 - **Acceptance criteria:**
-  - [ ] Upstream dependency and target revisions are explicitly recorded before work begins.
-  - [ ] Counts are defined for pagination, permissions, unavailable environments, and server versions.
-  - [ ] Navigation targets use authoritative resource/environment identity.
+  - [x] Product decision and target revisions are explicitly recorded before work begins.
+  - [x] Counts are defined for permissions, unavailable environments, and server versions.
+  - [x] Dashboard entry points open the image-oriented Updates list without losing environment identity.
   - [ ] Multi-environment live-server tests prove counts and destination consistency.
+- **Implementation and validation evidence (2026-08-27):**
+  - Source pins: Android base `982d8cc844c604a029371ebda0ae12e80d5764bd`, iOS
+    `a3440b05238d2620b91d984557c87994ab15fb28`, libarcane-kotlin
+    `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
+    `8d10b7db2d34aefa44f0f9a684f3b84b2ae355d7`.
+  - Current iOS loads `images.updateSummary(...).imagesWithUpdates` for every enabled environment,
+    and its Dashboard source explicitly documents the image total as the intended mobile value. Its
+    current streamed-count precedence can still expose the resource count, so the explicit product
+    decision and the image-oriented Updates screen resolve that internal inconsistency for Android.
+  - Michael reproduced the Android mismatch on PAR-005: Dashboard displayed one updateable project
+    while the opened image-oriented Updates screen displayed four outdated images.
+  - Android now derives the fleet total from the same per-environment image summaries and leaves the
+    total unavailable if any enabled environment summary fails. Streamed resource action items still
+    support environment-card context but cannot override the image count.
+  - Focused dashboard mapping/count tests passed (10 tests). The CI-equivalent
+    `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed. Multi-environment device
+    confirmation remains pending.
 
 - [ ] **PAR-502 — Multi-server profiles**
 
