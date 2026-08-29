@@ -1,11 +1,28 @@
 package app.getarcane.android.ui.screens.updates
 
 import app.getarcane.sdk.errors.ArcaneError
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdaterRunScreenTest {
+    @Test
+    fun updaterRequestCancellationIsNotConvertedToAnOutcome() {
+        val cancellation = CancellationException("screen left")
+
+        val actual = assertThrows(CancellationException::class.java) {
+            runBlocking {
+                runUpdaterRequestCatching { throw cancellation }
+            }
+        }
+
+        assertSame(cancellation, actual)
+    }
+
     @Test
     fun transportFailureBeforeServerStartsRemainsFailure() {
         val phase = updaterRunFailurePhase(

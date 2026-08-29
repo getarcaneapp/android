@@ -39,6 +39,19 @@ class ServerUrlTest {
     }
 
     @Test
+    fun normalizeCanonicalizesHostAndDefaultPorts() {
+        assertEquals("https://arcane.example.com", ServerUrl.normalize("HTTPS://ARCANE.EXAMPLE.COM.:443/"))
+        assertEquals("http://arcane.example.com", ServerUrl.normalize("http://ARCANE.EXAMPLE.COM:80"))
+        assertEquals("https://arcane.example.com:8443", ServerUrl.normalize("https://ARCANE.EXAMPLE.COM:8443"))
+    }
+
+    @Test
+    fun normalizeRejectsUnsupportedSchemesAndEmbeddedCredentials() {
+        assertNull(ServerUrl.normalize("ftp://arcane.example.com"))
+        assertNull(ServerUrl.normalize("https://user:password@arcane.example.com"))
+    }
+
+    @Test
     fun normalizeRejectsBlankOrHostlessUrls() {
         assertNull(ServerUrl.normalize(""))
         assertNull(ServerUrl.normalize("https:///dashboard"))

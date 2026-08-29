@@ -4,30 +4,39 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.ArrowCircleUp
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,8 +49,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -53,17 +64,25 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import app.getarcane.android.core.loadCompleteEnvironments
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.getarcane.android.core.formatBytes
+import app.getarcane.android.core.ArcaneDashboardStreamClient
+import app.getarcane.android.core.DashboardActionItemKind
+import app.getarcane.android.core.DashboardActionItemSeverity
+import app.getarcane.android.core.DashboardEnvironmentStreamState
+import app.getarcane.android.core.DashboardStreamAggregateCounts
+import app.getarcane.android.core.DashboardStreamStore
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.runSuspendCatching
 import app.getarcane.android.nav.AppTab
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
-import app.getarcane.android.ui.screens.activities.displayTitle
-import app.getarcane.android.ui.screens.activities.sortTime
-import app.getarcane.android.ui.screens.activities.statusTint
-import app.getarcane.android.ui.screens.activities.subtitle
 import app.getarcane.android.ui.screens.settings.FormErrorRow
 import app.getarcane.android.ui.screens.settings.LabeledPicker
 import app.getarcane.android.ui.screens.settings.LabeledTextField
@@ -74,9 +93,9 @@ import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.android.ui.theme.ArcaneTeal
 import app.getarcane.sdk.EnvironmentId
-import app.getarcane.sdk.models.activity.Activity
 import app.getarcane.sdk.models.activity.ActivityStatus
 import app.getarcane.sdk.models.base.SortOrder
+import app.getarcane.sdk.models.dashboard.DashboardEnvironmentOverview
 import app.getarcane.sdk.models.environment.Environment
 import app.getarcane.sdk.models.system.PruneAllRequest
 import app.getarcane.sdk.models.system.PruneAllResult
@@ -90,26 +109,65 @@ import app.getarcane.sdk.models.system.PruneNetworkMode
 import app.getarcane.sdk.models.system.PruneNetworksOptions
 import app.getarcane.sdk.models.system.PruneVolumeMode
 import app.getarcane.sdk.models.system.PruneVolumesOptions
+import app.getarcane.sdk.models.user.isGlobalAdmin
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /** Cross-environment totals for the overview tiles. */
-private data class DashTotals(
+internal data class DashTotals(
     val running: Int,
     val total: Int,
     val images: Int,
-    val volumes: Int,
-    val updates: Int,
+    val volumes: Int?,
+    val updates: Int?,
+    val stopped: Int,
+)
+
+internal fun displayedDashboardTotals(
+    streamAggregate: DashboardStreamAggregateCounts?,
+    restFallback: DashTotals?,
+    streamUpdateCount: Int?,
+): DashTotals? = streamAggregate?.let { aggregate ->
+    DashTotals(
+        running = aggregate.runningContainers,
+        total = aggregate.totalContainers,
+        images = aggregate.totalImages,
+        volumes = restFallback?.volumes,
+        updates = streamUpdateCount,
+        stopped = aggregate.stoppedContainers,
+    )
+} ?: restFallback
+
+internal enum class NeedsAttentionSeverity { Critical, Warning }
+
+internal data class NeedsAttentionItem(
+    val id: String,
+    val title: String,
+    val count: Int,
+    val icon: ImageVector,
+    val severity: NeedsAttentionSeverity,
+    val action: () -> Unit,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DashboardScreen(onOpenTab: ((String) -> Unit)? = null) {
+fun DashboardScreen(
+    onOpenTab: ((String) -> Unit)? = null,
+    onOpenContainer: ((String) -> Unit)? = null,
+    onOpenProject: ((String) -> Unit)? = null,
+    onOpenVolume: ((String) -> Unit)? = null,
+    onOpenEnvironmentDetails: ((String) -> Unit)? = null,
+    onOpenImageVulnerabilities: ((String, String) -> Unit)? = null,
+    onOpenImageUpdates: (() -> Unit)? = null,
+    onOpenApiKeys: (() -> Unit)? = null,
+) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
@@ -117,81 +175,186 @@ fun DashboardScreen(onOpenTab: ((String) -> Unit)? = null) {
     val snackbar = remember { SnackbarHostState() }
 
     val supportsActivities = manager.capabilities.supportsActivities
+    val isAdmin = manager.currentUser?.isGlobalAdmin ?: false
 
     var environments by remember { mutableStateOf<List<Environment>>(emptyList()) }
+    var overviewByEnvironmentId by remember {
+        mutableStateOf<Map<String, DashboardEnvironmentOverview>>(emptyMap())
+    }
     var totals by remember { mutableStateOf<DashTotals?>(null) }
-    var failedActivities by remember { mutableStateOf<List<Activity>>(emptyList()) }
+    var failedActivityCount by remember { mutableStateOf<Int?>(null) }
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
+    var statsRestartKey by remember { mutableStateOf(0) }
+    var statsGeneration by remember { mutableStateOf(0) }
+    var statsClient by remember { mutableStateOf(client) }
     var showActivities by remember { mutableStateOf(false) }
-    var showPrune by remember { mutableStateOf(false) }
+    var showUpdateAll by remember { mutableStateOf(false) }
+    var pruneEnvironmentId by remember { mutableStateOf<EnvironmentId?>(null) }
+    val statsHistory = remember { mutableStateMapOf<String, DashboardStatsSeries>() }
+    val scope = rememberCoroutineScope()
+    val streamClient = remember(client) { client?.let(::ArcaneDashboardStreamClient) }
+    val streamStore = remember(scope) { DashboardStreamStore(scope) }
+    val enabledEnvironmentIds = environments
+        .filter { it.enabled }
+        .map { it.id }
+    val snackbar = remember { SnackbarHostState() }
 
-    LaunchedEffect(refreshKey) {
+    LaunchedEffect(client, enabledEnvironmentIds, refreshKey, statsRestartKey) {
+        val generation = ++statsGeneration
+        if (statsClient !== client) {
+            statsHistory.clear()
+            statsClient = client
+        }
+        if (client == null) return@LaunchedEffect
+
+        statsHistory.keys
+            .filterNot { it in enabledEnvironmentIds }
+            .forEach { statsHistory.remove(it) }
+
+        coroutineScope {
+            dashboardStatsStreamEnvironmentIds(enabledEnvironmentIds)
+                .forEachIndexed { index, id ->
+                    launch {
+                        delay(150L * (index + 1))
+                        if (generation != statsGeneration) return@launch
+                        val env = EnvironmentId(id)
+                        statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).reconnecting()
+                        runSuspendCatching {
+                            client.system.statsStream(env).collect { stats ->
+                                if (generation == statsGeneration) {
+                                    statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).append(stats)
+                                }
+                            }
+                        }.onFailure { error ->
+                            if (generation == statsGeneration) {
+                                statsHistory[id] = (statsHistory[id] ?: DashboardStatsSeries()).copy(
+                                    error = "Live stats unavailable: ${friendlyErrorMessage(error)}",
+                                )
+                            }
+                        }
+                    }
+                }
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, client, enabledEnvironmentIds) {
+        var resumedOnce = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (resumedOnce && client != null && enabledEnvironmentIds.isNotEmpty()) {
+                    statsRestartKey++
+                } else {
+                    resumedOnce = true
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(streamClient) {
+        streamStore.configure(streamClient)
+        if (supportsActivities) streamStore.start()
+    }
+
+    LaunchedEffect(supportsActivities) {
+        if (supportsActivities) streamStore.start() else streamStore.stop()
+    }
+
+    LaunchedEffect(environments) {
+        streamStore.reconcile(environments)
+    }
+
+    LaunchedEffect(client, refreshKey) {
         if (client == null) return@LaunchedEffect
         loading = true
-        val envs = runCatching { client.environments.list().data }.getOrElse {
-            // Fall back to the active environment so the dashboard still shows a card.
-            listOf(Environment(id = envId.rawValue, name = manager.activeEnvironmentName, apiUrl = "", status = "active"))
+        val overview = try {
+            client.dashboard.environmentsOverview()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
+        val overviewEnvironments = overview?.environmentsForDashboard().orEmpty()
+        var environmentLoadSucceeded = true
+        val envs = if (overviewEnvironments.isNotEmpty()) {
+            overviewEnvironments
+        } else {
+            try {
+                loadCompleteEnvironments { query -> client.environments.list(query) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                environmentLoadSucceeded = false
+                // Fall back to the active environment so the dashboard still shows a card.
+                listOf(Environment(id = envId.rawValue, name = manager.activeEnvironmentName, apiUrl = "", status = "active"))
+            }
         }
         environments = envs
-        // Aggregate the overview tiles across ALL environments (parallel, best-effort per env).
-        totals = runCatching {
+        val loadableEnvironments = envs.filter { it.enabled }
+        overviewByEnvironmentId = overview?.environments.orEmpty()
+            .associateBy { it.environmentForDashboard()?.id }
+            .filterKeys { it != null }
+            .mapKeys { it.key!! }
+        val overviewTotals = overview?.toDashTotals()
+        totals = overviewTotals
+
+        // Aggregate the slow overview tiles across every environment. A partial fleet result is not
+        // displayed as a complete total.
+        val volumesByEnvironment = if (!environmentLoadSucceeded) {
+            null
+        } else try {
             coroutineScope {
-                envs.map { env ->
+                loadableEnvironments.map { env ->
                     val e = EnvironmentId(env.id)
                     async {
-                        val sc = runCatching { client.containers.statusCounts(envId = e) }.getOrNull()
-                        val ic = runCatching { client.images.usageCounts(envId = e) }.getOrNull()
-                        val vc = runCatching { client.volumes.counts(envId = e) }.getOrNull()
-                        val us = runCatching { client.images.updateSummary(envId = e) }.getOrNull()
-                        intArrayOf(
-                            sc?.runningContainers ?: 0,
-                            sc?.totalContainers ?: 0,
-                            ic?.totalImages ?: 0,
-                            vc?.total ?: 0,
-                            us?.imagesWithUpdates ?: 0,
-                        )
+                        client.volumes.counts(envId = e).total
                     }
                 }.awaitAll()
-            }.let { rows ->
-                DashTotals(
-                    running = rows.sumOf { it[0] },
-                    total = rows.sumOf { it[1] },
-                    images = rows.sumOf { it[2] },
-                    volumes = rows.sumOf { it[3] },
-                    updates = rows.sumOf { it[4] },
-                )
             }
-        }.getOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
+        val volumes = volumesByEnvironment?.sum()
+        val updates = overview?.imageUpdateActionCount()
+            ?: if (environmentLoadSucceeded) loadDashboardImageUpdateCount(client, loadableEnvironments) else null
+        totals = overviewTotals?.copy(volumes = volumes, updates = updates)
+            ?: loadLegacyDashboardTotals(client, loadableEnvironments, volumes = volumes, updates = updates)
 
-        // Surface recent failed background work (RBAC servers only). Best-effort, per environment,
-        // limited to the 3 most recent failures across environments. Mirrors iOS `loadFailedWork()`.
-        failedActivities = if (supportsActivities) {
-            runCatching {
+        // Count failed background work across every environment. Do not publish a partial count when
+        // one environment fails, because the toolbar badge and attention row imply a fleet total.
+        failedActivityCount = if (supportsActivities && environmentLoadSucceeded) {
+            try {
                 coroutineScope {
-                    envs.map { env ->
+                    loadableEnvironments.map { env ->
                         async {
-                            runCatching {
-                                client.activities.listPaginated(
-                                    envId = EnvironmentId(env.id),
-                                    order = SortOrder.DESCENDING,
-                                    start = 0,
-                                    limit = 20,
-                                    status = ActivityStatus.FAILED,
-                                ).data
-                            }.getOrDefault(emptyList())
+                            client.activities.listPaginated(
+                                envId = EnvironmentId(env.id),
+                                order = SortOrder.DESCENDING,
+                                start = 0,
+                                limit = 1,
+                                status = ActivityStatus.FAILED,
+                            ).pagination.totalItems
                         }
-                    }.awaitAll()
-                }.flatten()
-                    .filter { it.status == ActivityStatus.FAILED }
-                    .sortedByDescending { it.sortTime }
-                    .take(3)
-            }.getOrDefault(emptyList())
+                    }.awaitAll().sum()
+                }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                null
+            }
         } else {
-            emptyList()
+            0
         }
         loading = false
     }
+
+    val displayedImageUpdateCount = completeStreamImageUpdateCount(streamStore.statesByEnvironmentId)
+        ?: totals?.updates
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
@@ -201,19 +364,23 @@ fun DashboardScreen(onOpenTab: ((String) -> Unit)? = null) {
                 actions = {
                     if (supportsActivities) {
                         IconButton(onClick = { showActivities = true }) {
-                            Icon(Icons.Filled.History, contentDescription = "Activity Center")
+                            ActivityCenterToolbarIcon(failedCount = failedActivityCount ?: 0)
                         }
                     }
-                    IconButton(onClick = { showPrune = true }) {
+                    IconButton(onClick = { pruneEnvironmentId = envId }) {
                         Icon(Icons.Filled.Delete, contentDescription = "System Prune", tint = ArcaneRed)
                     }
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         PullToRefreshBox(
             isRefreshing = loading,
-            onRefresh = { refreshKey++ },
+            onRefresh = {
+                streamStore.reconnect()
+                refreshKey++
+            },
             modifier = Modifier.padding(padding),
         ) {
             LazyColumn(
@@ -229,11 +396,15 @@ fun DashboardScreen(onOpenTab: ((String) -> Unit)? = null) {
                     )
                 }
                 item {
-                    val t = totals
+                    val t = displayedDashboardTotals(
+                        streamAggregate = streamStore.aggregate,
+                        restFallback = totals,
+                        streamUpdateCount = displayedImageUpdateCount,
+                    )
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            DashboardTile("Updates", t?.let { "${it.updates}" } ?: "—", Icons.Filled.Autorenew, ArcaneGreen, Modifier.weight(1f)) {
-                                onOpenTab?.invoke(AppTab.Updates.id)
+                            DashboardTile("Updates", t?.updates?.let { "$it" } ?: "—", Icons.Filled.Autorenew, ArcaneGreen, Modifier.weight(1f)) {
+                                onOpenImageUpdates?.invoke() ?: onOpenTab?.invoke(AppTab.Updates.id)
                             }
                             DashboardTile("Containers", t?.let { "${it.running} / ${it.total}" } ?: "—", Icons.Filled.Inventory2, ArcaneOrange, Modifier.weight(1f)) {
                                 onOpenTab?.invoke(AppTab.Containers.id)
@@ -243,27 +414,93 @@ fun DashboardScreen(onOpenTab: ((String) -> Unit)? = null) {
                             DashboardTile("Images", t?.let { "${it.images}" } ?: "—", Icons.Filled.Layers, ArcanePurple, Modifier.weight(1f)) {
                                 onOpenTab?.invoke(AppTab.Images.id)
                             }
-                            DashboardTile("Volumes", t?.let { "${it.volumes}" } ?: "—", Icons.Filled.Storage, ArcaneTeal, Modifier.weight(1f)) {
+                            DashboardTile("Volumes", t?.volumes?.let { "$it" } ?: "—", Icons.Filled.Storage, ArcaneTeal, Modifier.weight(1f)) {
                                 onOpenTab?.invoke(AppTab.Volumes.id)
                             }
                         }
                     }
                 }
-                if (supportsActivities && failedActivities.isNotEmpty()) {
+                if (streamStore.streamFailed && !streamStore.streamUnsupported) {
                     item {
-                        DashboardFailedWorkCard(
-                            activities = failedActivities,
-                            onOpen = { showActivities = true },
-                        )
+                        DashboardStreamFailedBanner(onRetry = { streamStore.retry() })
+                    }
+                }
+                val attentionItems = buildNeedsAttentionItems(
+                    environments = environments,
+                    streamStates = streamStore.statesByEnvironmentId,
+                    totals = totals,
+                    failedActivityCount = failedActivityCount,
+                    onOpenEnvironment = { env ->
+                        manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id)
+                    },
+                    onOpenContainers = { onOpenTab?.invoke(AppTab.Containers.id) },
+                    onOpenUpdates = { onOpenImageUpdates?.invoke() ?: onOpenTab?.invoke(AppTab.Updates.id) },
+                    onOpenVulnerabilities = { target ->
+                        onOpenImageVulnerabilities?.invoke(target.id, target.name) ?: onOpenTab?.invoke(AppTab.Images.id)
+                    },
+                    onOpenApiKeys = {
+                        onOpenApiKeys?.invoke() ?: onOpenTab?.invoke(AppTab.ApiKeys.id)
+                    },
+                    onOpenActivities = { showActivities = true },
+                )
+                if (attentionItems.isNotEmpty()) {
+                    item {
+                        NeedsAttentionSection(items = attentionItems)
                     }
                 }
                 item {
-                    Text("Environments", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                    DashboardPinnedSection(
+                        refreshToken = refreshKey,
+                        onOpenContainer = { id -> onOpenContainer?.invoke(id) ?: onOpenTab?.invoke(AppTab.Containers.id) },
+                        onOpenProject = { id -> onOpenProject?.invoke(id) ?: onOpenTab?.invoke(AppTab.Projects.id) },
+                        onOpenVolume = { name -> onOpenVolume?.invoke(name) ?: onOpenTab?.invoke(AppTab.Volumes.id) },
+                        onMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
+                    )
+                }
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("Environments", style = MaterialTheme.typography.titleMedium)
+                        if (shouldShowUpdateAllAction(isAdmin)) {
+                            Button(onClick = { showUpdateAll = true }) {
+                                Icon(Icons.Filled.ArrowCircleUp, contentDescription = null)
+                                Text("  Update All")
+                            }
+                        }
+                    }
                 }
                 items(environments, key = { it.id }) { env ->
+                    val streamState = streamStore.statesByEnvironmentId[env.id]
                     EnvironmentDashboardCard(
                         env = env,
+                        overviewCounts = overviewByEnvironmentId[env.id]?.cardOverviewCounts(),
+                        actionItems = streamState.loadedActionItems,
+                        statsSeries = statsHistory[env.id],
+                        refreshToken = refreshKey,
                         onSelect = { manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id) },
+                        actions = environmentCardActions(isAdmin = isAdmin),
+                        onAction = { action ->
+                            when (action) {
+                                EnvironmentCardAction.UseEnvironment -> {
+                                    manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id)
+                                }
+                                EnvironmentCardAction.ViewSystemDetails -> {
+                                    onOpenEnvironmentDetails?.invoke(env.id)
+                                }
+                                EnvironmentCardAction.Sync -> {
+                                    refreshKey++
+                                    scope.launch { snackbar.showSnackbar("Refreshing ${env.name ?: env.id}") }
+                                }
+                                EnvironmentCardAction.SystemPrune -> {
+                                    pruneEnvironmentId = EnvironmentId(env.id)
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -278,83 +515,200 @@ fun DashboardScreen(onOpenTab: ((String) -> Unit)? = null) {
             properties = DialogProperties(usePlatformDefaultWidth = false),
         ) {
             Surface(modifier = Modifier.fillMaxSize()) {
-                ActivitiesTab(onClose = { showActivities = false })
+                ActivitiesTab(
+                    onClose = { showActivities = false },
+                    onHistoryCleared = { refreshKey++ },
+                )
             }
         }
     }
 
-    if (showPrune) {
-        SystemPruneSheet(
-            envId = envId,
-            onDismiss = { showPrune = false },
-            onComplete = { message ->
-                showPrune = false
-                refreshKey++
-                scope.launch { snackbar.showSnackbar(message) }
-            },
+    if (showUpdateAll) {
+        Dialog(
+            onDismissRequest = { showUpdateAll = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                UpdateAllEnvironmentsDialog(
+                    environmentCount = environments.size,
+                    onDismiss = { showUpdateAll = false },
+                    onMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
+                    onComplete = { refreshKey++ },
+                )
+            }
+        }
+    }
+
+    pruneEnvironmentId?.let { pruneEnvId ->
+      SystemPruneSheet(
+          envId = pruneEnvId,
+          onDismiss = { pruneEnvironmentId = null },
+          onComplete = { message ->
+              pruneEnvironmentId = null
+              refreshKey++
+              scope.launch { snackbar.showSnackbar(message) }
+          },
+      )
+  }
+}
+
+private suspend fun loadDashboardImageUpdateCount(
+    client: app.getarcane.sdk.ArcaneClient,
+    envs: List<Environment>,
+): Int? =
+    try {
+        coroutineScope {
+            envs.map { environment ->
+                async {
+                    client.dashboard.snapshot(EnvironmentId(environment.id)).actionItems.imageUpdateActionCount()
+                }
+            }.awaitAll().sum()
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        null
+    }
+
+private suspend fun loadLegacyDashboardTotals(
+    client: app.getarcane.sdk.ArcaneClient,
+    envs: List<Environment>,
+    volumes: Int?,
+    updates: Int?,
+): DashTotals? =
+    try {
+        coroutineScope {
+            envs.map { env ->
+                val e = EnvironmentId(env.id)
+                async {
+                    val sc = client.containers.statusCounts(envId = e)
+                    val ic = client.images.usageCounts(envId = e)
+                    intArrayOf(
+                        sc.runningContainers,
+                        sc.totalContainers,
+                        ic.totalImages,
+                        (sc.totalContainers - sc.runningContainers).coerceAtLeast(0),
+                    )
+                }
+            }.awaitAll()
+        }.let { rows ->
+            DashTotals(
+                running = rows.sumOf { it[0] },
+                total = rows.sumOf { it[1] },
+                images = rows.sumOf { it[2] },
+                volumes = volumes,
+                updates = updates,
+                stopped = rows.sumOf { it[3] },
+            )
+        }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        null
+    }
+
+@Composable
+private fun ActivityCenterToolbarIcon(failedCount: Int) {
+    Box(
+        modifier = Modifier.size(30.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.History,
+            contentDescription = activityCenterButtonContentDescription(failedCount),
+            modifier = Modifier.size(24.dp),
+        )
+
+        if (failedCount > 0) {
+            ActivityCenterFailedBadge(failedCount)
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.ActivityCenterFailedBadge(failedCount: Int) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset(x = 2.dp, y = (-2).dp)
+            .height(18.dp)
+            .widthIn(min = 18.dp)
+            .background(ArcaneRed, CircleShape)
+            .padding(horizontal = if (failedCount > 9) 4.dp else 0.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            failedActivityBadgeText(failedCount),
+            color = Color.White,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                lineHeight = 9.sp,
+            ),
+            fontWeight = FontWeight.Bold,
         )
     }
 }
 
-/**
- * Card surfacing recent failed background activities. Tapping the card (or a row) opens the
- * Activity Center. Port of iOS `DashboardFailedWorkCard`.
- */
+internal fun failedActivityBadgeText(count: Int): String =
+    if (count > 9) "9+" else count.coerceAtLeast(0).toString()
+
+internal fun activityCenterButtonContentDescription(failedCount: Int): String =
+    if (failedCount > 0) {
+        "Activity Center, $failedCount failed ${if (failedCount == 1) "activity needs" else "activities need"} attention"
+    } else {
+        "Activity Center"
+    }
+
 @Composable
-private fun DashboardFailedWorkCard(activities: List<Activity>, onOpen: () -> Unit) {
-    Card(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Box(Modifier.size(32.dp).background(ArcaneRed, CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Filled.Warning, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Failed Work", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    val n = activities.size
-                    Text(
-                        "$n failure${if (n == 1) "" else "s"} need attention",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                activities.take(3).forEach { activity ->
-                    DashboardFailedWorkRow(activity = activity, onClick = onOpen)
+private fun NeedsAttentionSection(items: List<NeedsAttentionItem>) {
+    Card(Modifier.fillMaxWidth()) {
+        Column {
+            Text(
+                "Needs Attention",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 4.dp),
+            )
+            items.forEachIndexed { index, item ->
+                NeedsAttentionRow(item = item)
+                if (index < items.lastIndex) {
+                    HorizontalDivider(Modifier.padding(start = 54.dp))
                 }
             }
+            Box(Modifier.size(1.dp))
         }
     }
 }
 
 @Composable
-private fun DashboardFailedWorkRow(activity: Activity, onClick: () -> Unit) {
-    val tint = activity.statusTint()
+private fun NeedsAttentionRow(item: NeedsAttentionItem) {
+    val tint = when (item.severity) {
+        NeedsAttentionSeverity.Critical -> ArcaneRed
+        NeedsAttentionSeverity.Warning -> ArcaneOrange
+    }
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = item.action)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.size(8.dp).background(tint, CircleShape))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                activity.displayTitle,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                activity.latestMessage.ifEmpty { activity.subtitle },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        Box(Modifier.size(28.dp).background(tint, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(item.icon, null, tint = Color.White, modifier = Modifier.size(14.dp))
         }
         Text(
-            activity.status.wire.replaceFirstChar { it.uppercaseChar() },
-            style = MaterialTheme.typography.labelMedium,
+            item.title,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "${item.count}",
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
             color = tint,
         )
@@ -366,6 +720,215 @@ private fun DashboardFailedWorkRow(activity: Activity, onClick: () -> Unit) {
         )
     }
 }
+
+@Composable
+private fun DashboardStreamFailedBanner(onRetry: () -> Unit) {
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                Icons.Filled.Warning,
+                contentDescription = null,
+                tint = ArcaneOrange,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                "Live counts paused",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onRetry) {
+                Text("Retry")
+            }
+        }
+    }
+}
+
+internal fun buildNeedsAttentionItems(
+    environments: List<Environment>,
+    streamStates: Map<String, DashboardEnvironmentStreamState>,
+    totals: DashTotals?,
+    failedActivityCount: Int?,
+    onOpenEnvironment: (Environment) -> Unit,
+    onOpenContainers: () -> Unit,
+    onOpenUpdates: () -> Unit,
+    onOpenVulnerabilities: (DashboardActionTargetEnvironment) -> Unit,
+    onOpenApiKeys: () -> Unit,
+    onOpenActivities: () -> Unit,
+): List<NeedsAttentionItem> {
+    val items = mutableListOf<NeedsAttentionItem>()
+    val streamActionItems = aggregateStreamActionItems(streamStates)
+
+    val offline = environments.filter { it.needsAttention }
+    offline.firstOrNull()?.let { first ->
+        items += NeedsAttentionItem(
+            id = "offline-environments",
+            title = if (offline.size == 1) "${first.displayName} unreachable" else "Environments unreachable",
+            count = offline.size,
+            icon = Icons.Filled.Warning,
+            severity = NeedsAttentionSeverity.Critical,
+            action = { onOpenEnvironment(first) },
+        )
+    }
+
+    val stopped = totals?.stopped ?: 0
+    if (stopped > 0) {
+        items += NeedsAttentionItem(
+            id = "stopped-containers",
+            title = "Stopped containers",
+            count = stopped,
+            icon = Icons.Filled.StopCircle,
+            severity = NeedsAttentionSeverity.Warning,
+            action = onOpenContainers,
+        )
+    }
+
+    val vulnerabilityItems = streamActionItems.vulnerabilities
+    for (vulnerabilityItem in vulnerabilityItems) {
+        items += NeedsAttentionItem(
+            id = "vulnerabilities-${vulnerabilityItem.environment.id}",
+            title = if (vulnerabilityItems.size == 1) {
+                "Actionable vulnerabilities"
+            } else {
+                "${vulnerabilityItem.environment.name} vulnerabilities"
+            },
+            count = vulnerabilityItem.count,
+            icon = Icons.Filled.Security,
+            severity = if (vulnerabilityItem.isCritical) {
+                NeedsAttentionSeverity.Critical
+            } else {
+                NeedsAttentionSeverity.Warning
+            },
+            action = { onOpenVulnerabilities(vulnerabilityItem.environment) },
+        )
+    }
+
+    val updates = completeStreamImageUpdateCount(streamStates) ?: totals?.updates ?: 0
+    if (updates > 0) {
+        items += NeedsAttentionItem(
+            id = "image-updates",
+            title = "Image updates available",
+            count = updates,
+            icon = Icons.Filled.Autorenew,
+            severity = NeedsAttentionSeverity.Warning,
+            action = onOpenUpdates,
+        )
+    }
+
+    if (streamActionItems.expiringKeys > 0) {
+        items += NeedsAttentionItem(
+            id = "expiring-keys",
+            title = "API keys expiring soon",
+            count = streamActionItems.expiringKeys,
+            icon = Icons.Filled.VpnKey,
+            severity = NeedsAttentionSeverity.Warning,
+            action = onOpenApiKeys,
+        )
+    }
+
+    if (failedActivityCount != null && failedActivityCount > 0) {
+        items += NeedsAttentionItem(
+            id = "failed-activities",
+            title = "Failed activities",
+            count = failedActivityCount,
+            icon = Icons.Filled.Warning,
+            severity = NeedsAttentionSeverity.Critical,
+            action = onOpenActivities,
+        )
+    }
+
+    return items
+}
+
+private val DashboardEnvironmentStreamState?.loadedActionItems
+    get() = if (this?.hasLoaded == true && !streamError) {
+        snapshot?.actionItems?.items.orEmpty()
+    } else {
+        emptyList()
+    }
+
+internal data class DashboardActionTargetEnvironment(
+    val id: String,
+    val name: String,
+)
+
+private data class DashboardStreamActionItemSummary(
+    val vulnerabilities: List<DashboardVulnerabilityActionItem> = emptyList(),
+    val expiringKeys: Int = 0,
+)
+
+private data class DashboardVulnerabilityActionItem(
+    val environment: DashboardActionTargetEnvironment,
+    val count: Int,
+    val isCritical: Boolean,
+)
+
+private fun aggregateStreamActionItems(
+    streamStates: Map<String, DashboardEnvironmentStreamState>,
+): DashboardStreamActionItemSummary {
+    val vulnerabilities = mutableListOf<DashboardVulnerabilityActionItem>()
+    var expiringKeys = 0
+
+    for (state in streamStates.values) {
+        if (!state.hasLoaded || state.streamError) continue
+        for (item in state.snapshot?.actionItems?.items.orEmpty()) {
+            if (item.count <= 0) continue
+            when (item.itemKind) {
+                DashboardActionItemKind.ActionableVulnerabilities -> {
+                    vulnerabilities += DashboardVulnerabilityActionItem(
+                        environment = DashboardActionTargetEnvironment(
+                            id = state.id,
+                            name = state.name,
+                        ),
+                        count = item.count,
+                        isCritical = item.itemSeverity == DashboardActionItemSeverity.Critical,
+                    )
+                }
+                DashboardActionItemKind.ExpiringKeys -> {
+                    expiringKeys += item.count
+                }
+                DashboardActionItemKind.StoppedContainers,
+                DashboardActionItemKind.ImageUpdates,
+                DashboardActionItemKind.Unknown,
+                -> Unit
+            }
+        }
+    }
+
+    return DashboardStreamActionItemSummary(
+        vulnerabilities = vulnerabilities,
+        expiringKeys = expiringKeys,
+    )
+}
+
+internal fun completeStreamImageUpdateCount(
+    streamStates: Map<String, DashboardEnvironmentStreamState>,
+): Int? {
+    if (streamStates.isEmpty()) return null
+    var total = 0
+    for (state in streamStates.values) {
+        val snapshot = state.snapshot
+        if (!state.hasLoaded || state.streamError || snapshot == null) return null
+        total += snapshot.actionItems.items
+            .firstOrNull { it.itemKind == DashboardActionItemKind.ImageUpdates }
+            ?.count
+            ?.coerceAtLeast(0)
+            ?: 0
+    }
+    return total
+}
+
+private val Environment.displayName: String
+    get() = name?.takeIf { it.isNotBlank() } ?: id
+
+private val Environment.needsAttention: Boolean
+    get() = status.lowercase(Locale.US) in setOf("offline", "error", "failed", "unhealthy", "unreachable")
 
 @Composable
 private fun DashboardTile(

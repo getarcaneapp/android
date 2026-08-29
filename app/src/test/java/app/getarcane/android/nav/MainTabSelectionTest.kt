@@ -86,6 +86,37 @@ class MainTabSelectionTest {
     }
 
     @Test
+    fun bottomBarHighlightsHostedResourceTabWhenVisible() {
+        assertEquals(
+            AppTab.Containers.id,
+            MainTabSelection.bottomBarSelectedTabId(
+                selectedTabId = AppTab.Dashboard.id,
+                hostedResourceTabId = AppTab.Containers.id,
+                visibleTabs = defaultVisibleTabs,
+            ),
+        )
+    }
+
+    @Test
+    fun bottomBarKeepsSelectedTabWhenHostedResourceTabIsNotVisible() {
+        val visibleWithoutContainers = listOf(
+            AppTab.Dashboard,
+            AppTab.Images,
+            AppTab.Volumes,
+            AppTab.Projects,
+        )
+
+        assertEquals(
+            AppTab.Dashboard.id,
+            MainTabSelection.bottomBarSelectedTabId(
+                selectedTabId = AppTab.Dashboard.id,
+                hostedResourceTabId = AppTab.Containers.id,
+                visibleTabs = visibleWithoutContainers,
+            ),
+        )
+    }
+
+    @Test
     fun keepsDashboardSelectedWhenItIsPinned() {
         assertEquals(
             AppTab.Dashboard.id,

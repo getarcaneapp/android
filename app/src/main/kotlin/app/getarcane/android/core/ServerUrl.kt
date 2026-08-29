@@ -18,16 +18,29 @@ object ServerUrl {
             return null
         }
 
-        val scheme = uri.scheme?.takeIf { it.isNotBlank() } ?: return null
-        val host = uri.host?.takeIf { it.isNotBlank() } ?: return null
+        val scheme = uri.scheme
+            ?.lowercase(Locale.US)
+            ?.takeIf { it == "http" || it == "https" }
+            ?: return null
+        if (uri.rawUserInfo != null) return null
+        val host = uri.host
+            ?.lowercase(Locale.US)
+            ?.trimEnd('.')
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        val port = when {
+            scheme == "http" && uri.port == 80 -> -1
+            scheme == "https" && uri.port == 443 -> -1
+            else -> uri.port
+        }
         val normalizedPath = normalizePath(uri.rawPath)
 
         return try {
             URI(
-                scheme.lowercase(Locale.US),
-                uri.rawUserInfo,
+                scheme,
+                null,
                 host,
-                uri.port,
+                port,
                 normalizedPath.ifEmpty { null },
                 null,
                 null,

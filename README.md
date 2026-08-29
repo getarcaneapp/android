@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This project is still under development and is not intended to be used on devices yet. 
+
 <div align="center">
 
   <img src=".github/assets/img/PNG-3.png" alt="Arcane Logo" width="500" />

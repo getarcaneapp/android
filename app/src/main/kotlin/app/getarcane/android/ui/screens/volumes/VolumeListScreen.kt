@@ -57,14 +57,16 @@ import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.PinnedItemsStore
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.completeListQuery
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneTeal
 import app.getarcane.android.ui.theme.ArcaneYellow
 import app.getarcane.sdk.EnvironmentId
-import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.volume.Volume
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private enum class ScopeFilter(val label: String) { All("All"), Local("Local"), Global("Global") }
@@ -94,7 +96,13 @@ fun VolumeListScreen(onOpen: (String) -> Unit) {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            Loadable.Success(client.volumes.list(envId = envId, query = SearchPaginationSort(limit = 200)).data)
+            Loadable.Success(
+                loadCompletePaginatedCollection("Volume", Volume::id) {
+                    client.volumes.list(envId = envId, query = completeListQuery())
+                },
+            )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

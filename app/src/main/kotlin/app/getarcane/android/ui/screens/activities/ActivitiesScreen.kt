@@ -77,6 +77,7 @@ import kotlinx.datetime.Instant
 fun ActivitiesScreen(
     onBack: (() -> Unit)? = null,
     onOpenDetail: (activityId: String, envId: String) -> Unit = { _, _ -> },
+    onHistoryCleared: () -> Unit = {},
 ) {
     val manager = LocalArcaneManager.current
     val supportsActivities = manager.capabilities.supportsActivities
@@ -97,9 +98,12 @@ fun ActivitiesScreen(
     val canClearHistory = clearableEnvironmentIds.isNotEmpty()
 
     // Load + start the live stream on appear; stop streams on dispose.
-    LaunchedEffect(supportsActivities) {
-        if (!supportsActivities) return@LaunchedEffect
+    LaunchedEffect(manager.client, supportsActivities) {
         store.configure(manager.client)
+        if (!supportsActivities) {
+            store.stopStream()
+            return@LaunchedEffect
+        }
         store.load(refresh = true)
         store.startStream()
     }
@@ -156,7 +160,7 @@ fun ActivitiesScreen(
                     Icons.Filled.Warning,
                     store.errorMessage,
                     "Retry",
-                ) { scope.launch { store.load(refresh = true); store.startStream() } }
+                ) { scope.launch { store.load(refresh = true) } }
 
                 store.activities.isEmpty() -> ContentUnavailable(
                     "No Activities",
@@ -171,7 +175,6 @@ fun ActivitiesScreen(
                         refreshing = true
                         scope.launch {
                             store.load(refresh = true)
-                            store.startStream()
                             refreshing = false
                         }
                     },
@@ -193,6 +196,7 @@ fun ActivitiesScreen(
                     scope.launch {
                         val result = store.clearHistory(clearableEnvironmentIds)
                         if (result != null) {
+                            onHistoryCleared()
                             val noun = if (result.deleted == 1L) "activity" else "activities"
                             var msg = "Cleared ${result.deleted} completed $noun."
                             if (result.failed > 0) {

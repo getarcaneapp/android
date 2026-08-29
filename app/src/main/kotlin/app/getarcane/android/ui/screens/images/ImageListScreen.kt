@@ -60,14 +60,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.CompleteListResponse
+import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.loadCompleteCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.models.image.ImageSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 internal enum class TagsFilter(val label: String) { All("All"), Tagged("Tagged"), Untagged("Untagged") }
@@ -114,7 +118,10 @@ fun ImageListScreen(
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            val images = client.images.list(envId = envId).data
+            val images = loadCompleteCollection("Image", ImageSummary::id) {
+                val response = client.images.list(envId = envId, query = completeListQuery())
+                CompleteListResponse(response.data, response.pagination.totalItems, response.success)
+            }
             onLoaded(images)
             // Best-effort update decoration via the persisted by-refs map.
             val refs = images.flatMap { it.repoTags }.filter { it != "<none>:<none>" }
@@ -137,6 +144,8 @@ fun ImageListScreen(
                 }
             }
             Loadable.Success(images)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

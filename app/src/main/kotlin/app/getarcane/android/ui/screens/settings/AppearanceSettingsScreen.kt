@@ -32,42 +32,27 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import app.getarcane.android.core.Prefs
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-
-/** Stored theme preference. Drives nothing here — persisting/applying it is the lead's job. */
-enum class ThemeOption(val label: String) { Light("Light"), Dark("Dark"), Auto("Auto") }
+import app.getarcane.android.core.AppThemeMode
+import app.getarcane.android.core.LocalAppearancePreferences
 
 /**
  * Appearance settings: a theme picker (Light/Dark/Auto) and the accent-color grid. Mirrors iOS
  * `AppearanceSettingsView` (the iOS-only alternate App Icon picker is omitted on Android). The
- * selected accent hex is persisted via [Prefs.accentHex]; the theme selection is held locally.
+ * selected values are persisted through the app-owned preferences and applied at the theme root.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppearanceSettingsScreen(onBack: () -> Unit) {
-    val context = LocalContext.current
-    val prefs = remember { Prefs(context) }
-    val scope = rememberCoroutineScope()
+    val appearancePreferences = LocalAppearancePreferences.current
 
-    var theme by remember { mutableStateOf(ThemeOption.Auto) }
-    var accentHex by remember { mutableStateOf("") }
-
-    LaunchedEffect(Unit) {
-        accentHex = prefs.accentHex.first() ?: ""
-    }
+    val theme by appearancePreferences.themeMode.collectAsState()
+    val accentHex by appearancePreferences.accentHex.collectAsState()
     val selected = AccentColorOption.fromHex(accentHex)
 
     Scaffold(
@@ -95,12 +80,12 @@ fun AppearanceSettingsScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                ThemeOption.entries.forEachIndexed { index, option ->
+                AppThemeMode.entries.forEachIndexed { index, option ->
                     SegmentedButton(
                         selected = theme == option,
-                        onClick = { theme = option },
-                        shape = SegmentedButtonDefaults.itemShape(index, ThemeOption.entries.size),
-                    ) { Text(option.label) }
+                        onClick = { appearancePreferences.setThemeMode(option) },
+                        shape = SegmentedButtonDefaults.itemShape(index, AppThemeMode.entries.size),
+                    ) { Text(option.displayName) }
                 }
             }
 
@@ -119,20 +104,14 @@ fun AppearanceSettingsScreen(onBack: () -> Unit) {
                     AccentSwatch(
                         option = option,
                         isSelected = selected == option,
-                        onClick = {
-                            accentHex = option.hex
-                            scope.launch { prefs.setAccentHex(option.hex) }
-                        },
+                        onClick = { appearancePreferences.setAccentHex(option.hex) },
                     )
                 }
             }
             SettingsSectionFooter("Choose a color to customize the app's appearance.")
 
             TextButton(
-                onClick = {
-                    accentHex = ""
-                    scope.launch { prefs.setAccentHex("") }
-                },
+                onClick = { appearancePreferences.setAccentHex("") },
                 modifier = Modifier.padding(start = 8.dp, top = 16.dp),
             ) {
                 Text("Reset to Default", color = MaterialTheme.colorScheme.error)
@@ -140,6 +119,13 @@ fun AppearanceSettingsScreen(onBack: () -> Unit) {
         }
     }
 }
+
+private val AppThemeMode.displayName: String
+    get() = when (this) {
+        AppThemeMode.LIGHT -> "Light"
+        AppThemeMode.DARK -> "Dark"
+        AppThemeMode.AUTO -> "Auto"
+    }
 
 @Composable
 private fun AccentSwatch(option: AccentColorOption, isSelected: Boolean, onClick: () -> Unit) {

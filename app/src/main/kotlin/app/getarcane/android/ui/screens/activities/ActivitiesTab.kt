@@ -11,7 +11,11 @@ import app.getarcane.android.nav.PopToRootOnSignal
  * arrow); the detail is pushed and pops back. Mirrors the iOS Activity Center surface.
  */
 @Composable
-fun ActivitiesTab(onClose: (() -> Unit)? = null, popToRootSignal: Int = 0) {
+fun ActivitiesTab(
+    onClose: (() -> Unit)? = null,
+    popToRootSignal: Int = 0,
+    onHistoryCleared: () -> Unit = {},
+) {
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     NavHost(navController = nav, startDestination = "list") {
@@ -21,6 +25,7 @@ fun ActivitiesTab(onClose: (() -> Unit)? = null, popToRootSignal: Int = 0) {
                 onOpenDetail = { id, env ->
                     nav.navigate("detail/${id.encodeArg()}/${env.encodeArg()}")
                 },
+                onHistoryCleared = onHistoryCleared,
             )
         }
         composable("detail/{id}/{env}") { entry ->

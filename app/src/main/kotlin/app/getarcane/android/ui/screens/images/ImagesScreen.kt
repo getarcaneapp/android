@@ -1,6 +1,8 @@
 package app.getarcane.android.ui.screens.images
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -11,7 +13,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.getarcane.android.nav.PopToRootOnSignal
+import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.image.ImageSummary
+
+enum class ImagesInitialDestination {
+    List,
+    Vulnerabilities,
+}
 
 /**
  * Images tab with its own nested back stack:
@@ -19,14 +27,42 @@ import app.getarcane.sdk.models.image.ImageSummary
  * Mirrors the iOS `ImagesView` navigation graph.
  */
 @Composable
-fun ImagesScreen(popToRootSignal: Int = 0) {
+fun ImagesScreen(
+    popToRootSignal: Int = 0,
+    initialDestination: ImagesInitialDestination = ImagesInitialDestination.List,
+    vulnerabilitiesEnvironmentId: EnvironmentId? = null,
+    vulnerabilitiesEnvironmentName: String? = null,
+    onInitialDestinationHandled: () -> Unit = {},
+    onInitialDestinationBack: (() -> Unit)? = null,
+) {
+    val initialRoute = remember { initialDestination.startRoute }
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
+    var initialVulnerabilitiesActive by remember {
+        mutableStateOf(initialDestination == ImagesInitialDestination.Vulnerabilities)
+    }
+    LaunchedEffect(initialDestination) {
+        when (initialDestination) {
+            ImagesInitialDestination.List -> Unit
+            ImagesInitialDestination.Vulnerabilities -> {
+                if (initialRoute != "vulnerabilities") {
+                    nav.navigate("vulnerabilities") {
+                        popUpTo("list")
+                        launchSingleTop = true
+                    }
+                }
+                initialVulnerabilitiesActive = true
+            }
+        }
+        if (initialDestination != ImagesInitialDestination.List) {
+            onInitialDestinationHandled()
+        }
+    }
     // The list endpoint is the only source for the full set of images; keep the last-loaded
     // list here so the Updates screen can derive its tagged-ref set without re-fetching.
     var loadedImages by remember { mutableStateOf<List<ImageSummary>>(emptyList()) }
 
-    NavHost(navController = nav, startDestination = "list") {
+    NavHost(navController = nav, startDestination = initialRoute) {
         composable("list") {
             ImageListScreen(
                 onLoaded = { loadedImages = it },
@@ -77,7 +113,30 @@ fun ImagesScreen(popToRootSignal: Int = 0) {
             ImageUpdatesScreen(images = loadedImages, onBack = { nav.popBackStack() })
         }
         composable("vulnerabilities") {
-            AllVulnerabilitiesScreen(onBack = { nav.popBackStack() })
+            val returnToInitialSource = {
+                initialVulnerabilitiesActive = false
+                onInitialDestinationBack?.invoke()
+            }
+            BackHandler(enabled = initialVulnerabilitiesActive && onInitialDestinationBack != null) {
+                returnToInitialSource()
+            }
+            AllVulnerabilitiesScreen(
+                onBack = {
+                    if (initialVulnerabilitiesActive && onInitialDestinationBack != null) {
+                        returnToInitialSource()
+                    } else {
+                        nav.popBackStack()
+                    }
+                },
+                environmentId = vulnerabilitiesEnvironmentId,
+                environmentName = vulnerabilitiesEnvironmentName,
+            )
         }
     }
 }
+
+internal val ImagesInitialDestination.startRoute: String
+    get() = when (this) {
+        ImagesInitialDestination.List -> "list"
+        ImagesInitialDestination.Vulnerabilities -> "vulnerabilities"
+    }

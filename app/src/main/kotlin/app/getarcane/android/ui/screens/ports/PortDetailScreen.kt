@@ -26,12 +26,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.ui.components.ContentUnavailable
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PortDetailScreen(portId: String, onBack: () -> Unit) {
-    val port = PortStore.get(portId)
+    val manager = LocalArcaneManager.current
+    val port = PortStore.get(manager.serverSessionIdentity, portId)
     val title = port?.containerName ?: "Port"
 
     Scaffold(

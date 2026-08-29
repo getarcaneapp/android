@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -42,15 +43,19 @@ import app.getarcane.android.ui.screens.DashboardScreen
 import app.getarcane.android.ui.screens.PlaceholderScreen
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
 import app.getarcane.android.ui.screens.containers.ContainersScreen
+import app.getarcane.android.ui.screens.environments.EnvironmentDetailScreen
 import app.getarcane.android.ui.screens.events.EventsScreen
 import app.getarcane.android.ui.screens.gitops.GitOpsScreen
 import app.getarcane.android.ui.screens.gitops.GitRepositoriesScreen
+import app.getarcane.android.ui.screens.updates.AllEnvironmentsImageUpdatesScreen
 import app.getarcane.android.ui.screens.images.ImagesScreen
+import app.getarcane.android.ui.screens.images.ImagesInitialDestination
 import app.getarcane.android.ui.screens.jobs.JobsScreen
 import app.getarcane.android.ui.screens.networks.NetworksScreen
 import app.getarcane.android.ui.screens.ports.PortsScreen
 import app.getarcane.android.ui.screens.projects.ProjectsScreen
 import app.getarcane.android.ui.screens.settings.SettingsScreen
+import app.getarcane.android.ui.screens.settings.SettingsInitialDestination
 import app.getarcane.android.ui.screens.settings.ApiKeysScreen
 import app.getarcane.android.ui.screens.settings.UsersScreen
 import app.getarcane.android.ui.screens.settings.notifications.NotificationSettingsScreen
@@ -65,10 +70,24 @@ import app.getarcane.android.ui.screens.settings.webhooks.WebhooksScreen
 import app.getarcane.android.ui.screens.swarm.SwarmScreen
 import app.getarcane.android.ui.screens.updates.UpdatesScreen
 import app.getarcane.android.ui.screens.volumes.VolumesScreen
+import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.models.user.isGlobalAdmin
 
 private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
+
+private sealed interface DashboardOpenTarget {
+    val id: String
+
+    data class Container(override val id: String) : DashboardOpenTarget
+    data class Project(override val id: String) : DashboardOpenTarget
+    data class Volume(override val id: String) : DashboardOpenTarget
+    data class Environment(override val id: String) : DashboardOpenTarget
+    data class ImageVulnerabilities(override val id: String, val name: String) : DashboardOpenTarget
+    data object ImageUpdates : DashboardOpenTarget {
+        override val id: String = "image-updates"
+    }
+}
 
 /**
  * Bottom-nav shell: 4 swappable tabs + Settings. Tapping selects; long-pressing a tab opens the
@@ -88,6 +107,9 @@ fun MainTabView() {
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
+    var dashboardOpenTarget by remember { mutableStateOf<DashboardOpenTarget?>(null) }
+    var imagesInitialDestination by remember { mutableStateOf(ImagesInitialDestination.List) }
+    var settingsInitialDestination by remember { mutableStateOf(SettingsInitialDestination.Root) }
 
     if (selected == null && selectionStore.hasLoaded) {
         selected = MainTabSelection.restore(
@@ -113,19 +135,44 @@ fun MainTabView() {
             selectionStore.select(normalizedSelection)
         }
     }
+    val hostedResourceTabId = when (dashboardOpenTarget) {
+        is DashboardOpenTarget.Container -> AppTab.Containers.id
+        is DashboardOpenTarget.Project -> AppTab.Projects.id
+        is DashboardOpenTarget.Volume -> AppTab.Volumes.id
+        is DashboardOpenTarget.Environment -> null
+        is DashboardOpenTarget.ImageVulnerabilities -> null
+        DashboardOpenTarget.ImageUpdates -> null
+        null -> null
+    }
+    val bottomBarSelectedTabId = MainTabSelection.bottomBarSelectedTabId(
+        selectedTabId = normalizedSelection,
+        hostedResourceTabId = hostedResourceTabId,
+        visibleTabs = visible,
+    )
 
-    val rootBackAction = MainBackNavigation.resolve(normalizedSelection)
+    val rootBackAction = MainBackNavigation.resolve(
+        selectedTabId = normalizedSelection,
+        hasDashboardOpenTarget = dashboardOpenTarget != null,
+    )
     BackHandler(enabled = rootBackAction == MainBackNavigation.Action.SwitchToDashboard) {
         // Register this before child content so nested NavHosts and transient UI get first chance to
-        // consume Back. Once a non-Dashboard tab is at its root, system Back returns home instead of
-        // exiting the Activity from a resource/settings tab dead end.
-        selected = AppTab.Dashboard.id
+        // consume Back. Dashboard-hosted details clear back to the Dashboard, and non-Dashboard
+        // tab roots return home instead of exiting the Activity from a resource/settings tab dead end.
+        if (dashboardOpenTarget != null) {
+            dashboardOpenTarget = null
+        } else {
+            selected = AppTab.Dashboard.id
+        }
     }
 
     fun selectOrPopToRoot(tabId: String) {
-        if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
+        if (dashboardOpenTarget != null && normalizedSelection == AppTab.Dashboard.id && tabId == AppTab.Dashboard.id) {
+            dashboardOpenTarget = null
+        } else if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
+            dashboardOpenTarget = null
             popToRootSignals[tabId] = (popToRootSignals[tabId] ?: 0) + 1
         } else {
+            dashboardOpenTarget = null
             selected = tabId
         }
     }
@@ -137,7 +184,7 @@ fun MainTabView() {
                     NavBarItem(
                         icon = tab.icon,
                         label = tab.tabBarTitle,
-                        selected = normalizedSelection == tab.id,
+                        selected = bottomBarSelectedTabId == tab.id,
                         onClick = { selectOrPopToRoot(tab.id) },
                         onLongClick = { swapTarget = tab },
                     )
@@ -145,14 +192,19 @@ fun MainTabView() {
                 NavBarItem(
                     icon = Icons.Filled.Settings,
                     label = "Settings",
-                    selected = normalizedSelection == SETTINGS_ID,
+                    selected = bottomBarSelectedTabId == SETTINGS_ID,
                     onClick = { selectOrPopToRoot(SETTINGS_ID) },
                     onLongClick = null,
                 )
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding)
+        ) {
             val tab = AppTab.byId(normalizedSelection)
             val envKey = if (tab?.isEnvironmentScoped == true) manager.activeEnvironmentId.rawValue else ""
             val popToRootSignal = popToRootSignals[normalizedSelection] ?: 0
@@ -161,6 +213,40 @@ fun MainTabView() {
                     normalizedSelection,
                     popToRootSignal = popToRootSignal,
                     onSelectTab = { selected = it },
+                    dashboardOpenTarget = dashboardOpenTarget,
+                    onOpenContainer = { id ->
+                        dashboardOpenTarget = DashboardOpenTarget.Container(id = id)
+                    },
+                    onOpenProject = { id ->
+                        dashboardOpenTarget = DashboardOpenTarget.Project(id = id)
+                    },
+                    onOpenVolume = { name ->
+                        dashboardOpenTarget = DashboardOpenTarget.Volume(id = name)
+                    },
+                    onOpenEnvironment = { id ->
+                        dashboardOpenTarget = DashboardOpenTarget.Environment(id = id)
+                    },
+                    onDashboardBack = {
+                        dashboardOpenTarget = null
+                    },
+                    settingsInitialDestination = settingsInitialDestination,
+                    onSettingsInitialDestinationHandled = {
+                        settingsInitialDestination = SettingsInitialDestination.Root
+                    },
+                    imagesInitialDestination = imagesInitialDestination,
+                    onImagesInitialDestinationHandled = {
+                        imagesInitialDestination = ImagesInitialDestination.List
+                    },
+                    onOpenImageVulnerabilities = { id, name ->
+                        dashboardOpenTarget = DashboardOpenTarget.ImageVulnerabilities(id = id, name = name)
+                    },
+                    onOpenImageUpdates = {
+                        dashboardOpenTarget = DashboardOpenTarget.ImageUpdates
+                    },
+                    onOpenApiKeys = {
+                        dashboardOpenTarget = null
+                        selected = AppTab.ApiKeys.id
+                    },
                 )
             }
         }
@@ -224,13 +310,95 @@ private fun RowScope.NavBarItem(
 }
 
 @Composable
-private fun TabContent(tabId: String, popToRootSignal: Int, onSelectTab: (String) -> Unit) {
+private fun TabContent(
+    tabId: String,
+    popToRootSignal: Int,
+    onSelectTab: (String) -> Unit,
+    dashboardOpenTarget: DashboardOpenTarget?,
+    onOpenContainer: (String) -> Unit,
+    onOpenProject: (String) -> Unit,
+    onOpenVolume: (String) -> Unit,
+    onOpenEnvironment: (String) -> Unit,
+    onDashboardBack: () -> Unit,
+    settingsInitialDestination: SettingsInitialDestination,
+    onSettingsInitialDestinationHandled: () -> Unit,
+    imagesInitialDestination: ImagesInitialDestination,
+    onImagesInitialDestinationHandled: () -> Unit,
+    onOpenImageVulnerabilities: (String, String) -> Unit,
+    onOpenImageUpdates: () -> Unit,
+    onOpenApiKeys: () -> Unit,
+) {
     when (tabId) {
-        SETTINGS_ID -> SettingsScreen(popToRootSignal = popToRootSignal)
-        AppTab.Dashboard.id -> DashboardScreen(onOpenTab = onSelectTab)
-        AppTab.Containers.id -> ContainersScreen(popToRootSignal = popToRootSignal)
-        AppTab.Images.id -> ImagesScreen(popToRootSignal = popToRootSignal)
-        AppTab.Projects.id -> ProjectsScreen(popToRootSignal = popToRootSignal)
+        SETTINGS_ID -> SettingsScreen(
+            popToRootSignal = popToRootSignal,
+            initialDestination = settingsInitialDestination,
+            onInitialDestinationHandled = onSettingsInitialDestinationHandled,
+        )
+        AppTab.Dashboard.id -> {
+            when (val target = dashboardOpenTarget) {
+                is DashboardOpenTarget.Container -> key(target) {
+                    ContainersScreen(
+                        dashboardContainerId = target.id,
+                        onDashboardBack = onDashboardBack,
+                    )
+                }
+                is DashboardOpenTarget.Project -> key(target) {
+                    ProjectsScreen(
+                        dashboardProjectId = target.id,
+                        onDashboardBack = onDashboardBack,
+                    )
+                }
+                is DashboardOpenTarget.Volume -> key(target) {
+                    VolumesScreen(
+                        dashboardVolumeName = target.id,
+                        onDashboardBack = onDashboardBack,
+                    )
+                }
+                is DashboardOpenTarget.Environment -> key(target) {
+                    EnvironmentDetailScreen(
+                        id = target.id,
+                        onBack = onDashboardBack,
+                    )
+                }
+                is DashboardOpenTarget.ImageVulnerabilities -> key(target) {
+                    ImagesScreen(
+                        initialDestination = ImagesInitialDestination.Vulnerabilities,
+                        vulnerabilitiesEnvironmentId = EnvironmentId(target.id),
+                        vulnerabilitiesEnvironmentName = target.name,
+                        onInitialDestinationHandled = {},
+                        onInitialDestinationBack = onDashboardBack,
+                    )
+                }
+                DashboardOpenTarget.ImageUpdates -> key(target) {
+                    AllEnvironmentsImageUpdatesScreen(onBack = onDashboardBack)
+                }
+                null -> DashboardScreen(
+                    onOpenTab = onSelectTab,
+                    onOpenContainer = onOpenContainer,
+                    onOpenProject = onOpenProject,
+                    onOpenVolume = onOpenVolume,
+                    onOpenEnvironmentDetails = onOpenEnvironment,
+                    onOpenImageVulnerabilities = onOpenImageVulnerabilities,
+                    onOpenImageUpdates = onOpenImageUpdates,
+                    onOpenApiKeys = onOpenApiKeys,
+                )
+            }
+        }
+        AppTab.Containers.id -> {
+            ContainersScreen(
+                popToRootSignal = popToRootSignal,
+            )
+        }
+        AppTab.Images.id -> ImagesScreen(
+            popToRootSignal = popToRootSignal,
+            initialDestination = imagesInitialDestination,
+            onInitialDestinationHandled = onImagesInitialDestinationHandled,
+        )
+        AppTab.Projects.id -> {
+            ProjectsScreen(
+                popToRootSignal = popToRootSignal,
+            )
+        }
         AppTab.Volumes.id -> VolumesScreen(popToRootSignal = popToRootSignal)
         AppTab.Networks.id -> NetworksScreen(popToRootSignal = popToRootSignal)
         AppTab.Ports.id -> PortsScreen(popToRootSignal = popToRootSignal)

@@ -14,8 +14,8 @@ internal object MainBackNavigation {
         LetActivityHandle,
     }
 
-    fun resolve(selectedTabId: String): Action =
-        if (selectedTabId == AppTab.Dashboard.id) {
+    fun resolve(selectedTabId: String, hasDashboardOpenTarget: Boolean = false): Action =
+        if (selectedTabId == AppTab.Dashboard.id && !hasDashboardOpenTarget) {
             Action.LetActivityHandle
         } else {
             Action.SwitchToDashboard

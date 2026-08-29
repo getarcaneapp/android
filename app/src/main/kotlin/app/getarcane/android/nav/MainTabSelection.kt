@@ -30,6 +30,19 @@ internal object MainTabSelection {
     fun shouldPopToRootOnTap(selectedTabId: String, tappedTabId: String): Boolean =
         selectedTabId == tappedTabId
 
+    fun bottomBarSelectedTabId(
+        selectedTabId: String,
+        hostedResourceTabId: String?,
+        visibleTabs: List<AppTab>,
+    ): String {
+        val hostedTab = hostedResourceTabId?.let(AppTab::byId)
+        return if (hostedTab != null && hostedTab in visibleTabs) {
+            hostedTab.id
+        } else {
+            selectedTabId
+        }
+    }
+
     private fun isSelectable(
         tabId: String,
         isAdmin: Boolean,

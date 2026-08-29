@@ -1,0 +1,128 @@
+# Arcane Android Agent Guidance
+
+Arcane Android is a Jetpack Compose companion for the Arcane Docker management server. It is an
+operational client, so correctness, server compatibility, lifecycle behavior, and safe destructive
+actions matter more than visual novelty.
+
+## Collaboration Scope
+
+Michael Kaltner is an authorized collaborator and an active Android feature contributor. Changes
+may cover application code, tests, navigation, CI, Gradle, AGP, Kotlin, JDK, dependencies, and
+coordinated SDK integration.
+
+Use a focused branch by default. Do not push, merge to `main`, tag, sign, publish an APK, or create
+a GitHub release unless the user explicitly requests it.
+
+Always inspect `git status` first and preserve unrelated local changes and untracked files.
+
+## Parity Task and PR Workflow
+
+For Android parity work, follow the full
+[parity delivery workflow](docs/parity-delivery-workflow.md) and these mandatory rules:
+
+- Revalidate current `main`, recent commits, and the canonical parity task before coding.
+- Treat `docs/ios-parity-task-list.md` as canonical. Before publication, reconcile task status,
+  checkboxes, acceptance criteria, revision pins, validation evidence, pending manual/device tests,
+  and scoped follow-ups.
+- Complete focused tests, the applicable full build/test baseline, an independent final diff review,
+  and accurate documentation before requesting publication.
+- Treat commit, feature-branch push, PR creation, and PR merge as separate authorization boundaries.
+- When PR creation is authorized, open a tested, documented change as ready for review, not draft.
+- Retrieve CI results, the full Greptile review, and inline comments. Address higher-risk findings,
+  reply in their original threads, resolve verified fixes, and report review readiness after fresh
+  green CI.
+- Never merge without separate explicit authorization. Honor the active task's scope, dependencies,
+  and holds.
+
+## iOS Parity Authority
+
+The product target is outcome parity with the current Arcane iOS app, expressed through
+Android-native conventions. Before implementing or revising parity behavior, inspect the current
+iOS source in the sibling `../ios` checkout and record the compared revision in the task or PR.
+
+- Treat current iOS source as the primary authority for mobile product behavior, flows, terminology,
+  aggregation, and navigation unless the canonical task records an intentional Android deviation.
+- Use the sibling `../arcane` checkout to verify server contracts, capabilities, and wire semantics;
+  do not silently substitute Arcane web UX or aggregation semantics for iOS behavior.
+- When iOS and web differ, surface and document the discrepancy before changing Android. Preserve
+  the iOS outcome unless Michael or an upstream product decision explicitly selects another target.
+- For Updates, the current parity decision is the iOS image-oriented model: dashboard and Updates
+  details count outdated images. Projects and containers are consumer context; the web's count of
+  updateable resources must not replace the image total without an explicit product decision.
+
+## Architecture
+
+- `app/src/main/kotlin/app/getarcane/android/core/` — client ownership, authentication, preferences,
+  environment state, streams, formatting, and shared application state.
+- `app/src/main/kotlin/app/getarcane/android/nav/` — bottom-tab selection, persistence, swapping,
+  and back-navigation behavior.
+- `app/src/main/kotlin/app/getarcane/android/ui/screens/` — resource list/detail screens and
+  operational flows.
+- `app/src/main/kotlin/app/getarcane/android/ui/components/` — reusable Compose components.
+- `app/src/test/` — JVM unit tests. Prefer extracting deterministic mapping/state logic so it can
+  be tested without an emulator.
+
+`ArcaneClientManager` is the central owner of server configuration, authentication state, current
+user, capabilities, active environment, and the `ArcaneClient`. Do not create competing client
+owners or independent authentication stores.
+
+The app uses a single-activity Compose architecture. Follow the existing navigation and screen
+patterns instead of introducing a second navigation framework or unrelated state-management
+system.
+
+## SDK Boundary
+
+The app depends on the sibling `../libarcane-kotlin` checkout when it exists and its Android Gradle
+Plugin version matches the app. Otherwise Gradle resolves the SDK from its Git source. Pass
+`-Parcane.remoteSdk` only when intentionally testing the remote dependency.
+
+Treat `libarcane-kotlin` as the sole application API client:
+
+- use `ArcaneClient` services and SDK models directly;
+- do not duplicate REST endpoints, DTOs, token refresh, serialization, WebSocket, or NDJSON logic;
+- do not add pass-through wrappers around SDK methods;
+- when the Arcane wire contract is unsupported, update and test the SDK first.
+
+For cross-repository API work, inspect the matching types and handlers in `../arcane`, then update
+the SDK, then update Android.
+
+## Implementation Conventions
+
+- Use Kotlin coroutines and structured cancellation. Rethrow `CancellationException`.
+- Keep long-lived work in an explicitly owned scope and cancel or replace jobs when lifecycle or
+  environment state changes.
+- Keep environment-specific operations tied to the selected `EnvironmentId`; `"0"` represents the
+  local Docker environment.
+- Preserve authentication restoration without flashing the login UI.
+- Treat unknown server enum values and optional fields defensively.
+- Keep list/detail navigation mobile-native and preserve back and tab re-selection behavior.
+- Put destructive operations behind clear resource- and environment-specific confirmation.
+- Prefer existing shared components and formatting helpers before adding new ones.
+- Add or update tests for nontrivial mapping, selection, status, retry, and navigation logic.
+- Prefer Android string resources for new user-facing text when practical; do not mix a focused
+  change with a broad localization rewrite.
+
+## Toolchain and Verification
+
+The checked-in build defines the authoritative versions. The expected baseline is JDK 21, JVM
+target 17, Android API 24 minimum, and Android API 35 compile/target SDK.
+
+Run the CI-equivalent checks:
+
+```sh
+./gradlew :app:testDebugUnitTest :app:assembleDebug
+```
+
+When the sibling SDK changed, run this first from `../libarcane-kotlin`:
+
+```sh
+./gradlew :arcane-core:test :arcane-android:assembleRelease
+```
+
+For lifecycle, navigation, streaming, authentication, or destructive-action changes, also test on
+an emulator or device against an appropriate Arcane server when available. Clearly report when
+manual/device testing was not possible.
+
+Release signing is optional for development. Never request, expose, or commit signing secrets.
+Do not commit generated Gradle output, local SDK paths, APKs, keystores, or machine-specific
+configuration.

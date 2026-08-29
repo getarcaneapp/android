@@ -1,5 +1,6 @@
 package app.getarcane.android.ui.screens.volumes
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -12,12 +13,26 @@ import app.getarcane.android.nav.PopToRootOnSignal
  * VolumeBackupsView.
  */
 @Composable
-fun VolumesScreen(popToRootSignal: Int = 0) {
+fun VolumesScreen(
+    popToRootSignal: Int = 0,
+    dashboardVolumeName: String? = null,
+    onDashboardBack: () -> Unit = {},
+) {
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
-    NavHost(navController = nav, startDestination = "list") {
+    NavHost(navController = nav, startDestination = if (dashboardVolumeName == null) "list" else "dashboard-detail") {
         composable("list") {
             VolumeListScreen(onOpen = { name -> nav.navigate("detail/$name") })
+        }
+        composable("dashboard-detail") {
+            val name = dashboardVolumeName ?: return@composable
+            BackHandler(onBack = onDashboardBack)
+            VolumeDetailScreen(
+                name = name,
+                onBack = onDashboardBack,
+                onBrowse = { name -> nav.navigate("browse/$name") },
+                onBackups = { name -> nav.navigate("backups/$name") },
+            )
         }
         composable("detail/{name}") { entry ->
             VolumeDetailScreen(

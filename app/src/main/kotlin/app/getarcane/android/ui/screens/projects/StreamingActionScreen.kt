@@ -40,6 +40,7 @@ import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.models.project.PullProgressEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 
 /** A single rendered line of stream output. */
@@ -71,6 +72,7 @@ fun StreamingActionScreen(
     val lines = remember { mutableStateListOf<StreamLine>() }
     var status by remember { mutableStateOf<StreamStatus>(StreamStatus.Running) }
     var currentPhase by remember { mutableStateOf<String?>(null) }
+    var streamGeneration by remember { mutableStateOf(0) }
     val listState = rememberLazyListState()
 
     fun append(text: String, isError: Boolean) {
@@ -78,7 +80,11 @@ fun StreamingActionScreen(
         if (lines.size > 2000) repeat(200) { if (lines.isNotEmpty()) lines.removeAt(0) }
     }
 
-    LaunchedEffect(projectId, action) {
+    LaunchedEffect(client, envId.rawValue, projectId, action) {
+        val generation = ++streamGeneration
+        lines.clear()
+        status = StreamStatus.Running
+        currentPhase = null
         if (client == null) {
             status = StreamStatus.Failure("No client available")
             return@LaunchedEffect
@@ -96,6 +102,7 @@ fun StreamingActionScreen(
         }
         try {
             stream.collect { event ->
+                if (generation != streamGeneration) return@collect
                 val isError = event.error != null
                 val display = displayText(event)
                 if (display.isNotEmpty()) append(display, isError)
@@ -104,13 +111,19 @@ fun StreamingActionScreen(
                     if (!phase.isNullOrEmpty()) currentPhase = phase
                 }
             }
-            status = StreamStatus.Success
-            currentPhase = "Complete"
+            if (generation == streamGeneration) {
+                status = StreamStatus.Success
+                currentPhase = "Complete"
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
-            val message = friendlyErrorMessage(e)
-            append(message, isError = true)
-            status = StreamStatus.Failure(message)
-            currentPhase = "Failed"
+            if (generation == streamGeneration) {
+                val message = friendlyErrorMessage(e)
+                append(message, isError = true)
+                status = StreamStatus.Failure(message)
+                currentPhase = "Failed"
+            }
         }
     }
 

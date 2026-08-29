@@ -47,6 +47,7 @@ import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.theme.ArcaneOrange
+import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.base.SearchPaginationSort
 import app.getarcane.sdk.models.vulnerability.EnvironmentVulnerabilitySummary
 import app.getarcane.sdk.models.vulnerability.VulnerabilitySeverity
@@ -57,10 +58,14 @@ private const val ALL_PAGE_SIZE = 50
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AllVulnerabilitiesScreen(onBack: () -> Unit) {
+fun AllVulnerabilitiesScreen(
+    onBack: () -> Unit,
+    environmentId: EnvironmentId? = null,
+    environmentName: String? = null,
+) {
     val manager = LocalArcaneManager.current
     val client = manager.client
-    val envId = manager.activeEnvironmentId
+    val envId = environmentId ?: manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
 
     var summary by remember { mutableStateOf<EnvironmentVulnerabilitySummary?>(null) }
@@ -121,7 +126,7 @@ fun AllVulnerabilitiesScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("All Vulnerabilities") },
+                title = { Text(environmentName ?: "All Vulnerabilities") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(

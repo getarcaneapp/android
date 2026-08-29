@@ -57,6 +57,7 @@ import app.getarcane.sdk.models.base.int64Value
 import app.getarcane.sdk.models.base.objectValue
 import app.getarcane.sdk.models.base.stringValue
 import app.getarcane.sdk.models.container.ContainerStatsPayload
+import kotlinx.coroutines.CancellationException
 
 /** A parsed point in the rolling stats window. Port of iOS `ContainerStatsFrame`. */
 private data class StatsFrame(
@@ -90,16 +91,24 @@ fun ContainerStatsScreen(id: String) {
     var error by remember { mutableStateOf<String?>(null) }
     var streaming by remember { mutableStateOf(false) }
     var retryKey by remember { mutableStateOf(0) }
+    var streamGeneration by remember { mutableStateOf(0) }
 
     val windowSize = 60
 
-    LaunchedEffect(id, retryKey) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(client, envId.rawValue, id, retryKey) {
+        val generation = ++streamGeneration
+        frames.clear()
+        latest = null
         error = null
+        if (client == null) {
+            streaming = false
+            return@LaunchedEffect
+        }
         streaming = true
-        var previous: StatsFrame? = latest ?: frames.lastOrNull()
+        var previous: StatsFrame? = null
         try {
             client.containers.stats(envId = envId, id = id).collect { payload ->
+                if (generation != streamGeneration) return@collect
                 parseFrame(payload, previous)?.let { frame ->
                     previous = frame
                     frames.add(frame)
@@ -107,10 +116,14 @@ fun ContainerStatsScreen(id: String) {
                     latest = frame
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
-            error = "Stats stream ended: ${friendlyErrorMessage(e)}"
+            if (generation == streamGeneration) {
+                error = "Stats stream ended: ${friendlyErrorMessage(e)}"
+            }
         } finally {
-            streaming = false
+            if (generation == streamGeneration) streaming = false
         }
     }
 

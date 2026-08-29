@@ -34,7 +34,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,12 +50,15 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.AnsiSanitizer
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.runSuspendCatching
 import app.getarcane.android.ui.components.BannerSeverity
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.sdk.streaming.TerminalSession
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val shells = listOf("/bin/sh", "/bin/bash", "/bin/zsh", "/bin/ash")
 private const val CHAR_BUDGET = 200_000
@@ -82,93 +84,118 @@ fun ContainerTerminalScreen(id: String, title: String, onClose: () -> Unit) {
     var output by remember { mutableStateOf("") }
     var input by remember { mutableStateOf("") }
     var session by remember { mutableStateOf<TerminalSession?>(null) }
-    var outputJob by remember { mutableStateOf<Job?>(null) }
     var connectError by remember { mutableStateOf<String?>(null) }
     var isConnecting by remember { mutableStateOf(false) }
     var isConnected by remember { mutableStateOf(false) }
     var shell by remember { mutableStateOf("/bin/sh") }
     var menuOpen by remember { mutableStateOf(false) }
+    var retryKey by remember { mutableStateOf(0) }
+    var outputClient by remember { mutableStateOf(client) }
+    var outputEnvironmentId by remember { mutableStateOf(envId.rawValue) }
+    var outputContainerId by remember { mutableStateOf(id) }
 
     val scrollState = rememberScrollState()
 
-    suspend fun teardown() {
-        outputJob?.cancel()
-        outputJob = null
-        runCatching { session?.close() }
-        session = null
-        isConnected = false
-        isConnecting = false
+    suspend fun closeSession(closingSession: TerminalSession? = session) {
+        if (closingSession != null) {
+            withContext(NonCancellable) {
+                runSuspendCatching { closingSession.close() }
+            }
+        }
+        if (session === closingSession) {
+            session = null
+            isConnected = false
+            isConnecting = false
+        }
     }
 
-    fun connect() {
-        if (client == null) {
-            connectError = "Not connected to a server."
-            return
+    LaunchedEffect(client, envId.rawValue, id, shell, retryKey) {
+        val activeClient = client
+        if (outputClient !== activeClient ||
+            outputEnvironmentId != envId.rawValue ||
+            outputContainerId != id
+        ) {
+            output = ""
+            input = ""
+            outputClient = activeClient
+            outputEnvironmentId = envId.rawValue
+            outputContainerId = id
         }
-        if (isConnected || isConnecting) return
+        if (activeClient == null) {
+            connectError = "Not connected to a server."
+            return@LaunchedEffect
+        }
         isConnecting = true
         connectError = null
+        var ownedSession: TerminalSession? = null
+        try {
+            val activeSession = activeClient.containers.exec(envId = envId, id = id, shell = shell)
+            ownedSession = activeSession
+            session = activeSession
+            isConnected = true
+            isConnecting = false
+            activeSession.output.collect { chunk ->
+                val raw = chunk.decodeToString()
+                // Auto-reply to cursor-position requests (DSR ESC[6n).
+                if (raw.contains(ESC + "[6n")) {
+                    runSuspendCatching { activeSession.send(ESC + "[1;1R") }
+                }
+                val stripped = AnsiSanitizer.strip(raw)
+                val combined = output + stripped
+                output = if (combined.length > CHAR_BUDGET) {
+                    combined.substring(combined.length - CHAR_BUDGET + CHAR_BUDGET / 10)
+                } else {
+                    combined
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            connectError = if (isConnected) {
+                "Disconnected: ${friendlyErrorMessage(e)}"
+            } else {
+                friendlyErrorMessage(e)
+            }
+        } finally {
+            closeSession(ownedSession)
+        }
+    }
+
+    fun send(text: String) {
+        val activeSession = session ?: return
+        if (!isConnected) return
         scope.launch {
             try {
-                val s = client.containers.exec(envId = envId, id = id, shell = shell)
-                session = s
-                isConnected = true
-                isConnecting = false
-                outputJob = scope.launch {
-                    try {
-                        s.output.collect { chunk ->
-                            val raw = chunk.decodeToString()
-                            // Auto-reply to cursor-position requests (DSR ESC[6n).
-                            if (raw.contains(ESC + "[6n")) runCatching { s.send(ESC + "[1;1R") }
-                            val stripped = AnsiSanitizer.strip(raw)
-                            val combined = output + stripped
-                            output = if (combined.length > CHAR_BUDGET) {
-                                combined.substring(combined.length - CHAR_BUDGET + CHAR_BUDGET / 10)
-                            } else {
-                                combined
-                            }
-                        }
-                    } catch (e: Throwable) {
-                        connectError = "Disconnected: ${friendlyErrorMessage(e)}"
-                    } finally {
-                        isConnected = false
-                    }
-                }
+                activeSession.send(text)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
-                connectError = friendlyErrorMessage(e)
-                isConnecting = false
+                if (session === activeSession) {
+                    connectError = "Send failed: ${friendlyErrorMessage(e)}"
+                }
             }
         }
     }
 
     fun sendShortcut(text: String) {
-        val s = session ?: return
-        if (!isConnected) return
-        scope.launch { runCatching { s.send(text) } }
+        send(text)
     }
 
     fun sendInput() {
-        val s = session ?: return
-        if (!isConnected || input.isEmpty()) return
+        if (input.isEmpty()) return
         val payload = input + "\n"
-        scope.launch { runCatching { s.send(payload) } }
+        send(payload)
         input = ""
     }
 
-    LaunchedEffect(Unit) { connect() }
-
     LaunchedEffect(output) { scrollState.animateScrollTo(scrollState.maxValue) }
-
-    DisposableEffect(Unit) {
-        onDispose { scope.launch { teardown() } }
-    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(title, maxLines = 1) },
                 navigationIcon = {
-                    TextButton(onClick = { scope.launch { teardown(); onClose() } }) { Text("Close") }
+                    TextButton(onClick = { scope.launch { closeSession(); onClose() } }) { Text("Close") }
                 },
                 actions = {
                     Box {
@@ -205,7 +232,7 @@ fun ContainerTerminalScreen(id: String, title: String, onClose: () -> Unit) {
                 ErrorBanner(
                     it,
                     severity = BannerSeverity.Warning,
-                    onRetry = { connect() },
+                    onRetry = { retryKey++ },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }

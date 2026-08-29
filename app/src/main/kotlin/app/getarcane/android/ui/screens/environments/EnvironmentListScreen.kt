@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.loadCompleteEnvironments
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.components.StatusBadge
@@ -53,6 +54,7 @@ import app.getarcane.android.ui.theme.ArcaneGray
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.environment.Environment
+import kotlinx.coroutines.CancellationException
 
 /** Online when the status reads "online"/"up". Mirrors iOS `Environment.isOnline`. */
 internal val Environment.isOnline: Boolean
@@ -78,7 +80,9 @@ fun EnvironmentListScreen(onOpen: (String) -> Unit) {
         if (client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            Loadable.Success(client.environments.list().data)
+            Loadable.Success(loadCompleteEnvironments { query -> client.environments.list(query) })
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }

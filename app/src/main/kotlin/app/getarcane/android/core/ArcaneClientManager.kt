@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.getarcane.android.nav.MainTabSelectionStore
 import app.getarcane.sdk.ArcaneClient
 import app.getarcane.sdk.ArcaneConfiguration
 import app.getarcane.sdk.EnvironmentId
@@ -16,6 +17,7 @@ import app.getarcane.sdk.models.auth.OidcStatusInfo
 import app.getarcane.sdk.models.user.User
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,10 +39,14 @@ enum class AuthStatus { SETUP, AUTHENTICATING, LOGIN, AUTHENTICATED }
 class ArcaneClientManager(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = Prefs(appContext)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mainTabSelectionStore = MainTabSelectionStore(appContext)
+    private var sessionJob = SupervisorJob()
+    private var scope = CoroutineScope(sessionJob + Dispatchers.Main.immediate)
+    private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val cookieJar = ArcaneCookieJar()
+    private var clientGeneration = 0L
 
-    var authStatus by mutableStateOf(AuthStatus.SETUP); private set
+    var authStatus by mutableStateOf(AuthStatus.AUTHENTICATING); private set
     var serverUrl by mutableStateOf(""); private set
     var currentUser by mutableStateOf<User?>(null); private set
     var capabilities by mutableStateOf(ServerCapabilities.UNKNOWN); private set
@@ -74,35 +80,124 @@ class ArcaneClientManager(context: Context) {
     val isOidcAvailable: Boolean get() =
         oidc?.let { it.envConfigured || it.envForced || it.providerName?.isNotBlank() == true } ?: false
     val isDemoActive: Boolean get() = demoEndsAt != null
+    val serverSessionIdentity: String get() =
+        ServerIdentities.from(serverUrl)?.canonicalOrigin.orEmpty()
 
     init {
         scope.launch {
-            val saved = prefs.serverUrl.first()
-            prefs.activeEnvId.first()?.let { id ->
-                activeEnvironmentId = EnvironmentId(id)
-                activeEnvironmentName = prefs.activeEnvName.first() ?: "Local Docker"
-            }
-            if (!saved.isNullOrBlank()) {
-                serverUrl = saved
-                client = makeClient(saved)
-                authStatus = AuthStatus.AUTHENTICATING
-                checkExistingAuth()
-            } else {
-                authStatus = AuthStatus.SETUP
-            }
+            var allowsLegacyTokenMigration = false
+            restoreAuthenticationSession(
+                loadSavedState = {
+                    val savedServer = prefs.serverUrl.first()
+                    val activeEnvironmentId = prefs.activeEnvId.first()
+                    SavedAuthState(
+                        serverUrl = savedServer,
+                        activeEnvironmentId = activeEnvironmentId,
+                        activeEnvironmentName =
+                            if (activeEnvironmentId == null) null else prefs.activeEnvName.first(),
+                        credentialOrigin = prefs.credentialOrigin.first(),
+                    )
+                },
+                applySavedState = { savedState ->
+                    allowsLegacyTokenMigration =
+                        savedState.credentialOrigin == null &&
+                        !savedState.serverUrl.isNullOrBlank()
+                    savedState.activeEnvironmentId?.let { id ->
+                        activeEnvironmentId = EnvironmentId(id)
+                        activeEnvironmentName = savedState.activeEnvironmentName ?: "Local Docker"
+                    }
+                },
+                openSavedServer = { savedServer ->
+                    serverUrl = savedServer
+                    client = makeClient(
+                        savedServer,
+                        allowsLegacyTokenMigration = allowsLegacyTokenMigration,
+                    )
+                    clientGeneration++
+                },
+                validateSavedSession = {
+                    val c = requireNotNull(client)
+                    currentUser = c.auth.me()
+                    capabilities = c.serverCapabilities()
+                },
+                refreshLoginMethods = ::refreshOidc,
+                updateStatus = { authStatus = it },
+            )
         }
     }
 
-    private fun makeClient(url: String, defaultHeaders: Map<String, String> = emptyMap()): ArcaneClient =
-        ArcaneClient(
+    private fun makeClient(
+        url: String,
+        defaultHeaders: Map<String, String> = emptyMap(),
+        allowsLegacyTokenMigration: Boolean = false,
+    ): ArcaneClient {
+        val identity = requireNotNull(ServerIdentities.from(url)) { "Invalid Arcane server URL" }
+        return ArcaneClient(
             ArcaneConfiguration(
-                baseUrl = url,
-                tokenStore = AndroidSecureTokenStore(appContext),
+                baseUrl = identity.normalizedUrl,
+                tokenStore = tokenStore(identity, allowsLegacyTokenMigration),
                 defaultEnvironmentId = activeEnvironmentId,
                 defaultHeaders = defaultHeaders,
                 engine = makeHttpEngine(),
             ),
         )
+    }
+
+    private fun tokenStore(
+        identity: ServerIdentity,
+        allowsLegacyTokenMigration: Boolean,
+    ): ServerBoundTokenStore =
+        ServerBoundTokenStore(
+            origin = identity.canonicalOrigin,
+            originStore = AndroidSecureTokenStore(appContext, account = identity.tokenAccount),
+            legacyStore = AndroidSecureTokenStore(appContext),
+            allowsLegacyMigration = allowsLegacyTokenMigration,
+            credentialOrigin = { prefs.credentialOrigin.first() },
+            bindCredentialOrigin = prefs::setCredentialOrigin,
+            unbindCredentialOrigin = prefs::clearCredentialOrigin,
+        )
+
+    private fun replaceSessionScope() {
+        sessionJob.cancel()
+        sessionJob = SupervisorJob()
+        scope = CoroutineScope(sessionJob + Dispatchers.Main.immediate)
+    }
+
+    private fun resetEnvironment() {
+        activeEnvironmentId = EnvironmentId.LOCAL_DOCKER
+        activeEnvironmentName = "Local Docker"
+    }
+
+    private fun isCurrentClient(generation: Long, expectedClient: ArcaneClient? = null): Boolean =
+        generation == clientGeneration && (expectedClient == null || client === expectedClient)
+
+    private fun cleanupServer(
+        previousUrl: String,
+        identity: ServerIdentity,
+        endingClient: ArcaneClient?,
+        endDemoSession: Boolean,
+    ) {
+        cleanupScope.launch {
+            runCleanupStep {
+                tokenStore(identity, allowsLegacyTokenMigration = false).clearTokens()
+            }
+            runCleanupStep { prefs.clearServerState(previousUrl, identity.canonicalOrigin) }
+            runCleanupStep { mainTabSelectionStore.clear() }
+            if (endDemoSession) runCleanupStep { DemoService.endSession() }
+            runCleanupStep { endingClient?.auth?.logout() }
+            runCleanupStep { endingClient?.close() }
+        }
+    }
+
+    private suspend fun runCleanupStep(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            // Cleanup is best-effort, but one failed boundary must not retain the remaining state.
+        }
+    }
 
     private fun makeHttpEngine(): HttpClientEngine =
         OkHttp.create {
@@ -113,50 +208,80 @@ class ArcaneClientManager(context: Context) {
 
     /** Setup mode: validate + persist the server URL and create the client, then go to login. */
     fun configure(rawUrl: String) {
+        errorMessage = null
+        val nextIdentity = ServerIdentities.from(rawUrl)
+        if (nextIdentity == null) {
+            errorMessage = "Enter a valid server URL (e.g. https://arcane.example.com)."
+            return
+        }
+
+        val previousUrl = serverUrl
+        val previousIdentity = ServerIdentities.from(previousUrl)
+        val previousClient = client
+        replaceSessionScope()
+        if (previousIdentity != null && previousIdentity != nextIdentity) {
+            cleanupServer(previousUrl, previousIdentity, previousClient, endDemoSession = isDemoActive)
+        } else {
+            runCatching { previousClient?.close() }
+        }
+
+        resetEnvironment()
+        currentUser = null
+        capabilities = ServerCapabilities.UNKNOWN
+        oidc = null
+        cookieJar.clear()
+        serverUrl = nextIdentity.normalizedUrl
+        client = makeClient(nextIdentity.normalizedUrl)
+        clientGeneration++
+        authStatus = AuthStatus.LOGIN
+        val generation = clientGeneration
         scope.launch {
-            errorMessage = null
-            val normalized = ServerUrl.normalize(rawUrl)
-            if (normalized == null) {
-                errorMessage = "Enter a valid server URL (e.g. https://arcane.example.com)."
-                return@launch
-            }
-            serverUrl = normalized
-            prefs.setServerUrl(normalized)
-            oidc = null
-            cookieJar.clear()
-            client?.close()
-            client = makeClient(normalized)
-            authStatus = AuthStatus.LOGIN
+            prefs.setServerUrl(nextIdentity.normalizedUrl)
+            if (!isCurrentClient(generation)) return@launch
             refreshOidc()
         }
     }
 
     fun login(username: String, password: String) {
         val c = client ?: return
+        val generation = clientGeneration
         scope.launch {
             isLoading = true
             errorMessage = null
             try {
                 val response = c.auth.login(username, password)
+                val detectedCapabilities = c.serverCapabilities()
+                if (!isCurrentClient(generation, c)) return@launch
                 currentUser = response.user
-                capabilities = c.serverCapabilities()
+                capabilities = detectedCapabilities
                 authStatus = AuthStatus.AUTHENTICATED
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
-                errorMessage = friendlyErrorMessage(e)
+                if (isCurrentClient(generation, c)) errorMessage = friendlyErrorMessage(e)
             } finally {
-                isLoading = false
+                if (isCurrentClient(generation, c)) isLoading = false
             }
         }
     }
 
     fun logout() {
         val c = client ?: return
+        val generation = clientGeneration
         scope.launch {
-            runCatching { c.auth.logout() }
+            try {
+                c.auth.logout()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                // SDK logout clears local credentials even when the remote request fails.
+            }
+            if (!isCurrentClient(generation, c)) return@launch
+            authStatus = AuthStatus.LOGIN
+            mainTabSelectionStore.clear()
             cookieJar.clear()
             currentUser = null
             capabilities = ServerCapabilities.UNKNOWN
-            authStatus = AuthStatus.LOGIN
             oidc = null
             refreshOidc()
         }
@@ -164,15 +289,18 @@ class ArcaneClientManager(context: Context) {
 
     fun startOidcSignIn(context: Context) {
         val c = client ?: return
+        val generation = clientGeneration
         scope.launch {
             isLoading = true
             errorMessage = null
             try {
                 OidcAuthenticator(c).startSignIn(context = context, redirectUri = oidcRedirectUri)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
-                errorMessage = friendlyErrorMessage(e)
+                if (isCurrentClient(generation, c)) errorMessage = friendlyErrorMessage(e)
             } finally {
-                isLoading = false
+                if (isCurrentClient(generation, c)) isLoading = false
             }
         }
     }
@@ -180,6 +308,7 @@ class ArcaneClientManager(context: Context) {
     fun handleOidcRedirect(uri: Uri?) {
         val callback = uri?.takeIf(::isExpectedOidcCallback) ?: return
         val c = client ?: return
+        val generation = clientGeneration
         scope.launch {
             isLoading = true
             errorMessage = null
@@ -197,20 +326,73 @@ class ArcaneClientManager(context: Context) {
                 } else {
                     c.auth.oidcCallback(code = code, state = state, mobileRedirectUri = oidcRedirectUri)
                 }
+                val detectedCapabilities = c.serverCapabilities()
+                if (!isCurrentClient(generation, c)) return@launch
                 currentUser = response.user
-                capabilities = c.serverCapabilities()
+                capabilities = detectedCapabilities
                 authStatus = AuthStatus.AUTHENTICATED
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
-                errorMessage = friendlyErrorMessage(e)
+                if (isCurrentClient(generation, c)) errorMessage = friendlyErrorMessage(e)
             } finally {
-                isLoading = false
+                if (isCurrentClient(generation, c)) isLoading = false
             }
         }
     }
 
     fun changeServer() {
+        val endingUrl = serverUrl
+        val endingIdentity = ServerIdentities.from(endingUrl)
+        val endingClient = client
+        val endingDemo = isDemoActive
+        replaceSessionScope()
+        demoExpiryJob?.cancel()
+        demoExpiryJob = null
+        clientGeneration++
+        val resetGeneration = clientGeneration
+        client = null
+        serverUrl = ""
+        currentUser = null
+        capabilities = ServerCapabilities.UNKNOWN
+        oidc = null
+        isLoading = false
+        isStartingDemo = false
+        demoEndsAt = null
+        demoExpiredMessage = null
+        resetEnvironment()
+        cookieJar.clear()
         errorMessage = null
-        authStatus = AuthStatus.SETUP
+
+        if (endingIdentity != null) {
+            // Keep the loading surface up until DataStore has durably removed the server and
+            // credential binding. Setup must never become visible while an immediate process stop
+            // could still restore the old server. The slower token/client cleanup remains
+            // asynchronous after this persistence boundary.
+            authStatus = AuthStatus.AUTHENTICATING
+            cleanupScope.launch {
+                try {
+                    prefs.clearServerState(endingUrl, endingIdentity.canonicalOrigin)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Throwable) {
+                    if (isCurrentClient(resetGeneration)) {
+                        serverUrl = endingUrl
+                        client = endingClient
+                        errorMessage = "Couldn't clear the saved server. Try again."
+                        authStatus = AuthStatus.LOGIN
+                    }
+                    return@launch
+                }
+                if (!isCurrentClient(resetGeneration)) return@launch
+                authStatus = AuthStatus.SETUP
+                cleanupServer(endingUrl, endingIdentity, endingClient, endDemoSession = endingDemo)
+            }
+        } else {
+            authStatus = AuthStatus.SETUP
+            runCatching { endingClient?.close() }
+            cleanupScope.launch { mainTabSelectionStore.clear() }
+        }
     }
 
     /** Dismiss the "your demo ended" notice shown on the login screen. */
@@ -223,42 +405,61 @@ class ArcaneClientManager(context: Context) {
      * generated credentials. Port of iOS `startDemo()`.
      */
     fun startDemo() {
+        val startingGeneration = clientGeneration
         scope.launch {
+            var operationGeneration = startingGeneration
             isLoading = true
             isStartingDemo = true
             errorMessage = null
             demoExpiredMessage = null
             try {
                 val session = DemoService.startInstance()
-                serverUrl = DemoService.DEMO_BASE_URL
-                prefs.setServerUrl(DemoService.DEMO_BASE_URL)
+                if (!isCurrentClient(startingGeneration)) {
+                    DemoService.endSession()
+                    return@launch
+                }
+                val identity = requireNotNull(ServerIdentities.from(DemoService.DEMO_BASE_URL))
+                serverUrl = identity.normalizedUrl
+                prefs.setServerUrl(identity.normalizedUrl)
+                resetEnvironment()
                 client?.close()
                 // The demo router uses the session-id cookie to route API calls to the provisioned
                 // instance; iOS gets this via shared cookie storage, so inject it on every request.
                 client = makeClient(
-                    DemoService.DEMO_BASE_URL,
+                    identity.normalizedUrl,
                     defaultHeaders = mapOf("Cookie" to "session-id=${session.sessionId}"),
                 )
+                clientGeneration++
+                operationGeneration = clientGeneration
                 val c = client!!
+                val generation = clientGeneration
                 try {
                     val response = c.auth.login(session.username, session.password)
+                    val detectedCapabilities = c.serverCapabilities()
+                    if (!isCurrentClient(generation, c)) return@launch
                     currentUser = response.user
-                    capabilities = c.serverCapabilities()
+                    capabilities = detectedCapabilities
                     demoEndsAt = session.endsAtMillis
                     authStatus = AuthStatus.AUTHENTICATED
                     DemoService.startHeartbeat(scope)
                     scheduleDemoExpiry(session.endsAtMillis)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Throwable) {
-                    errorMessage = friendlyErrorMessage(e)
+                    if (isCurrentClient(generation, c)) errorMessage = friendlyErrorMessage(e)
                     DemoService.endSession()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: DemoService.DemoException) {
-                errorMessage = e.message
+                if (isCurrentClient(startingGeneration)) errorMessage = e.message
             } catch (e: Throwable) {
-                errorMessage = friendlyErrorMessage(e)
+                if (isCurrentClient(startingGeneration)) errorMessage = friendlyErrorMessage(e)
             } finally {
-                isLoading = false
-                isStartingDemo = false
+                if (isCurrentClient(operationGeneration)) {
+                    isLoading = false
+                    isStartingDemo = false
+                }
             }
         }
     }
@@ -268,21 +469,30 @@ class ArcaneClientManager(context: Context) {
         demoExpiryJob?.cancel()
         demoExpiryJob = null
         // Flip UI state immediately so the user is returned to setup without waiting on cleanup.
-        val ending = client
+        val endingUrl = serverUrl
+        val endingIdentity = ServerIdentities.from(endingUrl)
+        val endingClient = client
+        replaceSessionScope()
+        clientGeneration++
         currentUser = null
         capabilities = ServerCapabilities.UNKNOWN
+        oidc = null
         demoEndsAt = null
         serverUrl = ""
         client = null
+        isLoading = false
+        isStartingDemo = false
+        resetEnvironment()
+        cookieJar.clear()
         authStatus = AuthStatus.SETUP
         if (expired) {
             demoExpiredMessage = "Your demo ended. Start a new one or connect to your own server."
         }
-        scope.launch {
-            DemoService.endSession()
-            runCatching { ending?.auth?.logout() }
-            runCatching { ending?.close() }
-            prefs.setServerUrl("")
+        if (endingIdentity != null) {
+            cleanupServer(endingUrl, endingIdentity, endingClient, endDemoSession = true)
+        } else {
+            runCatching { endingClient?.close() }
+            cleanupScope.launch { DemoService.endSession() }
         }
     }
 
@@ -305,22 +515,24 @@ class ArcaneClientManager(context: Context) {
         scope.launch { prefs.setActiveEnv(id.rawValue, name) }
     }
 
-    private suspend fun checkExistingAuth() {
-        val c = client ?: run { authStatus = AuthStatus.LOGIN; return }
-        try {
-            currentUser = c.auth.me()
-            capabilities = c.serverCapabilities()
-            authStatus = AuthStatus.AUTHENTICATED
-        } catch (e: Throwable) {
-            authStatus = AuthStatus.LOGIN
-            refreshOidc()
-        }
-    }
-
     private suspend fun refreshOidc() {
         val c = client ?: return
-        val settings = runCatching { c.settings.getPublicSettings() }.getOrNull()
-        val status = runCatching { c.auth.oidcStatus() }.getOrNull()
+        val generation = clientGeneration
+        val settings = try {
+            c.settings.getPublicSettings()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
+        val status = try {
+            c.auth.oidcStatus()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
+        if (!isCurrentClient(generation, c)) return
         if (settings == null) {
             oidc = status
             return
@@ -332,6 +544,7 @@ class ArcaneClientManager(context: Context) {
         val providerLogoUrl = public["oidcProviderLogoUrl"]
         val mergeAccounts = public["oidcMergeAccounts"]?.equals("true", ignoreCase = true) == true
 
+        if (!isCurrentClient(generation, c)) return
         oidc = OidcStatusInfo(
             envConfigured = status?.envConfigured ?: oidcEnabled,
             envForced = status?.envForced ?: false,
