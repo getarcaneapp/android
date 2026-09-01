@@ -26,7 +26,8 @@ android {
         applicationId = "app.getarcane.android"
         minSdk = 24
         targetSdk = 35
-        versionCode = 260602
+        // Monotonic date-shaped code; 260602 shipped in the public alpha artifacts.
+        versionCode = 260901
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -61,6 +62,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 }

@@ -24,6 +24,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,6 +32,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.ui.screens.settings.Pill
+import app.getarcane.android.ui.screens.settings.installedAppVersion
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneMint
@@ -40,7 +42,13 @@ import app.getarcane.android.ui.theme.ArcaneRed
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WhatsNewScreen(onBack: () -> Unit) {
-    val latestId = ReleaseNotes.latest?.version
+    val installedVersion = remember { installedAppVersion().name }
+    val visibleNotes = remember(installedVersion) {
+        ReleaseNotes.visibleForInstalledVersion(installedVersion)
+    }
+    val currentVersion = remember(installedVersion) {
+        ReleaseNotes.currentForInstalledVersion(installedVersion)?.version
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -61,15 +69,15 @@ fun WhatsNewScreen(onBack: () -> Unit) {
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            items(ReleaseNotes.all, key = { it.version }) { note ->
-                ReleaseNoteCard(note = note, isCurrent = note.version == latestId)
+            items(visibleNotes, key = { it.version }) { note ->
+                ReleaseNoteCard(note = note, isInstalled = note.version == currentVersion)
             }
         }
     }
 }
 
 @Composable
-private fun ReleaseNoteCard(note: ReleaseNote, isCurrent: Boolean) {
+private fun ReleaseNoteCard(note: ReleaseNote, isInstalled: Boolean) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -83,8 +91,8 @@ private fun ReleaseNoteCard(note: ReleaseNote, isCurrent: Boolean) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(note.version, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            if (isCurrent) {
-                Pill("Current", ArcaneGreen)
+            if (isInstalled) {
+                Pill("Installed", ArcaneGreen)
             }
         }
 
@@ -127,7 +135,6 @@ private fun BulletRow(bullet: Bullet) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f, fill = false),
             )
-            bullet.badge?.let { Pill(it.label, it.color) }
         }
     }
 }

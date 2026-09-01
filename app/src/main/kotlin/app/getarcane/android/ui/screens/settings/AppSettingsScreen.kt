@@ -52,12 +52,9 @@ fun AppSettingsScreen(
     onWhatsNew: () -> Unit,
 ) {
     val context = LocalContext.current
-    val pkg = remember(context) {
-        runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull()
-    }
-    val versionName = pkg?.versionName ?: "1.0"
-    @Suppress("DEPRECATION")
-    val versionCode = pkg?.versionCode?.toString() ?: "—"
+    val appVersion = remember { installedAppVersion() }
+    val versionName = appVersion.name
+    val versionCode = appVersion.code.toString()
 
     fun openUrl(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
@@ -103,41 +100,41 @@ fun AppSettingsScreen(
                 title = "Documentation",
                 icon = Icons.Filled.Language,
                 iconColor = ArcaneBlue,
-                onClick = { openUrl("https://getarcane.app") },
+                onClick = { openUrl(AppLinks.DOCUMENTATION) },
                 trailing = { ExternalLinkTrailing() },
             )
             SettingsRow(
                 title = "Share Arcane",
                 icon = Icons.Filled.Share,
                 iconColor = ArcaneBlue,
-                onClick = { shareUrl("https://getarcane.app") },
+                onClick = { shareUrl(AppLinks.PROJECT_HOME) },
             )
             SettingsRow(
                 title = "Join the Discord",
                 icon = Icons.AutoMirrored.Filled.Chat,
                 iconColor = ArcaneIndigo,
-                onClick = { openUrl("https://discord.gg/WyXYpdyV3Z") },
+                onClick = { openUrl(AppLinks.COMMUNITY_SUPPORT) },
                 trailing = { ExternalLinkTrailing() },
             )
             SettingsRow(
                 title = "Contribute on GitHub",
                 icon = Icons.Filled.Code,
                 iconColor = ArcanePurple,
-                onClick = { openUrl("https://github.com/getarcaneapp/ios") },
+                onClick = { openUrl(AppLinks.ANDROID_SOURCE) },
                 trailing = { ExternalLinkTrailing() },
             )
             SettingsRow(
                 title = "Report an Issue",
                 icon = Icons.Filled.ReportProblem,
                 iconColor = ArcaneOrange,
-                onClick = { openUrl("https://github.com/getarcaneapp/ios/issues") },
+                onClick = { openUrl(AppLinks.ANDROID_ISSUES) },
                 trailing = { ExternalLinkTrailing() },
             )
             SettingsRow(
                 title = "Privacy Policy",
                 icon = Icons.Filled.PanTool,
                 iconColor = ArcaneGray,
-                onClick = { openUrl("https://getarcane.app/privacy") },
+                onClick = { openUrl(AppLinks.PRIVACY_POLICY) },
                 trailing = { ExternalLinkTrailing() },
             )
             SettingsRow(
