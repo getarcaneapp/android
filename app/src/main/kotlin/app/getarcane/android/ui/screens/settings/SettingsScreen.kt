@@ -127,20 +127,16 @@ enum class SettingsInitialDestination {
 }
 
 /**
- * A self-contained nested [NavHost] over the settings hierarchy. The normal Settings entry starts
- * at its catalog; a supported legacy/programmatic primary admin tab starts at [rootTab] while using
- * the exact same detail routes and Back stack.
+ * A self-contained nested [NavHost] over the settings hierarchy.
  */
 @Composable
 fun SettingsScreen(
     popToRootSignal: Int = 0,
     initialDestination: SettingsInitialDestination = SettingsInitialDestination.Root,
     onInitialDestinationHandled: () -> Unit = {},
-    rootTab: AppTab? = null,
 ) {
     val manager = LocalArcaneManager.current
     val nav = rememberNavController()
-    val rootRoute = rootTab?.id ?: SettingsRoutes.ROOT
     val currentEntry by nav.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
     val isAdmin = manager.currentUser?.isAdmin ?: false
@@ -148,28 +144,25 @@ fun SettingsScreen(
     val environmentId = manager.activeEnvironmentId.rawValue
     var navigationEnvironmentId by remember { mutableStateOf(environmentId) }
 
-    nav.PopToRootOnSignal(popToRootSignal, rootRoute = rootRoute)
-    LaunchedEffect(currentRoute, isAdmin, supportsV2, rootTab) {
-        if (
-            rootTab == null &&
-            shouldResetUnauthorizedSettingsRoute(currentRoute, isAdmin, supportsV2)
-        ) {
+    nav.PopToRootOnSignal(popToRootSignal, rootRoute = SettingsRoutes.ROOT)
+    LaunchedEffect(currentRoute, isAdmin, supportsV2) {
+        if (shouldResetUnauthorizedSettingsRoute(currentRoute, isAdmin, supportsV2)) {
             nav.popBackStack(SettingsRoutes.ROOT, inclusive = false)
         }
     }
-    LaunchedEffect(environmentId, currentRoute, rootRoute) {
+    LaunchedEffect(environmentId, currentRoute) {
         if (environmentId != navigationEnvironmentId) {
             navigationEnvironmentId = environmentId
             if (isEnvironmentScopedSettingsDetail(currentRoute)) {
-                nav.popBackStack(rootRoute, inclusive = false)
+                nav.popBackStack(SettingsRoutes.ROOT, inclusive = false)
             }
         }
     }
-    LaunchedEffect(initialDestination, rootRoute) {
+    LaunchedEffect(initialDestination) {
         when (initialDestination) {
             SettingsInitialDestination.Root -> Unit
             SettingsInitialDestination.Upgrade -> nav.navigate(SettingsRoutes.UPGRADE) {
-                popUpTo(rootRoute)
+                popUpTo(SettingsRoutes.ROOT)
                 launchSingleTop = true
             }
         }
@@ -177,7 +170,7 @@ fun SettingsScreen(
             onInitialDestinationHandled()
         }
     }
-    NavHost(navController = nav, startDestination = rootRoute) {
+    NavHost(navController = nav, startDestination = SettingsRoutes.ROOT) {
         composable(SettingsRoutes.ROOT) { SettingsRoot(nav) }
         AppTab.entries.forEach { tab ->
             composable(tab.id) { SettingsTabDestination(tab = tab, nav = nav) }

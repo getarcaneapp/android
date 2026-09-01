@@ -57,11 +57,15 @@ import app.getarcane.android.ui.screens.projects.ProjectsScreen
 import app.getarcane.android.ui.screens.settings.SettingsScreen
 import app.getarcane.android.ui.screens.settings.SettingsInitialDestination
 import app.getarcane.android.ui.screens.settings.ApiKeysScreen
+import app.getarcane.android.ui.screens.settings.UsersScreen
+import app.getarcane.android.ui.screens.settings.notifications.NotificationSettingsScreen
 import app.getarcane.android.ui.screens.settings.rbac.OidcRoleMappingsScreen
+import app.getarcane.android.ui.screens.settings.rbac.RolesScreen
 import app.getarcane.android.ui.screens.settings.registries.ContainerRegistriesScreen
 import app.getarcane.android.ui.screens.settings.registries.TemplateRegistriesScreen
 import app.getarcane.android.ui.screens.settings.system.AuthenticationSettingsScreen
 import app.getarcane.android.ui.screens.settings.system.BuildSettingsScreen
+import app.getarcane.android.ui.screens.settings.system.SystemSettingsScreen
 import app.getarcane.android.ui.screens.settings.webhooks.WebhooksScreen
 import app.getarcane.android.ui.screens.swarm.SwarmScreen
 import app.getarcane.android.ui.screens.updates.UpdatesScreen
@@ -71,15 +75,6 @@ import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.models.user.isGlobalAdmin
 
 private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
-
-internal fun primaryAdminNavigationRoot(tabId: String): AppTab? =
-    when (val tab = AppTab.byId(tabId)) {
-        AppTab.Users,
-        AppTab.Notifications,
-        AppTab.SystemSettings,
-        AppTab.Roles -> tab
-        else -> null
-    }
 
 private sealed interface DashboardOpenTarget {
     val id: String
@@ -333,15 +328,6 @@ private fun TabContent(
     onOpenImageUpdates: () -> Unit,
     onOpenApiKeys: () -> Unit,
 ) {
-    val primaryAdminRoot = primaryAdminNavigationRoot(tabId)
-    if (primaryAdminRoot != null) {
-        SettingsScreen(
-            popToRootSignal = popToRootSignal,
-            rootTab = primaryAdminRoot,
-        )
-        return
-    }
-
     when (tabId) {
         SETTINGS_ID -> SettingsScreen(
             popToRootSignal = popToRootSignal,
@@ -425,10 +411,14 @@ private fun TabContent(
         AppTab.GitRepositories.id -> GitRepositoriesScreen()
         AppTab.ContainerRegistries.id -> ContainerRegistriesScreen()
         AppTab.TemplateRegistries.id -> TemplateRegistriesScreen()
+        AppTab.Users.id -> UsersScreen(onOpenUser = {})
         AppTab.ApiKeys.id -> ApiKeysScreen()
+        AppTab.Notifications.id -> NotificationSettingsScreen(onOpenProvider = {})
         AppTab.Webhooks.id -> WebhooksScreen()
+        AppTab.SystemSettings.id -> SystemSettingsScreen(onOpenCategory = {}, onUpgrade = {})
         AppTab.Authentication.id -> AuthenticationSettingsScreen()
         AppTab.Builds.id -> BuildSettingsScreen()
+        AppTab.Roles.id -> RolesScreen(onOpenRole = {}, onCreateRole = {})
         AppTab.OidcRoleMappings.id -> OidcRoleMappingsScreen()
         else -> PlaceholderScreen(AppTab.byId(tabId)?.title ?: "Unknown")
     }

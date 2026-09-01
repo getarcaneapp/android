@@ -46,8 +46,10 @@ import app.getarcane.android.ui.screens.settings.LabeledTextField
 import app.getarcane.android.ui.screens.settings.LabeledToggle
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneRed
+import app.getarcane.sdk.models.base.JsonValue
 import app.getarcane.sdk.models.notification.NotificationProvider
 import app.getarcane.sdk.models.notification.UpdateNotificationSettings
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** Dynamic notification-provider form (config + events + save + test). Port of iOS `NotificationProviderFormView`. */
@@ -59,9 +61,13 @@ fun NotificationProviderFormScreen(provider: NotificationProvider, onBack: () ->
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
 
-    val fields = remember(provider) { fieldsForProvider(provider) }
+    val supportsPost26Features = manager.supportsPost26MobileFeatures
+    val fields = remember(provider, supportsPost26Features) {
+        fieldsForProvider(provider, supportsPost26Features)
+    }
 
     var loading by remember { mutableStateOf(true) }
+    var loadFailed by remember { mutableStateOf(false) }
     val formValues = remember { mutableStateMapOf<String, String>() }
     var enabled by remember { mutableStateOf(false) }
     var events by remember { mutableStateOf(EventSubscriptions()) }
@@ -71,6 +77,8 @@ fun NotificationProviderFormScreen(provider: NotificationProvider, onBack: () ->
     var originalValues by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var originalEnabled by remember { mutableStateOf(false) }
     var originalEvents by remember { mutableStateOf(EventSubscriptions()) }
+    var originalConfig by remember { mutableStateOf<Map<String, JsonValue>>(emptyMap()) }
+    var preservedCredentials by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     var saving by remember { mutableStateOf(false) }
     var testing by remember { mutableStateOf(false) }
@@ -79,18 +87,35 @@ fun NotificationProviderFormScreen(provider: NotificationProvider, onBack: () ->
 
     LaunchedEffect(provider, envId.rawValue) {
         // Seed defaults.
+        formValues.clear()
+        enabled = false
+        events = EventSubscriptions()
+        isEditing = false
+        originalConfig = emptyMap()
+        preservedCredentials = emptySet()
+        loadFailed = false
+        error = null
         fields.forEach { if (formValues[it.key] == null) formValues[it.key] = it.defaultValue }
         if (client != null) {
-            val existing = runCatching { client.notifications.getSettings(provider, envId) }.getOrNull()
+            val existing = try {
+                client.notifications.listSettings(envId).firstOrNull { it.provider == provider }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                error = friendlyErrorMessage(e)
+                loadFailed = true
+                null
+            }
             if (existing != null) {
                 isEditing = true
                 enabled = existing.enabled
+                originalConfig = existing.config
+                preservedCredentials = preservedCredentialKeys(existing.config, provider)
                 val extracted = extractConfigValues(existing.config)
                 for ((key, value) in extracted) {
-                    if (EventSubscriptions.keys.any { it.key == key }) continue
                     formValues[key] = value
                 }
-                events = EventSubscriptions.from(extracted)
+                events = EventSubscriptions.from(existing.config)
             }
         }
         originalValues = formValues.toMap()
@@ -99,21 +124,38 @@ fun NotificationProviderFormScreen(provider: NotificationProvider, onBack: () ->
         loading = false
     }
 
-    val isValid: Boolean = fields.filter { it.required }.all { (formValues[it.key] ?: "").isNotEmpty() }
-    val hasChanges: Boolean = if (!isEditing) {
-        isValid
-    } else {
-        formValues.toMap() != originalValues || enabled != originalEnabled || events != originalEvents
-    }
+    val isValid: Boolean = !loadFailed && isProviderFormValid(
+        values = formValues,
+        provider = provider,
+        enabled = enabled,
+        preservedCredentials = preservedCredentials,
+        supportsPost26Features = supportsPost26Features,
+    )
+    val hasChanges = hasNotificationProviderChanges(
+        values = formValues,
+        enabled = enabled,
+        events = events,
+        originalValues = originalValues,
+        originalEnabled = originalEnabled,
+        originalEvents = originalEvents,
+    )
 
     fun save() {
         val c = client ?: return
         scope.launch {
             saving = true; error = null
             try {
-                val config = buildConfigPayload(formValues.toMap(), provider, events)
+                val config = buildConfigPayload(
+                    values = formValues.toMap(),
+                    provider = provider,
+                    events = events,
+                    baseConfig = originalConfig,
+                    supportsPost26Features = supportsPost26Features,
+                )
                 c.notifications.upsertSettings(UpdateNotificationSettings(provider = provider, enabled = enabled, config = config), envId)
                 onBack()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 error = friendlyErrorMessage(e)
             } finally {
@@ -129,6 +171,8 @@ fun NotificationProviderFormScreen(provider: NotificationProvider, onBack: () ->
             try {
                 c.notifications.test(provider = provider, envId = envId)
                 testResult = "Success — test notification sent"
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 testResult = friendlyErrorMessage(e)
             } finally {
@@ -184,7 +228,7 @@ fun NotificationProviderFormScreen(provider: NotificationProvider, onBack: () ->
 
             OutlinedButton(
                 onClick = { test() },
-                enabled = !testing && enabled,
+                enabled = !testing && enabled && isValid && !hasChanges,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 if (testing) {

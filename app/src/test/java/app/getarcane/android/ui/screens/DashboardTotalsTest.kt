@@ -2,7 +2,6 @@ package app.getarcane.android.ui.screens
 
 import app.getarcane.android.core.DashboardStreamAggregateCounts
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class DashboardTotalsTest {
@@ -15,6 +14,7 @@ class DashboardTotalsTest {
             displayedDashboardTotals(
                 streamAggregate = null,
                 restFallback = fallback,
+                streamUpdateCount = null,
             ),
         )
     }
@@ -29,20 +29,13 @@ class DashboardTotalsTest {
                 totalImages = 14,
             ),
             restFallback = fallbackTotals(),
+            streamUpdateCount = 6,
         )
 
         assertEquals(
-            DashTotals(running = 8, total = 10, images = 14, volumes = 4, updates = 3, stopped = 2),
+            DashTotals(running = 8, total = 10, images = 14, volumes = 4, updates = 6, stopped = 2),
             result,
         )
-    }
-
-    @Test
-    fun completeImageUpdateSummaryCountRequiresEveryEnvironment() {
-        assertEquals(4, listOf(3, 1).completeImageUpdateSummaryCount())
-        assertEquals(0, emptyList<Int?>().completeImageUpdateSummaryCount())
-        assertEquals(3, listOf(3, -1).completeImageUpdateSummaryCount())
-        assertNull(listOf(3, null, 1).completeImageUpdateSummaryCount())
     }
 
     private fun fallbackTotals(): DashTotals =

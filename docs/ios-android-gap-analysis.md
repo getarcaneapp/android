@@ -201,7 +201,7 @@ release. Do not add application-local HTTP calls or duplicate DTOs.
 | Template discovery | Search, source filtering, metadata, preview, remote download, deploy, and registry management. | Registry CRUD, grouped browsing, preview, and deploy exist; search, source filters, rich metadata, and remote download are absent. | **Partial.** Complete the discovery/import workflow using existing typed template APIs and add paging/error coverage. |
 | Container registry names | Registries expose a user-facing repository name in addition to URL and credentials. | Android and the Kotlin SDK model URL/credentials but not the current optional name field. | **Android plus SDK gap.** Add the optional field defensively in the SDK and expose it in create/edit/list UI. |
 | Authentication/system/build/upgrade | Server authentication settings, system information/settings, builds, and upgrade. | Authentication, system, build, and upgrade surfaces. | **Parity** in broad coverage. |
-| Admin destinations as swappable tabs | Destinations retain their expected drill-down behavior. | Users, Notifications, System, and Roles use empty drill-down callbacks when selected as primary tabs in `nav/MainTabView.kt`; they work through Settings. | **Android defect.** Reuse one route owner or pass functional callbacks in both entry contexts. |
+| Admin/config destinations as swappable tabs | Administration/configuration destinations are not bottom-tab replacement choices. | Android centralizes bottom-tab eligibility and excludes Users, Notifications, System, Roles, and other configuration destinations under merged PR #5. Their drill-down flows remain available through Settings. | **Parity.** Verify Settings-owned drill-down behavior rather than unsupported primary-admin-tab behavior. |
 | Documentation/support links | iOS repository links are appropriate to the app. | App Settings GitHub/issue links point to the iOS repository. | **Android defect.** Point source and issue links to the Android repository or a deliberate cross-project destination. |
 
 ### Streaming, caching, offline behavior, and background work
@@ -348,8 +348,7 @@ views, create a second client/cache owner, or reproduce Apple-specific UI metaph
 PAR-002 completed the change-server foundation: prior client/user/capability/environment state is
 invalidated and credentials are scoped to a normalized server identity. Remaining P0 work is:
 
-1. Repair the empty callbacks for Users, Notifications, System, and Roles when used as swappable
-   main tabs.
+1. Revalidate Users, Notifications, System, and Roles drill-down behavior through Settings.
 2. Persist Light/Dark/Auto and apply it at the application theme root.
 3. Correct source, documentation, and issue links that point to the iOS repository.
 4. Fix silent 20-environment truncation in dashboard, updates, all-environment image updates, and
