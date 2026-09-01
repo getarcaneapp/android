@@ -278,19 +278,42 @@ The standard checks are:
     Michael's device validation covered the reachable navigation and loading behavior; no destructive
     live notification-provider save was performed against production credentials.
 
-- [ ] **PAR-006 — Correct Android links, release notes, and version hygiene**
+- [x] **PAR-006 — Correct Android links, release notes, and version hygiene**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Replace iOS repository/issue destinations and copied iOS release claims with deliberate
   Android links and Android-verified notes. Align displayed notes with the app version.
 - **Acceptance criteria:**
-  - [ ] Source, issue, documentation, privacy, and support links resolve to intentional destinations.
-  - [ ] Release notes contain only shipped Android behavior and have consistent version ordering.
-  - [ ] The current app version maps to an appropriate note, and future automatic presentation cannot
+  - [x] Source, issue, documentation, privacy, and support links resolve to intentional destinations.
+  - [x] Release notes contain only shipped Android behavior and have consistent version ordering.
+  - [x] The current app version maps to an appropriate note, and future automatic presentation cannot
     show notes for an unshipped version.
-  - [ ] Link and release-note mapping logic has focused coverage.
+  - [x] Link and release-note mapping logic has focused coverage.
+- **Validation evidence (2026-09-01):**
+  - Source pins: Android base `1aed66bdd32d9427776d5da69720325cccd37dfe`, current iOS
+    `cdd05d89a1169bea50b53a12dcd00ca479233d26`, build-resolved libarcane-kotlin
+    `6df91357907fb75963d8e784a6e055387961e6b2` (`origin/main`
+    `7a192f3ebc1a7c623eea6a4919085fc23180add2`), and Arcane
+    `0c7174f1089079d79535563ac2d54b032ea6914a`. No SDK or server contract changes were required.
+  - Current iOS keeps its platform-specific issue destination and drives automatic What's New from
+    the installed marketing version. Android now centralizes deliberate Android source/issues,
+    Arcane documentation/privacy, project sharing, and Discord support destinations. Direct network
+    checks returned HTTP 200 for each destination (Discord resolves to its canonical invite URL).
+  - The copied iOS/TestFlight/VoiceOver/Liquid Glass/Swift SDK changelog was replaced by conservative
+    Android `0.1.0` notes. Semantic version mapping sorts visible notes, hides entries newer than the
+    installed APK, and exposes an exact match for badges or future automatic presentation. Unknown
+    versions expose no notes.
+  - `versionName` remains `0.1.0`; `versionCode` advances from the `260602` embedded in both public
+    alpha artifacts to `260901`. The assembled APK manifest confirms both values.
+  - Focused `AppLinksTest` and `ReleaseNotesTest` runs passed all 5 tests. The CI-equivalent
+    `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed all 172 tests (0 failures,
+    0 errors, 0 skipped) and assembled the debug APK; `git diff --check` passed.
+  - On 2026-09-01, Michael's physical-device screenshots confirmed App Settings displays version
+    `0.1.0` and build `260901`, and What's New displays only the Android `0.1.0` entry with the exact
+    version marked **Installed**. External destination taps were not separately reported; their
+    destinations are covered by the live HTTP audit and focused mapping test.
 
 - [ ] **PAR-007 — Define Android backup and data-extraction policy**
 

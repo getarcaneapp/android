@@ -68,13 +68,13 @@ configurable project deploy options, richer template discovery, activity-start f
 interactive network-to-container topology. It removes the Arcane Assistant, so AI is no longer an
 iOS-parity gap.
 
-The most urgent Android work is smaller than those strategic gaps. PAR-002 now closes the
-change-server state and credential-scoping defect. Some admin destinations still lose their
-drill-down callbacks when selected as main tabs; the appearance selector is non-persistent and does
-not drive the app theme; and Settings links point to the iOS repository. Those should be fixed
-before broad parity work. The old recommendation to expose a separate environment list is no longer
-a parity blocker: iOS 0.7.0 deliberately makes the dashboard its single fleet destination, which is
-compatible with Android's dashboard-plus-detail outcome.
+The most urgent Android work is smaller than those strategic gaps. PAR-002 closes the change-server
+state and credential-scoping defect; PAR-005 closes the unreachable admin-navigation paths; and
+PAR-006 gives App Settings deliberate Android/project links plus Android-owned, version-filtered
+release notes. The appearance selector is still non-persistent and does not drive the app theme.
+That should be fixed before broad parity work. The old recommendation to expose a separate
+environment list is no longer a parity blocker: iOS 0.7.0 deliberately makes the dashboard its
+single fleet destination, which is compatible with Android's dashboard-plus-detail outcome.
 
 The recommended sequence is:
 
@@ -99,7 +99,7 @@ The recommended sequence is:
 | Adaptive large-screen navigation | Compact navigation and an optional regular-width sidebar/drawer. | Bottom navigation only; no tablet-adaptive rail/sidebar strategy was found. | **Android gap.** Add a `NavigationSuiteScaffold`-style adaptive shell or equivalent after navigation defects are fixed. |
 | Per-tab navigation continuity | Independent navigation stacks, environment-aware rebuild, deep-link restoration. | Android rebuilds the selected tab's content and loses that tab's nested stack when switching tabs. | **Android gap.** Preserve independent stacks across tab switches; separately validate configuration-change and process-recreation restoration. |
 | Deep links and external entry points | Deep links can select tab/environment/container/project; quick actions and widgets use them. | OIDC callback handling exists, but no comparable authenticated resource deep-link system was found. | **Android gap.** Define stable internal routes before widgets and shortcuts. |
-| Release notes | Version-aware release notes display automatically when appropriate. | A manually reachable What's New surface exists, but Android does not automatically present new-version notes. | **Android gap.** Add version-gated automatic presentation after correcting the Android release-note data. |
+| Release notes | Version-aware release notes display automatically when appropriate. | A manually reachable What's New surface shows Android-owned notes at or below the installed version and identifies only an exact installed-version match. Android does not automatically present new-version notes. | **Partial.** The release data and version boundary are safe; add automatic presentation only from the exact installed-version mapping. |
 | Appearance | Accent, sidebar preference, alternate icons, material compatibility, motion-aware polish. | Accent preference exists. Light/Dark/Auto is screen-local state, resets, and does not drive the application theme. | **Partial/defect.** Wire theme mode into persistent app-wide state before adding further appearance options. |
 | Localization | English-only; future-language intent is visible. | Most user-visible text is hard-coded; only minimal string resources exist. | **Shared gap**, with higher Android remediation cost. New work should use resources without coupling a feature to a full rewrite. |
 | Accessibility and interaction polish | Haptics, toasts, custom confirmations, reduce-motion handling, skeletons, tips, and review prompts. | Standard Compose semantics and confirmations exist, but no comparable coordinated polish layer was identified. | **Partial.** Audit accessibility, motion, haptics, and destructive confirmations as cross-cutting work. |
@@ -202,7 +202,7 @@ release. Do not add application-local HTTP calls or duplicate DTOs.
 | Container registry names | Registries expose a user-facing repository name in addition to URL and credentials. | Android and the Kotlin SDK model URL/credentials but not the current optional name field. | **Android plus SDK gap.** Add the optional field defensively in the SDK and expose it in create/edit/list UI. |
 | Authentication/system/build/upgrade | Server authentication settings, system information/settings, builds, and upgrade. | Authentication, system, build, and upgrade surfaces. | **Parity** in broad coverage. |
 | Admin/config destinations as swappable tabs | Administration/configuration destinations are not bottom-tab replacement choices. | Android centralizes bottom-tab eligibility and excludes Users, Notifications, System, Roles, and other configuration destinations under merged PR #5. Their drill-down flows remain available through Settings. | **Parity.** Verify Settings-owned drill-down behavior rather than unsupported primary-admin-tab behavior. |
-| Documentation/support links | iOS repository links are appropriate to the app. | App Settings GitHub/issue links point to the iOS repository. | **Android defect.** Point source and issue links to the Android repository or a deliberate cross-project destination. |
+| Documentation/support links | iOS repository links are appropriate to the app. | App Settings centralizes deliberate Android source/issues, Arcane documentation/privacy, and Discord support destinations. | **Parity.** Focused mapping tests prevent regression to iOS repository links. |
 
 ### Streaming, caching, offline behavior, and background work
 
@@ -258,7 +258,7 @@ features” project; each needs a clear user scenario and data-security review.
 | CI | No repository CI workflow was identified in the inspected iOS baseline. | CI uses JDK 21/API 35 and runs unit tests/build, with optional signed tag release support. | **Android strength.** |
 | Static quality/security gates | No comprehensive suite identified. | No lint, detekt, ktlint, instrumentation, or security scan gate was identified in CI. | **Android gap.** Add targeted gates incrementally; do not create a noisy all-at-once migration. |
 | Release maturity | Version 0.7.0 and more distribution-oriented product surfaces. App Store status was not confirmed. | Version 0.1.0; minification disabled; repository messaging still warns that the app is not intended for devices. | **Android maturity gap.** Define alpha/beta support criteria before production claims. |
-| Release-note integrity | Notes correspond to iOS releases and platform behavior. | `ui/screens/whatsnew/ReleaseNotes.kt` begins at 0.2.1 while the app reports 0.1.0 and contains copied iOS-specific claims. | **Android release-hygiene defect.** Replace with Android-verified notes and enforce version ordering. |
+| Release-note integrity | Notes correspond to iOS releases and platform behavior. | Android `0.1.0` maps to conservative Android-owned notes; semantic ordering filters out future versions, and build code `260901` advances past the `260602` public alpha artifacts. | **Parity.** Keep every future note aligned to `versionName` and increment `versionCode` for every distributed artifact. |
 
 ## SDK/API prerequisites versus Android-only work
 
@@ -348,16 +348,11 @@ views, create a second client/cache owner, or reproduce Apple-specific UI metaph
 PAR-002 completed the change-server foundation: prior client/user/capability/environment state is
 invalidated and credentials are scoped to a normalized server identity. Remaining P0 work is:
 
-1. Revalidate Users, Notifications, System, and Roles drill-down behavior through Settings.
-2. Persist Light/Dark/Auto and apply it at the application theme root.
-3. Correct source, documentation, and issue links that point to the iOS repository.
-4. Fix silent 20-environment truncation in dashboard, updates, all-environment image updates, and
-   environment management; add multi-page tests.
-5. Replace copied iOS release notes with Android-specific, version-consistent notes, then add
-   version-gated automatic presentation.
-6. Define backup/data-extraction exclusions for tokens, server data, future caches, and operation
+1. Persist Light/Dark/Auto and apply it at the application theme root.
+2. Add version-gated automatic What's New presentation using PAR-006's exact installed-version
+   mapping.
+3. Define backup/data-extraction exclusions for tokens, server data, future caches, and operation
    state.
-7. Audit broad coroutine exception catches and rethrow cancellation.
 
 ### P1: Complete high-frequency operational workflows
 
