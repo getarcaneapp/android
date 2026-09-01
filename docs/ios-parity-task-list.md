@@ -309,9 +309,11 @@ The standard checks are:
     alpha artifacts to `260901`. The assembled APK manifest confirms both values.
   - Focused `AppLinksTest` and `ReleaseNotesTest` runs passed all 5 tests. The CI-equivalent
     `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed all 172 tests (0 failures,
-    0 errors, 0 skipped) and assembled the debug APK; `git diff --check` passed. A short App Settings
-    link/What's New device smoke test remains optional manual confirmation and is not required for
-    the deterministic acceptance criteria.
+    0 errors, 0 skipped) and assembled the debug APK; `git diff --check` passed.
+  - On 2026-09-01, Michael's physical-device screenshots confirmed App Settings displays version
+    `0.1.0` and build `260901`, and What's New displays only the Android `0.1.0` entry with the exact
+    version marked **Installed**. External destination taps were not separately reported; their
+    destinations are covered by the live HTTP audit and focused mapping test.
 
 - [ ] **PAR-007 — Define Android backup and data-extraction policy**
 
