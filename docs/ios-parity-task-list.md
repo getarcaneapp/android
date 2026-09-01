@@ -1,6 +1,6 @@
 # Android iOS-parity task list
 
-Last updated: 2026-08-27
+Last updated: 2026-09-01
 
 This is the working backlog for bringing Arcane Android to product-outcome parity with iOS. It
 turns the findings in [the pinned gap analysis](ios-android-gap-analysis.md) into issue-sized work;
@@ -233,33 +233,50 @@ The standard checks are:
     dashboard snapshot instead. Michael's second physical-device retest showed the expected update
     count and verified the remaining PAR-004 items.
 
-- [ ] **PAR-005 — Revalidate OIDC and admin-tab navigation**
+- [x] **PAR-005 — Revalidate Settings admin drill-down navigation**
 
-- **Status:** Needs revalidation
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** PAR-001
-- **Scope:** Device-test current and legacy OIDC callbacks and verify Users, Notifications, System,
-  and Roles retain drill-down actions both through Settings and when configured as primary tabs.
+- **Scope:** Verify that Users, Notifications, System, and Roles retain their supported detail and
+  action flows when opened through Settings. Admin/configuration destinations are intentionally not
+  eligible as bottom-tab replacements under merged Android PR #5, so primary-admin-tab behavior is
+  not part of this task.
 - **Acceptance criteria:**
-  - [ ] OIDC success, cancel, invalid callback, provider error, and process-recreated callback flows are
-    exercised on a device/emulator.
-  - [ ] Each affected admin screen opens all supported details/actions from both navigation entry points.
-  - [ ] Back behavior, tab switching, authorization loss, and environment changes do not strand a route.
-  - [ ] Any remaining defect has a focused navigation regression test.
-- **Implementation and validation evidence (2026-08-27):** Android `38d00e3`, iOS
-  `a3440b05238d2620b91d984557c87994ab15fb28`, libarcane-swift
-  `38b5c32dde5b17eb0bc22b1c13fb4204699c8faf`, Arcane
-  `8d10b7db2d34aefa44f0f9a684f3b84b2ae355d7`, and libarcane-kotlin `9ab5001` were compared.
-  Live-server testing exposed Settings > Notifications rejecting the complete settings response.
-  Contract comparison found that any configured Arcane 2.7+ `googlechat` provider was undecodable by
-  the Kotlin SDK. SDK PR #3 adds Google Chat, the Swift SDK's 2.7.0 feature gate, and tolerant
-  future-provider decoding. Android now hides unsupported providers while retaining recognized rows
-  and exposes Google Chat only when the connected server supports post-2.6 mobile features. The SDK
-  baseline, focused Android notification tests, and `:app:assembleDebug` pass. The exact Android full
-  baseline still exposes the pre-existing
-  `PrefsAppearanceTest.appOwnedAppearanceStatePersistsAfterSetterReturns` suite-order race (159 of
-  160 tests pass; the class passes independently). Notification retest, the broader admin-navigation
-  matrix, and OIDC device evidence remain pending.
+  - [x] Users, Notifications, System, and Roles open their supported list/detail routes through Settings.
+  - [x] Nested Back behavior and tab switching do not strand a route; focused coverage resets protected
+    routes after authorization loss and environment-bound routes after environment changes.
+  - [x] Notification provider forms map current Arcane configuration keys and nested event settings
+    correctly, preserve existing credentials safely, and have focused round-trip coverage.
+  - [x] The final focused checks and Android CI-equivalent baseline pass after the notification form
+    correction.
+- **Implementation and validation evidence (updated 2026-09-01):**
+  - Compared Android main `c52269f80a0c4e65c6bd09447ac0813495f7c6b0`, the pre-reconciliation
+    PAR-005 branch `6a64eed19603450a1df417c00c8b1bc7d6e93f5a`, iOS
+    `a3440b05238d2620b91d984557c87994ab15fb28`, libarcane-swift
+    `38b5c32dde5b17eb0bc22b1c13fb4204699c8faf`, Arcane v2.10.0
+    `963af121da1b7114bc155b640db4af4a0a80158a`, and the notification SDK changes.
+  - Android PR #5 established that Users, Notifications, System, Roles, and other
+    administration/configuration destinations are not pinnable bottom tabs. The former
+    primary-admin-tab scope, implementation, tests, and acceptance requirement are therefore obsolete.
+  - Michael's physical-device/live-server retest confirmed password login, Settings administration
+    drill-down and Back behavior, and successful Settings > Notifications loading.
+  - OIDC is not configured on the available Arcane server. Its device-flow matrix is deferred until a
+    suitable provider is available; no OIDC pass/fail conclusion is recorded and it does not block this
+    respecified navigation task.
+  - libarcane-kotlin PR #3 merged as `b0e2576f008d1e0ca023e1e5f46a686a82f64df6`,
+    adding Google Chat and tolerant future-provider decoding. PR #4 merged as
+    `7a192f3ebc1a7c623eea6a4919085fc23180add2`, correcting raw notification settings response decoding;
+    its tested head was `6df91357907fb75963d8e784a6e055387961e6b2`.
+  - Notification loading is device-verified. Provider forms now use the Arcane v2.10.0 configuration
+    keys and JSON value shapes, write event flags under `config.events` with server snake_case keys,
+    preserve redacted credentials through the server's blank-value contract, retain unknown config,
+    and validate Signal's mutually exclusive authentication modes. Focused deterministic mapping and
+    round-trip tests pass.
+  - Focused Settings route-safety and notification-provider tests passed. The final
+    `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed and `git diff --check` is clean.
+    Michael's device validation covered the reachable navigation and loading behavior; no destructive
+    live notification-provider save was performed against production credentials.
 
 - [ ] **PAR-006 — Correct Android links, release notes, and version hygiene**
 
@@ -340,6 +357,10 @@ The standard checks are:
   - Michael's physical-device check passed immediate whole-app Light/Dark switching, readable system
     bars, Back/re-entry and rapid-departure persistence, force-stop restoration of theme and accent,
     and Auto tracking Android system light/dark changes without reopening Appearance.
+  - Follow-up (2026-09-01): Android PR #47's fresh CI run reproduced an initialization race where a
+    stale first DataStore emission could overwrite a newer app-owned theme/accent selection. Pending
+    selections now win until persistence observes them. Five forced focused reruns and a fresh
+    remote-SDK `:app:testDebugUnitTest :app:assembleDebug` baseline passed.
 
 ## Phase 1: Validate destructive behavior and complete daily workflows
 
@@ -831,6 +852,9 @@ The standard checks are:
     decision and the image-oriented Updates screen resolve that internal inconsistency for Android.
   - Michael reproduced the Android mismatch on PAR-005: Dashboard displayed one updateable project
     while the opened image-oriented Updates screen displayed four outdated images.
+  - On 2026-09-01 Michael's physical-device/live-server retest confirmed that the Dashboard and the
+    opened image-oriented Updates screen both reported the expected four outdated images. This closes
+    the previously reproduced one-project-versus-four-images inconsistency.
   - Android now derives the fleet total from the same per-environment image summaries and leaves the
     total unavailable if any enabled environment summary fails. Streamed resource action items still
     support environment-card context but cannot override the image count.

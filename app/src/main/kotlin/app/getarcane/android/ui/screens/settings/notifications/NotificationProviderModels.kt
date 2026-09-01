@@ -35,7 +35,9 @@ val NotificationProvider.displayName: String
         NotificationProvider.PUSHOVER -> "Pushover"
         NotificationProvider.GOTIFY -> "Gotify"
         NotificationProvider.MATRIX -> "Matrix"
+        NotificationProvider.GOOGLE_CHAT -> "Google Chat"
         NotificationProvider.GENERIC -> "Generic"
+        NotificationProvider.UNKNOWN -> "Unsupported Provider"
     }
 
 /** Leading icon for a provider. Mirrors iOS `NotificationProvider.systemImage`. */
@@ -50,7 +52,9 @@ val NotificationProvider.iconVector: ImageVector
         NotificationProvider.PUSHOVER -> Icons.Filled.PhoneIphone
         NotificationProvider.GOTIFY -> Icons.AutoMirrored.Filled.Send
         NotificationProvider.MATRIX -> Icons.Filled.Apps
+        NotificationProvider.GOOGLE_CHAT -> Icons.AutoMirrored.Filled.Chat
         NotificationProvider.GENERIC -> Icons.Filled.Link
+        NotificationProvider.UNKNOWN -> Icons.Filled.Link
     }
 
 /** Tint for a provider. Mirrors iOS `NotificationProvider.iconColor`. */
@@ -65,12 +69,16 @@ val NotificationProvider.iconTint: Color
         NotificationProvider.PUSHOVER -> ArcaneTeal
         NotificationProvider.GOTIFY -> ArcaneOrange
         NotificationProvider.MATRIX -> ArcaneGreen
+        NotificationProvider.GOOGLE_CHAT -> ArcaneBlue
         NotificationProvider.GENERIC -> ArcaneGray
+        NotificationProvider.UNKNOWN -> ArcaneGray
     }
 
 // MARK: - Dynamic form field descriptors
 
 enum class ProviderFieldKind { Text, Email, Password, Number, Url, Toggle, Textarea, Picker }
+
+enum class ProviderFieldEncoding { Scalar, StringList, StringMap }
 
 data class PickerOption(val label: String, val value: String)
 
@@ -82,47 +90,87 @@ data class ProviderFieldDescriptor(
     val required: Boolean = false,
     val defaultValue: String = "",
     val pickerOptions: List<PickerOption> = emptyList(),
+    val encoding: ProviderFieldEncoding = ProviderFieldEncoding.Scalar,
+    val credential: Boolean = false,
+    val serializeAsNumber: Boolean = false,
 )
 
 /** Field set per provider. Mirrors iOS `fieldsForProvider(_:)`. */
-fun fieldsForProvider(provider: NotificationProvider): List<ProviderFieldDescriptor> = when (provider) {
+fun fieldsForProvider(
+    provider: NotificationProvider,
+    supportsPost26Features: Boolean = true,
+): List<ProviderFieldDescriptor> = when (provider) {
     NotificationProvider.DISCORD -> listOf(
-        ProviderFieldDescriptor("webhookUrl", "Webhook URL", "https://discord.com/api/webhooks/...", ProviderFieldKind.Url, required = true),
-        ProviderFieldDescriptor("username", "Username", "Arcane Bot"),
+        ProviderFieldDescriptor("webhookId", "Webhook ID", required = true),
+        ProviderFieldDescriptor("token", "Webhook Token", kind = ProviderFieldKind.Password, required = true, credential = true),
+        ProviderFieldDescriptor("username", "Username", "Arcane", defaultValue = "Arcane"),
         ProviderFieldDescriptor("avatarUrl", "Avatar URL", "https://...", ProviderFieldKind.Url),
     )
     NotificationProvider.EMAIL -> listOf(
         ProviderFieldDescriptor("smtpHost", "SMTP Host", "smtp.example.com", required = true),
         ProviderFieldDescriptor("smtpPort", "SMTP Port", "587", ProviderFieldKind.Number, required = true, defaultValue = "587"),
-        ProviderFieldDescriptor("smtpUser", "Username", "user@example.com", ProviderFieldKind.Email),
-        ProviderFieldDescriptor("smtpPassword", "Password", kind = ProviderFieldKind.Password),
-        ProviderFieldDescriptor("from", "From Address", "arcane@example.com", ProviderFieldKind.Email, required = true),
-        ProviderFieldDescriptor("to", "To Address(es)", "alerts@example.com (comma-separated for multiple)", required = true),
-        ProviderFieldDescriptor("tls", "Use TLS", kind = ProviderFieldKind.Toggle, defaultValue = "true"),
+        ProviderFieldDescriptor("smtpUsername", "SMTP Username", "user@example.com"),
+        ProviderFieldDescriptor("smtpPassword", "SMTP Password", kind = ProviderFieldKind.Password, credential = true),
+        ProviderFieldDescriptor("fromAddress", "From Address", "arcane@example.com", ProviderFieldKind.Email, required = true),
+        ProviderFieldDescriptor("toAddresses", "To Address(es)", "alerts@example.com, ops@example.com", required = true, encoding = ProviderFieldEncoding.StringList),
+        ProviderFieldDescriptor(
+            "tlsMode", "TLS Mode", kind = ProviderFieldKind.Picker, defaultValue = "starttls",
+            pickerOptions = listOf(PickerOption("None", "none"), PickerOption("STARTTLS", "starttls"), PickerOption("SSL/TLS", "ssl")),
+        ),
+        ProviderFieldDescriptor(
+            "authMode", "Authentication", kind = ProviderFieldKind.Picker, defaultValue = "auto",
+            pickerOptions = listOf(
+                PickerOption("None", "none"), PickerOption("Auto", "auto"), PickerOption("PLAIN", "plain"),
+                PickerOption("LOGIN", "login"), PickerOption("CRAM-MD5", "crammd5"),
+            ),
+        ),
     )
     NotificationProvider.TELEGRAM -> listOf(
-        ProviderFieldDescriptor("botToken", "Bot Token", "123456:ABC...", ProviderFieldKind.Password, required = true),
-        ProviderFieldDescriptor("chatId", "Chat ID", "-1001234567890", required = true),
+        ProviderFieldDescriptor("botToken", "Bot Token", "123456:ABC...", ProviderFieldKind.Password, required = true, credential = true),
+        ProviderFieldDescriptor("chatIds", "Chat ID(s)", "-1001234567890, 123456789", required = true, encoding = ProviderFieldEncoding.StringList),
+        ProviderFieldDescriptor("preview", "Link Preview", kind = ProviderFieldKind.Toggle, defaultValue = "true"),
+        ProviderFieldDescriptor("notification", "Notification Sound", kind = ProviderFieldKind.Toggle, defaultValue = "true"),
+        ProviderFieldDescriptor("parseMode", "Parse Mode"),
+        ProviderFieldDescriptor("title", "Title"),
     )
     NotificationProvider.SIGNAL -> listOf(
-        ProviderFieldDescriptor("apiUrl", "Signal API URL", "https://signal.example.com", ProviderFieldKind.Url, required = true),
-        ProviderFieldDescriptor("number", "Signal Number", "+1234567890", required = true),
-        ProviderFieldDescriptor("recipients", "Recipients", "+1987654321 (comma-separated)", required = true),
+        ProviderFieldDescriptor("host", "Host", "localhost", required = true, defaultValue = "localhost"),
+        ProviderFieldDescriptor("port", "Port", "8080", ProviderFieldKind.Number, required = true, defaultValue = "8080"),
+        ProviderFieldDescriptor("user", "Username"),
+        ProviderFieldDescriptor("password", "Password", kind = ProviderFieldKind.Password, credential = true),
+        ProviderFieldDescriptor("token", "Token", kind = ProviderFieldKind.Password, credential = true),
+        ProviderFieldDescriptor("source", "Source Number", "+1234567890", required = true),
+        ProviderFieldDescriptor("recipients", "Recipients", "+1987654321, +1123456789", required = true, encoding = ProviderFieldEncoding.StringList),
+        ProviderFieldDescriptor("disableTls", "Disable TLS", kind = ProviderFieldKind.Toggle),
     )
     NotificationProvider.SLACK -> listOf(
-        ProviderFieldDescriptor("webhookUrl", "Webhook URL", "https://hooks.slack.com/services/...", ProviderFieldKind.Url, required = true),
-        ProviderFieldDescriptor("channel", "Channel Override", "#alerts"),
-        ProviderFieldDescriptor("username", "Username Override", "Arcane"),
+        ProviderFieldDescriptor("token", "Bot Token", kind = ProviderFieldKind.Password, required = true, credential = true),
+        ProviderFieldDescriptor("botName", "Bot Name", "Arcane", defaultValue = "Arcane"),
+        ProviderFieldDescriptor("icon", "Icon"),
+        ProviderFieldDescriptor("color", "Color"),
+        ProviderFieldDescriptor("title", "Title"),
+        ProviderFieldDescriptor("channel", "Channel"),
+        ProviderFieldDescriptor("threadTs", "Thread Timestamp"),
     )
     NotificationProvider.NTFY -> listOf(
-        ProviderFieldDescriptor("serverUrl", "Server URL", "https://ntfy.sh", ProviderFieldKind.Url, required = true, defaultValue = "https://ntfy.sh"),
+        ProviderFieldDescriptor("host", "Host", "ntfy.sh", required = true, defaultValue = "ntfy.sh"),
+        ProviderFieldDescriptor("port", "Port", "0", ProviderFieldKind.Number, defaultValue = "0"),
         ProviderFieldDescriptor("topic", "Topic", "arcane-alerts", required = true),
-        ProviderFieldDescriptor("username", "Username (optional)"),
-        ProviderFieldDescriptor("password", "Password (optional)", kind = ProviderFieldKind.Password),
+        ProviderFieldDescriptor("username", "Username"),
+        ProviderFieldDescriptor("password", "Password", kind = ProviderFieldKind.Password, credential = true),
+        ProviderFieldDescriptor("title", "Title"),
+        ProviderFieldDescriptor("priority", "Priority", defaultValue = "default"),
+        ProviderFieldDescriptor("tags", "Tags", "warning, whale", encoding = ProviderFieldEncoding.StringList),
+        ProviderFieldDescriptor("icon", "Icon URL", kind = ProviderFieldKind.Url),
+        ProviderFieldDescriptor("cache", "Cache Message", kind = ProviderFieldKind.Toggle, defaultValue = "true"),
+        ProviderFieldDescriptor("firebase", "Forward to Firebase", kind = ProviderFieldKind.Toggle, defaultValue = "true"),
+        ProviderFieldDescriptor("disableTls", "Disable TLS", kind = ProviderFieldKind.Toggle),
+        ProviderFieldDescriptor("disableTlsVerification", "Disable TLS Verification", kind = ProviderFieldKind.Toggle),
     )
     NotificationProvider.PUSHOVER -> listOf(
-        ProviderFieldDescriptor("userKey", "User Key", required = true),
-        ProviderFieldDescriptor("apiToken", "API Token", kind = ProviderFieldKind.Password, required = true),
+        ProviderFieldDescriptor("token", "API Token", kind = ProviderFieldKind.Password, required = true, credential = true),
+        ProviderFieldDescriptor("user", "User Key", required = true),
+        ProviderFieldDescriptor("devices", "Devices", encoding = ProviderFieldEncoding.StringList),
         ProviderFieldDescriptor(
             "priority", "Priority", kind = ProviderFieldKind.Picker, defaultValue = "0",
             pickerOptions = listOf(
@@ -132,20 +180,34 @@ fun fieldsForProvider(provider: NotificationProvider): List<ProviderFieldDescrip
                 PickerOption("High", "1"),
                 PickerOption("Emergency", "2"),
             ),
+            serializeAsNumber = true,
         ),
+        ProviderFieldDescriptor("title", "Title"),
     )
     NotificationProvider.GOTIFY -> listOf(
-        ProviderFieldDescriptor("serverUrl", "Server URL", "https://gotify.example.com", ProviderFieldKind.Url, required = true),
-        ProviderFieldDescriptor("token", "App Token", kind = ProviderFieldKind.Password, required = true),
-        ProviderFieldDescriptor("priority", "Priority", kind = ProviderFieldKind.Number, defaultValue = "5"),
+        ProviderFieldDescriptor("host", "Host", "gotify.example.com", required = true),
+        ProviderFieldDescriptor("port", "Port", "0", ProviderFieldKind.Number, defaultValue = "0"),
+        ProviderFieldDescriptor("token", "App Token", kind = ProviderFieldKind.Password, required = true, credential = true),
+        ProviderFieldDescriptor("path", "Path"),
+        ProviderFieldDescriptor("priority", "Priority", kind = ProviderFieldKind.Number, defaultValue = "0"),
+        ProviderFieldDescriptor("title", "Title"),
+        ProviderFieldDescriptor("disableTls", "Disable TLS", kind = ProviderFieldKind.Toggle),
+        ProviderFieldDescriptor("insecureSkipVerify", "Skip TLS Verification", kind = ProviderFieldKind.Toggle),
+        ProviderFieldDescriptor("useHeader", "Send Token in Header", kind = ProviderFieldKind.Toggle),
     )
     NotificationProvider.MATRIX -> listOf(
-        ProviderFieldDescriptor("homeserverUrl", "Homeserver URL", "https://matrix.org", ProviderFieldKind.Url, required = true),
-        ProviderFieldDescriptor("accessToken", "Access Token", kind = ProviderFieldKind.Password, required = true),
-        ProviderFieldDescriptor("roomId", "Room ID", "!roomId:matrix.org", required = true),
+        ProviderFieldDescriptor("host", "Host", "matrix.org", required = true),
+        ProviderFieldDescriptor("port", "Port", "0", ProviderFieldKind.Number, defaultValue = "0"),
+        ProviderFieldDescriptor("rooms", "Room ID(s)", "!roomId:matrix.org", required = true),
+        ProviderFieldDescriptor("username", "Username"),
+        ProviderFieldDescriptor("password", "Password", kind = ProviderFieldKind.Password, credential = true),
+        ProviderFieldDescriptor("disableTlsVerification", "Disable TLS Verification", kind = ProviderFieldKind.Toggle),
+    )
+    NotificationProvider.GOOGLE_CHAT -> listOf(
+        ProviderFieldDescriptor("webhookUrl", "Webhook URL", "https://chat.googleapis.com/...", ProviderFieldKind.Password, required = true, credential = true),
     )
     NotificationProvider.GENERIC -> listOf(
-        ProviderFieldDescriptor("url", "Webhook URL", kind = ProviderFieldKind.Url, required = true),
+        ProviderFieldDescriptor("webhookUrl", "Webhook URL", kind = ProviderFieldKind.Url, required = true),
         ProviderFieldDescriptor(
             "method", "HTTP Method", kind = ProviderFieldKind.Picker, defaultValue = "POST",
             pickerOptions = listOf(
@@ -154,9 +216,30 @@ fun fieldsForProvider(provider: NotificationProvider): List<ProviderFieldDescrip
                 PickerOption("PATCH", "PATCH"),
             ),
         ),
-        ProviderFieldDescriptor("customHeaders", "Custom Headers", "key1:value1, key2:value2", ProviderFieldKind.Textarea),
+        ProviderFieldDescriptor("contentType", "Content Type", defaultValue = "application/json"),
+        ProviderFieldDescriptor("titleKey", "Title Key", defaultValue = "title"),
+        ProviderFieldDescriptor("messageKey", "Message Key", defaultValue = "message"),
+        ProviderFieldDescriptor("customHeaders", "Custom Headers", "key1:value1\nkey2:value2", ProviderFieldKind.Textarea, encoding = ProviderFieldEncoding.StringMap),
+        ProviderFieldDescriptor("disableTls", "Disable TLS", kind = ProviderFieldKind.Toggle),
+        ProviderFieldDescriptor("successBodyContains", "Success Body Contains"),
+        ProviderFieldDescriptor("payloadTemplate", "Payload Template", kind = ProviderFieldKind.Textarea),
     )
+    NotificationProvider.UNKNOWN -> emptyList()
+}.let { fields ->
+    if (provider != NotificationProvider.GENERIC || supportsPost26Features) {
+        fields
+    } else {
+        fields.filterNot { it.key in post26GenericFieldKeys }
+    }
 }
+
+private val post26GenericFieldKeys = setOf(
+    "contentType",
+    "titleKey",
+    "messageKey",
+    "successBodyContains",
+    "payloadTemplate",
+)
 
 /** Event subscription flags. Mirrors iOS `EventSubscriptions`. */
 data class EventSubscriptions(
@@ -185,31 +268,46 @@ data class EventSubscriptions(
     }
 
     companion object {
-        data class Key(val key: String, val label: String)
+        data class Key(val key: String, val wireKey: String, val label: String)
 
         val keys = listOf(
-            Key("imageUpdate", "Image Updates"),
-            Key("containerUpdate", "Container Updates"),
-            Key("vulnerabilityFound", "Vulnerabilities"),
-            Key("pruneReport", "Prune Reports"),
-            Key("autoHeal", "Auto-Heal"),
+            Key("imageUpdate", "image_update", "Image Updates"),
+            Key("containerUpdate", "container_update", "Container Updates"),
+            Key("vulnerabilityFound", "vulnerability_found", "Vulnerabilities"),
+            Key("pruneReport", "prune_report", "Prune Reports"),
+            Key("autoHeal", "auto_heal", "Auto-Heal"),
         )
 
-        /** Build an EventSubscriptions from the form's flat string map. Mirrors iOS `EventSubscriptions.from`. */
-        fun from(values: Map<String, String>): EventSubscriptions = EventSubscriptions(
-            imageUpdate = values["imageUpdate"]?.let { it == "true" } ?: true,
-            containerUpdate = values["containerUpdate"]?.let { it == "true" } ?: true,
-            vulnerabilityFound = values["vulnerabilityFound"]?.let { it == "true" } ?: true,
-            pruneReport = values["pruneReport"]?.let { it == "true" } ?: false,
-            autoHeal = values["autoHeal"]?.let { it == "true" } ?: false,
-        )
+        /** Read nested `config.events`, using the current iOS defaults for missing legacy flags. */
+        fun from(config: Map<String, JsonValue>): EventSubscriptions {
+            val values = (config["events"] as? JsonValue.Obj)?.value.orEmpty()
+            fun value(wireKey: String, default: Boolean) =
+                (values[wireKey] as? JsonValue.Bool)?.value ?: default
+            return EventSubscriptions(
+                imageUpdate = value("image_update", true),
+                containerUpdate = value("container_update", true),
+                vulnerabilityFound = value("vulnerability_found", true),
+                pruneReport = value("prune_report", false),
+                autoHeal = value("auto_heal", false),
+            )
+        }
     }
 }
 
-/** Flatten the SDK's tolerant config map into `[String:String]`. Mirrors iOS `extractConfigValues`. */
+fun hasNotificationProviderChanges(
+    values: Map<String, String>,
+    enabled: Boolean,
+    events: EventSubscriptions,
+    originalValues: Map<String, String>,
+    originalEnabled: Boolean,
+    originalEvents: EventSubscriptions,
+): Boolean = values != originalValues || enabled != originalEnabled || events != originalEvents
+
+/** Flatten provider fields into editable strings while leaving `config.events` nested. */
 fun extractConfigValues(config: Map<String, JsonValue>): Map<String, String> {
     val result = LinkedHashMap<String, String>()
     for ((key, value) in config) {
+        if (key == "events") continue
         when (value) {
             is JsonValue.Str -> result[key] = value.value
             is JsonValue.Bool -> result[key] = value.value.toString()
@@ -217,25 +315,88 @@ fun extractConfigValues(config: Map<String, JsonValue>): Map<String, String> {
                 val n = value.value
                 result[key] = if (n % 1.0 == 0.0) n.toLong().toString() else n.toString()
             }
+            is JsonValue.Arr -> result[key] = value.value.mapNotNull { (it as? JsonValue.Str)?.value }.joinToString(", ")
+            is JsonValue.Obj -> result[key] = value.value.entries
+                .mapNotNull { (mapKey, mapValue) -> (mapValue as? JsonValue.Str)?.value?.let { "$mapKey:$it" } }
+                .joinToString("\n")
             else -> Unit
         }
     }
     return result
 }
 
-/** Build the SDK config payload from the form's string map. Mirrors iOS `buildConfigPayload`. */
+/** Credential keys present in a redacted response can be left blank and preserved by the server. */
+fun preservedCredentialKeys(
+    config: Map<String, JsonValue>,
+    provider: NotificationProvider,
+): Set<String> = fieldsForProvider(provider)
+    .filter { it.credential && config.containsKey(it.key) }
+    .mapTo(LinkedHashSet()) { it.key }
+
+/** Validate required fields without forcing an existing redacted credential to be re-entered. */
+fun isProviderFormValid(
+    values: Map<String, String>,
+    provider: NotificationProvider,
+    enabled: Boolean,
+    preservedCredentials: Set<String> = emptySet(),
+    supportsPost26Features: Boolean = true,
+): Boolean {
+    if (!enabled) return true
+    val fields = fieldsForProvider(provider, supportsPost26Features)
+    val requiredFieldsValid = fields.filter { it.required }.all { field ->
+        !values[field.key].isNullOrBlank() || (field.credential && field.key in preservedCredentials)
+    }
+    val numberFieldsValid = fields.filter { it.kind == ProviderFieldKind.Number }.all { field ->
+        values[field.key].isNullOrBlank() || values[field.key]?.toIntOrNull() != null
+    }
+    val providerCredentialsValid = when (provider) {
+        NotificationProvider.SIGNAL -> {
+            val hasUser = !values["user"].isNullOrBlank()
+            val hasPassword = !values["password"].isNullOrBlank() || "password" in preservedCredentials
+            val wantsBasicAuth = hasUser || !values["password"].isNullOrBlank()
+            val hasBasicAuth = hasUser && hasPassword
+            val hasTokenAuth = !values["token"].isNullOrBlank() || (!wantsBasicAuth && "token" in preservedCredentials)
+            hasBasicAuth.xor(hasTokenAuth)
+        }
+        else -> true
+    }
+    return requiredFieldsValid && numberFieldsValid && providerCredentialsValid
+}
+
+/** Build the SDK config payload using the server's exact value shapes and event keys. */
 fun buildConfigPayload(
     values: Map<String, String>,
     provider: NotificationProvider,
     events: EventSubscriptions,
+    baseConfig: Map<String, JsonValue> = emptyMap(),
+    supportsPost26Features: Boolean = true,
 ): Map<String, JsonValue> {
-    val props = LinkedHashMap<String, JsonValue>()
-    val fields = fieldsForProvider(provider)
+    val props = LinkedHashMap(baseConfig)
+    val fields = fieldsForProvider(provider, supportsPost26Features)
 
-    for ((key, value) in values) {
-        if (value.isEmpty()) continue
-        val field = fields.firstOrNull { it.key == key }
-        props[key] = when (field?.kind) {
+    for (field in fields) {
+        val key = field.key
+        val value = values[key].orEmpty()
+        if (value.isBlank()) {
+            if (!field.credential || !baseConfig.containsKey(key)) props.remove(key)
+            continue
+        }
+        props[key] = when (field.encoding) {
+            ProviderFieldEncoding.StringList -> JsonValue.Arr(
+                value.split(',').mapNotNull { item ->
+                    item.trim().takeIf(String::isNotEmpty)?.let(JsonValue::Str)
+                },
+            )
+            ProviderFieldEncoding.StringMap -> JsonValue.Obj(
+                value.split(if ('\n' in value) '\n' else ',').mapNotNull { entry ->
+                    val separator = entry.indexOf(':')
+                    if (separator <= 0) return@mapNotNull null
+                    val mapKey = entry.substring(0, separator).trim()
+                    val mapValue = entry.substring(separator + 1).trim()
+                    mapKey.takeIf(String::isNotEmpty)?.let { it to JsonValue.Str(mapValue) }
+                }.toMap(LinkedHashMap()),
+            )
+            ProviderFieldEncoding.Scalar -> when (field.kind) {
             ProviderFieldKind.Toggle -> JsonValue.Bool(value == "true")
             ProviderFieldKind.Number -> {
                 val intVal = value.toIntOrNull()
@@ -246,15 +407,24 @@ fun buildConfigPayload(
                     else -> JsonValue.Str(value)
                 }
             }
-            else -> JsonValue.Str(value)
+            else -> if (field.serializeAsNumber) {
+                JsonValue.Number(value.toDouble())
+            } else {
+                JsonValue.Str(value)
+            }
+            }
         }
     }
 
-    props["imageUpdate"] = JsonValue.Bool(events.imageUpdate)
-    props["containerUpdate"] = JsonValue.Bool(events.containerUpdate)
-    props["vulnerabilityFound"] = JsonValue.Bool(events.vulnerabilityFound)
-    props["pruneReport"] = JsonValue.Bool(events.pruneReport)
-    props["autoHeal"] = JsonValue.Bool(events.autoHeal)
+    props["events"] = JsonValue.Obj(
+        linkedMapOf(
+            "image_update" to JsonValue.Bool(events.imageUpdate),
+            "container_update" to JsonValue.Bool(events.containerUpdate),
+            "vulnerability_found" to JsonValue.Bool(events.vulnerabilityFound),
+            "prune_report" to JsonValue.Bool(events.pruneReport),
+            "auto_heal" to JsonValue.Bool(events.autoHeal),
+        ),
+    )
 
     return props
 }
