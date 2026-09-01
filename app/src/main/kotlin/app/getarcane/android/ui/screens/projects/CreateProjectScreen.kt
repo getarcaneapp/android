@@ -73,12 +73,13 @@ private const val DEFAULT_COMPOSE = "services:\n  app:\n    image: \n    ports:\
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateProjectScreen(
-    onSuccess: () -> Unit,
+    onSuccess: (projectId: String, projectName: String) -> Unit,
     onCancel: () -> Unit,
     prefilledName: String? = null,
     prefilledCompose: String? = null,
     prefilledEnv: String? = null,
     templateLabel: String? = null,
+    submitLabel: String = "Create",
 ) {
     val manager = LocalArcaneManager.current
     val client = manager.client
@@ -121,15 +122,16 @@ fun CreateProjectScreen(
         scope.launch {
             loading = true; error = null
             try {
-                c.projects.create(
+                val created = c.projects.create(
                     envId = manager.activeEnvironmentId,
                     request = CreateProject(
                         name = name.trim(),
                         composeContent = compose,
                         envContent = env.ifBlank { null },
                     ),
+                    useWorkspaceContract = manager.supportsProjectWorkspaceContract,
                 )
-                onSuccess()
+                onSuccess(created.id, created.name)
             } catch (e: Throwable) {
                 error = friendlyErrorMessage(e)
             } finally {
@@ -162,7 +164,7 @@ fun CreateProjectScreen(
                         if (loading) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         } else {
-                            Text("Create")
+                            Text(submitLabel)
                         }
                     }
                 },

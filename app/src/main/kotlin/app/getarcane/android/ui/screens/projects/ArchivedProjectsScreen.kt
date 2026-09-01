@@ -60,7 +60,10 @@ private const val PAGE_SIZE = 50
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ArchivedProjectsScreen(onBack: () -> Unit) {
+fun ArchivedProjectsScreen(
+    onBack: () -> Unit,
+    onOpenFiles: (projectId: String, projectName: String) -> Unit,
+) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
@@ -139,7 +142,11 @@ fun ArchivedProjectsScreen(onBack: () -> Unit) {
                         val sorted = projects.sortedByDescending { it.archivedAt ?: Instant.DISTANT_PAST }
                         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
                             items(sorted, key = { it.id }) { project ->
-                                ArchivedProjectRow(project = project, onUnarchive = { unarchive(project) })
+                                ArchivedProjectRow(
+                                    project = project,
+                                    onOpenFiles = { onOpenFiles(project.id, project.displayName) },
+                                    onUnarchive = { unarchive(project) },
+                                )
                             }
                             if (hasMore) {
                                 item(key = "load-more") {
@@ -159,14 +166,18 @@ fun ArchivedProjectsScreen(onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun ArchivedProjectRow(project: ProjectDetails, onUnarchive: () -> Unit) {
+private fun ArchivedProjectRow(
+    project: ProjectDetails,
+    onOpenFiles: () -> Unit,
+    onUnarchive: () -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
 
     Box {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(onClick = { menu = true }, onLongClick = { menu = true })
+                .combinedClickable(onClick = onOpenFiles, onLongClick = { menu = true })
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -193,6 +204,11 @@ private fun ArchivedProjectRow(project: ProjectDetails, onUnarchive: () -> Unit)
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            DropdownMenuItem(
+                text = { Text("Browse Files") },
+                onClick = { menu = false; onOpenFiles() },
+                leadingIcon = { Icon(Icons.Filled.Archive, null) },
+            )
             DropdownMenuItem(
                 text = { Text("Unarchive") },
                 onClick = { menu = false; onUnarchive() },

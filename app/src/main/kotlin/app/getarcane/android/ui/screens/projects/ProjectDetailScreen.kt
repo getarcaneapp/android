@@ -38,7 +38,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -52,12 +54,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
+import app.getarcane.android.core.ProjectDeployPreferenceScope
+import app.getarcane.android.core.ProjectDeployPreferenceValues
+import app.getarcane.android.core.ProjectDeployPreferences
+import app.getarcane.android.core.ProjectDeployPullPolicy
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.CachedAsyncImage
 import app.getarcane.android.ui.components.ErrorBanner
@@ -65,6 +72,8 @@ import app.getarcane.android.ui.components.StatusBadge
 import app.getarcane.android.ui.theme.ArcaneIndigo
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.sdk.models.project.ProjectDetails
+import app.getarcane.sdk.models.role.Permission
+import app.getarcane.sdk.models.user.hasPermission
 import kotlinx.coroutines.launch
 
 /** Streaming-capable lifecycle action keys passed to the stream destination. */
@@ -77,10 +86,10 @@ internal object ProjectAction {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ProjectDetailScreen(
+internal fun ProjectDetailScreen(
     projectId: String,
     onBack: () -> Unit,
-    onStream: (id: String, action: String, title: String) -> Unit,
+    onStream: (id: String, action: String, title: String, options: ProjectDeployPreferenceValues?) -> Unit,
     onLogs: (id: String, title: String) -> Unit,
     onCompose: (id: String, title: String) -> Unit,
 ) {
@@ -88,6 +97,8 @@ fun ProjectDetailScreen(
     val client = manager.client
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val deployPreferences = remember(context) { ProjectDeployPreferences(context) }
 
     var state by remember { mutableStateOf<Loadable<ProjectDetails>>(Loadable.Loading) }
     var refreshKey by remember { mutableIntStateOf(0) }
@@ -96,6 +107,7 @@ fun ProjectDetailScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var deployOptionsAction by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(projectId, refreshKey) {
         if (client == null) return@LaunchedEffect
@@ -187,6 +199,17 @@ fun ProjectDetailScreen(
 
     val project = (state as? Loadable.Success)?.value
     val title = project?.displayName ?: "Project"
+    val canDeploy = manager.currentUser?.hasPermission(Permission.Projects.DEPLOY, envId.rawValue) == true
+
+    fun beginDeploy(action: String, projectName: String) {
+        val streamTitle = if (action == ProjectAction.REDEPLOY) "Redeploy $projectName" else "Deploy $projectName"
+        if (manager.supportsPost26MobileFeatures) {
+            deployOptionsAction = action
+        } else {
+            actionStatus = "Deploy options are unavailable on this server; using server defaults."
+            onStream(projectId, action, streamTitle, null)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -268,19 +291,19 @@ fun ProjectDetailScreen(
                                         simpleAction("Restarting") { client!!.projects.restart(envId = envId, projectId = projectId) }
                                     }
                                 } else {
-                                    ActionChip("Deploy", Icons.Filled.PlayArrow, MaterialTheme.colorScheme.primary, !actioning) {
-                                        onStream(projectId, ProjectAction.UP, "Deploy ${p.displayName}")
+                                    ActionChip("Deploy", Icons.Filled.PlayArrow, MaterialTheme.colorScheme.primary, !actioning && canDeploy) {
+                                        beginDeploy(ProjectAction.UP, p.displayName)
                                     }
                                 }
-                                ActionChip("Redeploy", Icons.Filled.SyncAlt, MaterialTheme.colorScheme.primary, !actioning) {
-                                    onStream(projectId, ProjectAction.REDEPLOY, "Redeploy ${p.displayName}")
+                                ActionChip("Redeploy", Icons.Filled.SyncAlt, MaterialTheme.colorScheme.primary, !actioning && canDeploy) {
+                                    beginDeploy(ProjectAction.REDEPLOY, p.displayName)
                                 }
                                 ActionChip("Pull", Icons.Filled.ArrowDownward, MaterialTheme.colorScheme.primary, !actioning) {
-                                    onStream(projectId, ProjectAction.PULL, "Pull Images")
+                                    onStream(projectId, ProjectAction.PULL, "Pull Images", null)
                                 }
                                 if (hasBuild) {
                                     ActionChip("Build", Icons.Filled.Build, ArcaneIndigo, !actioning) {
-                                        onStream(projectId, ProjectAction.BUILD, "Build Images")
+                                        onStream(projectId, ProjectAction.BUILD, "Build Images", null)
                                     }
                                 }
                                 ActionChip("Logs", Icons.AutoMirrored.Filled.Article, MaterialTheme.colorScheme.onSurfaceVariant, !actioning) {
@@ -306,8 +329,13 @@ fun ProjectDetailScreen(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete Project") },
-            text = { Text("Remove the project from Arcane, or also remove its files from disk.") },
+            title = { Text("Delete $title?") },
+            text = {
+                Text(
+                    "Remove $title from ${manager.activeEnvironmentName}, or also remove its files from disk. " +
+                        "This action cannot be undone.",
+                )
+            },
             confirmButton = {
                 Column {
                     TextButton(onClick = { runDelete(removeFiles = false) }) { Text("Delete") }
@@ -317,6 +345,94 @@ fun ProjectDetailScreen(
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
+
+    deployOptionsAction?.let { action ->
+        val userId = manager.currentUser?.id
+        val serverIdentity = manager.serverSessionIdentity
+        if (userId == null || serverIdentity.isBlank()) {
+            LaunchedEffect(action) {
+                deployOptionsAction = null
+                errorMessage = "Deploy options could not be scoped to the current account."
+            }
+        } else {
+            val preferenceScope = ProjectDeployPreferenceScope(
+                normalizedServer = serverIdentity,
+                userId = userId,
+                environmentId = envId.rawValue,
+                projectId = projectId,
+            )
+            ProjectDeployOptionsDialog(
+                initial = deployPreferences.load(preferenceScope),
+                actionLabel = if (action == ProjectAction.REDEPLOY) "Redeploy" else "Deploy",
+                onDismiss = { deployOptionsAction = null },
+                onConfirm = { values ->
+                    deployPreferences.save(preferenceScope, values)
+                    deployOptionsAction = null
+                    val streamTitle = if (action == ProjectAction.REDEPLOY) "Redeploy $title" else "Deploy $title"
+                    onStream(projectId, action, streamTitle, values)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProjectDeployOptionsDialog(
+    initial: ProjectDeployPreferenceValues,
+    actionLabel: String,
+    onDismiss: () -> Unit,
+    onConfirm: (ProjectDeployPreferenceValues) -> Unit,
+) {
+    var pullPolicy by remember(initial) { mutableStateOf(initial.pullPolicy) }
+    var forceRecreate by remember(initial) { mutableStateOf(initial.forceRecreate) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("$actionLabel Options") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Image Pull Policy", style = MaterialTheme.typography.titleSmall)
+                ProjectDeployPullPolicy.entries.forEach { policy ->
+                    val label = when (policy) {
+                        ProjectDeployPullPolicy.MISSING -> "If Missing"
+                        ProjectDeployPullPolicy.ALWAYS -> "Always"
+                        ProjectDeployPullPolicy.NEVER -> "Never"
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RadioButton(selected = pullPolicy == policy, onClick = { pullPolicy = policy })
+                        Text(label)
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Force Recreation")
+                        Text(
+                            "Recreate containers even when their configuration is unchanged.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(checked = forceRecreate, onCheckedChange = { forceRecreate = it })
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(ProjectDeployPreferenceValues(pullPolicy, forceRecreate))
+                },
+            ) { Text(actionLabel) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
