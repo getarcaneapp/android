@@ -3,9 +3,14 @@ package app.getarcane.android.ui.screens.projects
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import app.getarcane.android.core.ProjectDeployPreferenceValues
 import app.getarcane.android.nav.popToRootOrReplace
 import app.getarcane.android.ui.screens.settings.registries.TemplateRegistriesScreen
 
@@ -20,6 +25,7 @@ fun ProjectsScreen(
     onDashboardBack: () -> Unit = {},
 ) {
     val nav = rememberNavController()
+    var streamOptions by remember { mutableStateOf<ProjectDeployPreferenceValues?>(null) }
     LaunchedEffect(popToRootSignal) {
         if (popToRootSignal > 0) {
             nav.popToRootOrReplace(rootRoute = "list", fallbackPopUpToRoute = "detail/{id}")
@@ -36,7 +42,7 @@ fun ProjectsScreen(
         }
         composable("create") {
             CreateProjectScreen(
-                onSuccess = { nav.popBackStack() },
+                onSuccess = { _, _ -> nav.popBackStack() },
                 onCancel = { nav.popBackStack() },
             )
         }
@@ -46,7 +52,8 @@ fun ProjectsScreen(
             ProjectDetailScreen(
                 projectId = id,
                 onBack = onDashboardBack,
-                onStream = { id, action, title ->
+                onStream = { id, action, title, options ->
+                    streamOptions = options
                     nav.navigate("stream/$id/$action/${title.encodeArg()}")
                 },
                 onLogs = { id, title -> nav.navigate("logs/$id/${title.encodeArg()}") },
@@ -61,7 +68,8 @@ fun ProjectsScreen(
             ProjectDetailScreen(
                 projectId = id,
                 onBack = { nav.popBackStack() },
-                onStream = { id, action, title ->
+                onStream = { id, action, title, options ->
+                    streamOptions = options
                     nav.navigate("stream/$id/$action/${title.encodeArg()}")
                 },
                 onLogs = { id, title -> nav.navigate("logs/$id/${title.encodeArg()}") },
@@ -80,7 +88,11 @@ fun ProjectsScreen(
                 projectId = entry.arguments?.getString("id").orEmpty(),
                 action = entry.arguments?.getString("action").orEmpty(),
                 title = entry.arguments?.getString("title").orEmpty().decodeArg(),
-                onDone = { nav.popBackStack() },
+                deployOptions = streamOptions,
+                onDone = {
+                    streamOptions = null
+                    nav.popBackStack()
+                },
             )
         }
         composable("logs/{id}/{title}") { entry ->
@@ -91,7 +103,10 @@ fun ProjectsScreen(
             )
         }
         composable("archived") {
-            ArchivedProjectsScreen(onBack = { nav.popBackStack() })
+            ArchivedProjectsScreen(
+                onBack = { nav.popBackStack() },
+                onOpenFiles = { id, title -> nav.navigate("compose/$id/${title.encodeArg()}") },
+            )
         }
     }
 }

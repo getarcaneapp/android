@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -28,6 +30,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -51,11 +54,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.getarcane.android.core.Loadable
+import app.getarcane.android.core.COMPLETE_LIST_LIMIT
+import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.screens.settings.CircleIcon
+import app.getarcane.android.ui.screens.settings.ConfirmDialog
 import app.getarcane.android.ui.screens.settings.FormSectionHeader
 import app.getarcane.android.ui.screens.settings.FormErrorRow
 import app.getarcane.android.ui.screens.settings.InfoAlert
@@ -63,6 +69,8 @@ import app.getarcane.android.ui.screens.settings.LabeledTextField
 import app.getarcane.android.ui.screens.settings.LabeledToggle
 import app.getarcane.android.ui.screens.settings.Pill
 import app.getarcane.android.ui.screens.projects.CreateProjectScreen
+import app.getarcane.android.ui.screens.projects.ProjectAction
+import app.getarcane.android.ui.screens.projects.StreamingActionScreen
 import app.getarcane.android.ui.screens.settings.SettingsListScaffold
 import app.getarcane.android.ui.theme.ArcaneIndigo
 import app.getarcane.android.ui.theme.ArcaneRed
@@ -71,17 +79,18 @@ import app.getarcane.sdk.models.template.Template
 import app.getarcane.sdk.models.template.TemplateContent
 import app.getarcane.sdk.models.template.TemplateRegistry
 import app.getarcane.sdk.models.template.UpdateTemplateRegistry
-import app.getarcane.sdk.models.user.isAdmin
+import app.getarcane.sdk.models.base.SortOrder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Template registries list (admin-only) with create/edit/delete + template browser. Port of iOS `TemplateRegistriesView`. */
+/** Template registries and permission-aware template browser. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TemplateRegistriesScreen(onBack: (() -> Unit)? = null) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val scope = rememberCoroutineScope()
-    val isAdmin = manager.currentUser?.isAdmin ?: false
+    val permissions = templatePermissionPolicy(manager.currentUser, manager.activeEnvironmentId.rawValue)
 
     var state by remember { mutableStateOf<Loadable<List<TemplateRegistry>>>(Loadable.Loading) }
     var refreshKey by remember { mutableStateOf(0) }
@@ -89,13 +98,16 @@ fun TemplateRegistriesScreen(onBack: (() -> Unit)? = null) {
     var showCreate by remember { mutableStateOf(false) }
     var showBrowser by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<TemplateRegistry?>(null) }
+    var pendingDelete by remember { mutableStateOf<TemplateRegistry?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(refreshKey, isAdmin) {
-        if (!isAdmin || client == null) return@LaunchedEffect
+    LaunchedEffect(refreshKey, permissions.canList) {
+        if (!permissions.canList || client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
             Loadable.Success(client.templates.listRegistries())
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }
@@ -104,11 +116,11 @@ fun TemplateRegistriesScreen(onBack: (() -> Unit)? = null) {
 
     SettingsListScaffold(
         title = "Template Registries",
-        onAdd = if (isAdmin) ({ showCreate = true }) else null,
+        onAdd = if (permissions.canCreateRegistry) ({ showCreate = true }) else null,
         addContentDescription = "Add template registry",
         onBack = onBack,
         actions = {
-            if (isAdmin) {
+            if (permissions.canList) {
                 IconButton(onClick = { showBrowser = true }) {
                     Icon(Icons.AutoMirrored.Filled.ManageSearch, contentDescription = "Browse templates")
                 }
@@ -116,8 +128,8 @@ fun TemplateRegistriesScreen(onBack: (() -> Unit)? = null) {
         },
     ) { padding ->
         when {
-            !isAdmin -> Box(Modifier.fillMaxSize().padding(padding)) {
-                ContentUnavailable("Admin Required", Icons.Filled.Lock, "Only administrators can manage template registries.")
+            !permissions.canList -> Box(Modifier.fillMaxSize().padding(padding)) {
+                ContentUnavailable("Templates Access Required", Icons.Filled.Lock, "Your role cannot list templates or registries.")
             }
             else -> PullToRefreshBox(
                 isRefreshing = refreshing,
@@ -133,24 +145,18 @@ fun TemplateRegistriesScreen(onBack: (() -> Unit)? = null) {
                                 "No Template Registries",
                                 Icons.Filled.Description,
                                 "Add a template registry to make project templates available from mobile. You can also browse templates once a registry is configured.",
-                                "Add Registry",
-                            ) { showCreate = true }
+                                actionLabel = if (permissions.canCreateRegistry) "Add Registry" else null,
+                                onAction = if (permissions.canCreateRegistry) ({ showCreate = true }) else null,
+                            )
                         } else {
                             LazyColumn(Modifier.fillMaxSize()) {
                                 items(s.value, key = { it.id }) { registry ->
                                     TemplateRegistryRow(
                                         registry = registry,
+                                        canEdit = permissions.canUpdateRegistry,
+                                        canDelete = permissions.canDeleteRegistry,
                                         onEdit = { editing = registry },
-                                        onDelete = {
-                                            scope.launch {
-                                                try {
-                                                    client?.templates?.deleteRegistry(registry.id)
-                                                    refreshKey++
-                                                } catch (e: Throwable) {
-                                                    actionError = friendlyErrorMessage(e)
-                                                }
-                                            }
-                                        },
+                                        onDelete = { pendingDelete = registry },
                                     )
                                 }
                             }
@@ -168,7 +174,28 @@ fun TemplateRegistriesScreen(onBack: (() -> Unit)? = null) {
         TemplateRegistryFormDialog(registry = reg, onDismiss = { editing = null }, onSaved = { editing = null; refreshKey++ })
     }
     if (showBrowser) {
-        TemplateBrowserDialog(onDismiss = { showBrowser = false })
+        TemplateBrowserDialog(permissions = permissions, onDismiss = { showBrowser = false })
+    }
+
+    pendingDelete?.let { registry ->
+        ConfirmDialog(
+            title = "Delete Template Registry",
+            message = "Delete ${registry.name}? This removes the configured template source.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                scope.launch {
+                    try {
+                        client?.templates?.deleteRegistry(registry.id)
+                        refreshKey++
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        actionError = friendlyErrorMessage(e)
+                    }
+                }
+            },
+            onDismiss = { pendingDelete = null },
+        )
     }
 
     actionError?.let { msg -> InfoAlert("Couldn't Delete Registry", msg, { actionError = null }) }
@@ -176,13 +203,22 @@ fun TemplateRegistriesScreen(onBack: (() -> Unit)? = null) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TemplateRegistryRow(registry: TemplateRegistry, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun TemplateRegistryRow(
+    registry: TemplateRegistry,
+    canEdit: Boolean,
+    canDelete: Boolean,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(onClick = onEdit, onLongClick = { menu = true })
+                .combinedClickable(
+                    onClick = { if (canEdit) onEdit() },
+                    onLongClick = { if (canEdit || canDelete) menu = true },
+                )
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -198,8 +234,12 @@ private fun TemplateRegistryRow(registry: TemplateRegistry, onEdit: () -> Unit, 
             if (!registry.enabled) Pill("Disabled", MaterialTheme.colorScheme.onSurfaceVariant)
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() }, leadingIcon = { Icon(Icons.Filled.Edit, null) })
-            DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Filled.Delete, null) })
+            if (canEdit) {
+                DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() }, leadingIcon = { Icon(Icons.Filled.Edit, null) })
+            }
+            if (canDelete) {
+                DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Filled.Delete, null) })
+            }
         }
     }
 }
@@ -237,6 +277,8 @@ private fun TemplateRegistryFormDialog(registry: TemplateRegistry?, onDismiss: (
                     c.templates.createRegistry(CreateTemplateRegistry(name = name, url = url, description = description, enabled = enabled))
                 }
                 onSaved()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 error = friendlyErrorMessage(e)
             } finally {
@@ -271,27 +313,44 @@ private fun TemplateRegistryFormDialog(registry: TemplateRegistry?, onDismiss: (
     }
 }
 
-/** Browse all templates grouped by registry, with a compose/.env preview. Port of iOS `TemplateBrowserView`. */
+/** Complete searchable template browser with source filtering and stable selection. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TemplateBrowserDialog(onDismiss: () -> Unit) {
-    val manager = LocalArcaneManager.current
-    val client = manager.client
-    val scope = rememberCoroutineScope()
-
+private fun TemplateBrowserDialog(
+    permissions: TemplatePermissionPolicy,
+    onDismiss: () -> Unit,
+) {
+    val client = LocalArcaneManager.current.client
     var state by remember { mutableStateOf<Loadable<List<Template>>>(Loadable.Loading) }
     var reloadKey by remember { mutableStateOf(0) }
-    var preview by remember { mutableStateOf<Template?>(null) }
+    var query by remember { mutableStateOf("") }
+    var source by remember { mutableStateOf(TemplateSourceSelection.ALL) }
+    var selectedIdentity by remember { mutableStateOf<TemplateIdentity?>(null) }
 
-    LaunchedEffect(reloadKey) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(reloadKey, query, source, client) {
+        if (client == null || !permissions.canList) return@LaunchedEffect
+        kotlinx.coroutines.delay(250)
         state = Loadable.Loading
         state = try {
-            Loadable.Success(client.templates.listAll())
+            val loaded = loadCompletePaginatedCollection("Template", Template::identity) {
+                client.templates.listPaginated(
+                    search = query.trim().ifEmpty { null },
+                    sort = "name",
+                    order = SortOrder.ASCENDING,
+                    limit = COMPLETE_LIST_LIMIT,
+                    source = source.sdkValue,
+                )
+            }
+            Loadable.Success(filterTemplates(loaded, query, source))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }
     }
+
+    val selectedTemplate = (state as? Loadable.Success<List<Template>>)?.value
+        ?.firstOrNull { it.identity() == selectedIdentity }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
@@ -302,28 +361,46 @@ private fun TemplateBrowserDialog(onDismiss: () -> Unit) {
                 )
             },
         ) { padding ->
-            when (val s = state) {
-                is Loadable.Loading -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) { CircularProgressIndicator() }
-                is Loadable.Error -> Box(Modifier.fillMaxSize().padding(padding).padding(16.dp)) { ErrorBanner(s.message, onRetry = { reloadKey++ }) }
-                is Loadable.Success -> {
-                    if (s.value.isEmpty()) {
-                        Box(Modifier.fillMaxSize().padding(padding)) { ContentUnavailable("No Templates", Icons.Filled.Description) }
-                    } else {
-                        val grouped = s.value
-                            .groupBy { it.registry?.name ?: (if (it.isRemote) "Remote" else "Local") }
-                            .toSortedMap()
-                        LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-                            grouped.forEach { (registryName, templates) ->
-                                item(key = "h-$registryName") {
-                                    Text(
-                                        registryName.uppercase(),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 4.dp),
-                                    )
-                                }
-                                items(templates.sortedBy { it.name.lowercase() }, key = { it.id }) { template ->
-                                    TemplateRow(template) { preview = template }
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Search templates") },
+                    leadingIcon = { Icon(Icons.Filled.Search, null) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    TemplateSourceSelection.entries.forEachIndexed { index, choice ->
+                        SegmentedButton(
+                            selected = source == choice,
+                            onClick = { source = choice },
+                            shape = SegmentedButtonDefaults.itemShape(index, TemplateSourceSelection.entries.size),
+                        ) { Text(choice.name.lowercase().replaceFirstChar(Char::uppercase)) }
+                    }
+                }
+                when (val s = state) {
+                    is Loadable.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                    is Loadable.Error -> Box(Modifier.fillMaxSize().padding(16.dp)) {
+                        ErrorBanner(s.message, onRetry = { reloadKey++ })
+                    }
+                    is Loadable.Success -> {
+                        if (s.value.isEmpty()) {
+                            ContentUnavailable("No Matching Templates", Icons.Filled.Description)
+                        } else {
+                            LazyColumn(Modifier.fillMaxSize()) {
+                                groupTemplates(s.value).forEach { group ->
+                                    item(key = "heading:${group.key}") {
+                                        Text(
+                                            group.title.uppercase(),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 4.dp),
+                                        )
+                                    }
+                                    items(group.templates, key = { it.identity().stableKey }) { template ->
+                                        TemplateRow(template, permissions.canRead) { selectedIdentity = template.identity() }
+                                    }
                                 }
                             }
                         }
@@ -333,21 +410,28 @@ private fun TemplateBrowserDialog(onDismiss: () -> Unit) {
         }
     }
 
-    preview?.let { template ->
+    selectedTemplate?.let { template ->
         TemplatePreviewDialog(
             template = template,
-            onDismiss = { preview = null },
-            onDeployed = { preview = null; onDismiss() },
+            canImport = permissions.canImport,
+            canDeploy = permissions.canDeploy,
+            onImported = { imported ->
+                val current = (state as? Loadable.Success<List<Template>>)?.value.orEmpty()
+                state = Loadable.Success((current.filterNot { it.identity() == imported.identity() } + imported))
+                selectedIdentity = imported.identity()
+            },
+            onDismiss = { selectedIdentity = null },
+            onDeployed = { selectedIdentity = null; onDismiss() },
         )
     }
 }
 
 @Composable
-private fun TemplateRow(template: Template, onClick: () -> Unit) {
+private fun TemplateRow(template: Template, canRead: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = canRead, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -356,28 +440,49 @@ private fun TemplateRow(template: Template, onClick: () -> Unit) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(template.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(template.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+            val metadata = listOfNotNull(
+                if (template.isRemote) "Remote" else "Local",
+                template.metadata?.author?.takeIf(String::isNotBlank),
+                template.metadata?.version?.takeIf(String::isNotBlank),
+                template.metadata?.tags?.takeIf(List<String>::isNotEmpty)?.joinToString(" · "),
+            )
+            Text(metadata.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
 
-/** Compose/.env preview of a template with a Deploy action. Mirrors iOS `TemplatePreviewView`. */
+/** Retryable preview with explicit remote import and exact-content deployment handoff. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TemplatePreviewDialog(template: Template, onDismiss: () -> Unit, onDeployed: () -> Unit) {
+private fun TemplatePreviewDialog(
+    template: Template,
+    canImport: Boolean,
+    canDeploy: Boolean,
+    onImported: (Template) -> Unit,
+    onDismiss: () -> Unit,
+    onDeployed: () -> Unit,
+) {
     val manager = LocalArcaneManager.current
     val client = manager.client
+    val scope = rememberCoroutineScope()
 
     var content by remember { mutableStateOf<TemplateContent?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var loadKey by remember { mutableStateOf(0) }
     var tab by remember { mutableStateOf(0) }
     var showDeploy by remember { mutableStateOf(false) }
+    var deploymentTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var displayedTemplate by remember(template.identity()) { mutableStateOf(template) }
+    var importState by remember(template.identity()) { mutableStateOf<TemplateImportState>(TemplateImportState.Idle) }
 
-    LaunchedEffect(template.id) {
+    LaunchedEffect(displayedTemplate.identity(), loadKey) {
         if (client == null) return@LaunchedEffect
-        loading = true
+        loading = true; error = null
         try {
-            content = client.templates.getContent(template.id)
+            content = client.templates.getContent(displayedTemplate.id)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             error = friendlyErrorMessage(e)
         } finally {
@@ -389,15 +494,45 @@ private fun TemplatePreviewDialog(template: Template, onDismiss: () -> Unit, onD
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(template.name) },
+                    title = { Text(displayedTemplate.name) },
                     navigationIcon = { TextButton(onClick = onDismiss) { Text("Done") } },
                     actions = {
-                        TextButton(onClick = { showDeploy = true }, enabled = content != null) { Text("Deploy") }
+                        if (displayedTemplate.isRemote && canImport) {
+                            TextButton(
+                                onClick = {
+                                    val c = client ?: return@TextButton
+                                    importState = beginTemplateImport(displayedTemplate)
+                                    scope.launch {
+                                        try {
+                                            val imported = c.templates.download(displayedTemplate.id)
+                                            val importedContent = c.templates.getContent(imported.id)
+                                            displayedTemplate = importedContent.template
+                                            content = importedContent
+                                            importState = completeTemplateImport(displayedTemplate)
+                                            onImported(displayedTemplate)
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Throwable) {
+                                            importState = failTemplateImport(importState, friendlyErrorMessage(e))
+                                        }
+                                    }
+                                },
+                                enabled = importState !is TemplateImportState.Importing,
+                            ) {
+                                Icon(Icons.Filled.CloudDownload, null)
+                                Text("Import")
+                            }
+                        }
+                        TextButton(onClick = { showDeploy = true }, enabled = canDeploy && content != null && !loading) { Text("Deploy") }
                     },
                 )
             },
         ) { padding ->
             Column(Modifier.fillMaxSize().padding(padding)) {
+                TemplateMetadataSummary(displayedTemplate, content)
+                (importState as? TemplateImportState.Failed)?.let { failed ->
+                    ErrorBanner(failed.message)
+                }
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(16.dp)) {
                     listOf("compose.yml", ".env").forEachIndexed { index, label ->
                         SegmentedButton(
@@ -409,7 +544,7 @@ private fun TemplatePreviewDialog(template: Template, onDismiss: () -> Unit, onD
                 }
                 when {
                     loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-                    error != null -> FormErrorRow(error!!)
+                    error != null -> ErrorBanner(error!!, onRetry = { loadKey++ })
                     else -> {
                         val text = if (tab == 0) content?.content ?: "" else content?.envContent ?: ""
                         Text(
@@ -431,13 +566,53 @@ private fun TemplatePreviewDialog(template: Template, onDismiss: () -> Unit, onD
         val c = content
         Dialog(onDismissRequest = { showDeploy = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             CreateProjectScreen(
-                onSuccess = { showDeploy = false; onDeployed() },
+                onSuccess = { projectId, projectName ->
+                    showDeploy = false
+                    deploymentTarget = projectId to projectName
+                },
                 onCancel = { showDeploy = false },
-                prefilledName = template.name.lowercase().replace(" ", "-"),
+                prefilledName = displayedTemplate.name.trim().lowercase().replace(Regex("\\s+"), "-"),
                 prefilledCompose = c?.content ?: "",
                 prefilledEnv = c?.envContent ?: "",
-                templateLabel = template.name,
+                templateLabel = displayedTemplate.name,
+                submitLabel = "Create & Deploy",
             )
         }
+    }
+
+    deploymentTarget?.let { (projectId, projectName) ->
+        Dialog(onDismissRequest = {}, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            StreamingActionScreen(
+                projectId = projectId,
+                action = ProjectAction.UP,
+                title = "Deploy $projectName",
+                onDone = {
+                    deploymentTarget = null
+                    onDeployed()
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TemplateMetadataSummary(template: Template, content: TemplateContent?) {
+    val metadata = template.metadata
+    val lines = listOfNotNull(
+        template.description.takeIf(String::isNotBlank),
+        metadata?.author?.takeIf(String::isNotBlank)?.let { "Author: $it" },
+        metadata?.version?.takeIf(String::isNotBlank)?.let { "Version: $it" },
+        metadata?.tags?.takeIf(List<String>::isNotEmpty)?.joinToString(prefix = "Tags: "),
+        metadata?.documentationUrl?.takeIf(String::isNotBlank)?.let { "Docs: $it" },
+        content?.services?.takeIf(List<String>::isNotEmpty)?.joinToString(prefix = "Services: "),
+        content?.envVariables?.map { it.key }?.takeIf(List<String>::isNotEmpty)?.joinToString(prefix = "Variables: "),
+    )
+    if (lines.isNotEmpty()) {
+        Text(
+            lines.joinToString("\n"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
