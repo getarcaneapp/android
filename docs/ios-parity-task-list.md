@@ -357,6 +357,10 @@ The standard checks are:
   - Michael's physical-device check passed immediate whole-app Light/Dark switching, readable system
     bars, Back/re-entry and rapid-departure persistence, force-stop restoration of theme and accent,
     and Auto tracking Android system light/dark changes without reopening Appearance.
+  - Follow-up (2026-09-01): Android PR #47's fresh CI run reproduced an initialization race where a
+    stale first DataStore emission could overwrite a newer app-owned theme/accent selection. Pending
+    selections now win until persistence observes them. Five forced focused reruns and a fresh
+    remote-SDK `:app:testDebugUnitTest :app:assembleDebug` baseline passed.
 
 ## Phase 1: Validate destructive behavior and complete daily workflows
 
