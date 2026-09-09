@@ -1,6 +1,6 @@
 # Android iOS-parity task list
 
-Last updated: 2026-08-27
+Last updated: 2026-09-01
 
 This is the working backlog for bringing Arcane Android to product-outcome parity with iOS. It
 turns the findings in [the pinned gap analysis](ios-android-gap-analysis.md) into issue-sized work;
@@ -233,47 +233,87 @@ The standard checks are:
     dashboard snapshot instead. Michael's second physical-device retest showed the expected update
     count and verified the remaining PAR-004 items.
 
-- [ ] **PAR-005 — Revalidate OIDC and admin-tab navigation**
+- [x] **PAR-005 — Revalidate Settings admin drill-down navigation**
 
-- **Status:** Needs revalidation
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** PAR-001
-- **Scope:** Device-test current and legacy OIDC callbacks and verify Users, Notifications, System,
-  and Roles retain drill-down actions both through Settings and when configured as primary tabs.
+- **Scope:** Verify that Users, Notifications, System, and Roles retain their supported detail and
+  action flows when opened through Settings. Admin/configuration destinations are intentionally not
+  eligible as bottom-tab replacements under merged Android PR #5, so primary-admin-tab behavior is
+  not part of this task.
 - **Acceptance criteria:**
-  - [ ] OIDC success, cancel, invalid callback, provider error, and process-recreated callback flows are
-    exercised on a device/emulator.
-  - [ ] Each affected admin screen opens all supported details/actions from both navigation entry points.
-  - [ ] Back behavior, tab switching, authorization loss, and environment changes do not strand a route.
-  - [ ] Any remaining defect has a focused navigation regression test.
-- **Implementation and validation evidence (2026-08-27):** Android `38d00e3`, iOS
-  `a3440b05238d2620b91d984557c87994ab15fb28`, libarcane-swift
-  `38b5c32dde5b17eb0bc22b1c13fb4204699c8faf`, Arcane
-  `8d10b7db2d34aefa44f0f9a684f3b84b2ae355d7`, and libarcane-kotlin `9ab5001` were compared.
-  Live-server testing exposed Settings > Notifications rejecting the complete settings response.
-  Contract comparison found that any configured Arcane 2.7+ `googlechat` provider was undecodable by
-  the Kotlin SDK. SDK PR #3 adds Google Chat, the Swift SDK's 2.7.0 feature gate, and tolerant
-  future-provider decoding. Android now hides unsupported providers while retaining recognized rows
-  and exposes Google Chat only when the connected server supports post-2.6 mobile features. The SDK
-  baseline, focused Android notification tests, and `:app:assembleDebug` pass. The exact Android full
-  baseline still exposes the pre-existing
-  `PrefsAppearanceTest.appOwnedAppearanceStatePersistsAfterSetterReturns` suite-order race (159 of
-  160 tests pass; the class passes independently). Notification retest, the broader admin-navigation
-  matrix, and OIDC device evidence remain pending.
+  - [x] Users, Notifications, System, and Roles open their supported list/detail routes through Settings.
+  - [x] Nested Back behavior and tab switching do not strand a route; focused coverage resets protected
+    routes after authorization loss and environment-bound routes after environment changes.
+  - [x] Notification provider forms map current Arcane configuration keys and nested event settings
+    correctly, preserve existing credentials safely, and have focused round-trip coverage.
+  - [x] The final focused checks and Android CI-equivalent baseline pass after the notification form
+    correction.
+- **Implementation and validation evidence (updated 2026-09-01):**
+  - Compared Android main `c52269f80a0c4e65c6bd09447ac0813495f7c6b0`, the pre-reconciliation
+    PAR-005 branch `6a64eed19603450a1df417c00c8b1bc7d6e93f5a`, iOS
+    `a3440b05238d2620b91d984557c87994ab15fb28`, libarcane-swift
+    `38b5c32dde5b17eb0bc22b1c13fb4204699c8faf`, Arcane v2.10.0
+    `963af121da1b7114bc155b640db4af4a0a80158a`, and the notification SDK changes.
+  - Android PR #5 established that Users, Notifications, System, Roles, and other
+    administration/configuration destinations are not pinnable bottom tabs. The former
+    primary-admin-tab scope, implementation, tests, and acceptance requirement are therefore obsolete.
+  - Michael's physical-device/live-server retest confirmed password login, Settings administration
+    drill-down and Back behavior, and successful Settings > Notifications loading.
+  - OIDC is not configured on the available Arcane server. Its device-flow matrix is deferred until a
+    suitable provider is available; no OIDC pass/fail conclusion is recorded and it does not block this
+    respecified navigation task.
+  - libarcane-kotlin PR #3 merged as `b0e2576f008d1e0ca023e1e5f46a686a82f64df6`,
+    adding Google Chat and tolerant future-provider decoding. PR #4 merged as
+    `7a192f3ebc1a7c623eea6a4919085fc23180add2`, correcting raw notification settings response decoding;
+    its tested head was `6df91357907fb75963d8e784a6e055387961e6b2`.
+  - Notification loading is device-verified. Provider forms now use the Arcane v2.10.0 configuration
+    keys and JSON value shapes, write event flags under `config.events` with server snake_case keys,
+    preserve redacted credentials through the server's blank-value contract, retain unknown config,
+    and validate Signal's mutually exclusive authentication modes. Focused deterministic mapping and
+    round-trip tests pass.
+  - Focused Settings route-safety and notification-provider tests passed. The final
+    `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed and `git diff --check` is clean.
+    Michael's device validation covered the reachable navigation and loading behavior; no destructive
+    live notification-provider save was performed against production credentials.
 
-- [ ] **PAR-006 — Correct Android links, release notes, and version hygiene**
+- [x] **PAR-006 — Correct Android links, release notes, and version hygiene**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** None
 - **Scope:** Replace iOS repository/issue destinations and copied iOS release claims with deliberate
   Android links and Android-verified notes. Align displayed notes with the app version.
 - **Acceptance criteria:**
-  - [ ] Source, issue, documentation, privacy, and support links resolve to intentional destinations.
-  - [ ] Release notes contain only shipped Android behavior and have consistent version ordering.
-  - [ ] The current app version maps to an appropriate note, and future automatic presentation cannot
+  - [x] Source, issue, documentation, privacy, and support links resolve to intentional destinations.
+  - [x] Release notes contain only shipped Android behavior and have consistent version ordering.
+  - [x] The current app version maps to an appropriate note, and future automatic presentation cannot
     show notes for an unshipped version.
-  - [ ] Link and release-note mapping logic has focused coverage.
+  - [x] Link and release-note mapping logic has focused coverage.
+- **Validation evidence (2026-09-01):**
+  - Source pins: Android base `1aed66bdd32d9427776d5da69720325cccd37dfe`, current iOS
+    `cdd05d89a1169bea50b53a12dcd00ca479233d26`, build-resolved libarcane-kotlin
+    `6df91357907fb75963d8e784a6e055387961e6b2` (`origin/main`
+    `7a192f3ebc1a7c623eea6a4919085fc23180add2`), and Arcane
+    `0c7174f1089079d79535563ac2d54b032ea6914a`. No SDK or server contract changes were required.
+  - Current iOS keeps its platform-specific issue destination and drives automatic What's New from
+    the installed marketing version. Android now centralizes deliberate Android source/issues,
+    Arcane documentation/privacy, project sharing, and Discord support destinations. Direct network
+    checks returned HTTP 200 for each destination (Discord resolves to its canonical invite URL).
+  - The copied iOS/TestFlight/VoiceOver/Liquid Glass/Swift SDK changelog was replaced by conservative
+    Android `0.1.0` notes. Semantic version mapping sorts visible notes, hides entries newer than the
+    installed APK, and exposes an exact match for badges or future automatic presentation. Unknown
+    versions expose no notes.
+  - `versionName` remains `0.1.0`; `versionCode` advances from the `260602` embedded in both public
+    alpha artifacts to `260901`. The assembled APK manifest confirms both values.
+  - Focused `AppLinksTest` and `ReleaseNotesTest` runs passed all 5 tests. The CI-equivalent
+    `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed all 172 tests (0 failures,
+    0 errors, 0 skipped) and assembled the debug APK; `git diff --check` passed.
+  - On 2026-09-01, Michael's physical-device screenshots confirmed App Settings displays version
+    `0.1.0` and build `260901`, and What's New displays only the Android `0.1.0` entry with the exact
+    version marked **Installed**. External destination taps were not separately reported; their
+    destinations are covered by the live HTTP audit and focused mapping test.
 
 - [ ] **PAR-007 — Define Android backup and data-extraction policy**
 
@@ -340,6 +380,10 @@ The standard checks are:
   - Michael's physical-device check passed immediate whole-app Light/Dark switching, readable system
     bars, Back/re-entry and rapid-departure persistence, force-stop restoration of theme and accent,
     and Auto tracking Android system light/dark changes without reopening Appearance.
+  - Follow-up (2026-09-01): Android PR #47's fresh CI run reproduced an initialization race where a
+    stale first DataStore emission could overwrite a newer app-owned theme/accent selection. Pending
+    selections now win until persistence observes them. Five forced focused reruns and a fresh
+    remote-SDK `:app:testDebugUnitTest :app:assembleDebug` baseline passed.
 
 ## Phase 1: Validate destructive behavior and complete daily workflows
 
@@ -374,9 +418,10 @@ The standard checks are:
 
 - [ ] **PAR-103 — Build the existing-project file workspace**
 
-- **Status:** Ready
+- **Status:** Done/verify
 - **Priority:** P1
 - **Dependencies:** PAR-002
+- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Use the typed Kotlin SDK project-file operations to add a file tree; Compose, `.env`,
   and text editing; save/create; rename/move/delete; variable-resolution preview; and resolved YAML.
   Keep archived and GitOps projects read-only where required.
@@ -386,6 +431,13 @@ The standard checks are:
   - [ ] Reload, save failure, concurrent server change, unsupported/binary file, and archived/GitOps
     states preserve data and explain why an action is unavailable.
   - [ ] Typed SDK calls are used directly and mapping/state logic has focused tests.
+
+  **Validation evidence (2026-09-01):** Implemented on `parity/projects-workspace-batch` using
+  `libarcane-kotlin` workspace contracts from `parity/projects-workspace-contracts`. Focused mapping,
+  protected-path/GitOps structure, conflict rebase, partial-save, path-safety, permission, and
+  read-only tests pass in the full Android unit-test gate. Arcane's present Compose/`.env` update
+  contract is explicitly surfaced as last-write-wins. The consolidated device/live-server matrix
+  remains pending.
 
 - [ ] **PAR-104 — Add signed-in account/profile management**
 
@@ -521,9 +573,10 @@ The standard checks are:
 
 - [ ] **PAR-113 — Add scoped project deploy options**
 
-- **Status:** Ready
+- **Status:** Done/verify
 - **Priority:** P1
 - **Dependencies:** PAR-002
+- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Use the Kotlin SDK's existing `DeployOptions` to let users choose pull policy and force
   recreation before deploy. Store defaults by normalized server, user, environment, and project.
   PAR-202 will later adopt the same options when it becomes the operation owner.
@@ -536,11 +589,17 @@ The standard checks are:
     fabricating success after failure or cancellation.
   - [ ] Mapping/persistence tests and device/live-server deploy evidence are recorded.
 
+  **Validation evidence (2026-09-01):** Typed missing/always/never and force-recreation values flow
+  unchanged to deploy and redeploy streams; scoped persistence and terminal failure behavior have
+  focused tests. Automated SDK and Android gates pass; consolidated device/live deploy evidence is
+  still pending.
+
 - [ ] **PAR-114 — Complete template discovery, import, and deployment**
 
-- **Status:** Ready
+- **Status:** Done/verify
 - **Priority:** P1
 - **Dependencies:** PAR-004
+- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Extend the existing Android registry CRUD, grouped browser, preview, and deploy flow with
   current iOS outcomes: search, local/remote source filtering, metadata, remote download, and complete
   result loading through the typed Kotlin template service.
@@ -553,13 +612,21 @@ The standard checks are:
     hands long-running work to PAR-202 when applicable.
   - [ ] Pagination/filter/download state has focused tests and a live-server import/deploy check.
 
+  **Validation evidence (2026-09-01):** Complete typed pagination, search/source filtering,
+  composite identity, metadata/preview retry, remote import, and exact-content project-creation
+  handoff are implemented with focused state and permission tests. Automated gates pass; the
+  consolidated live import/deploy check remains pending.
+
 - [ ] **PAR-115 — Add container-registry display names**
 
-- **Status:** Ready
+- **Status:** Done/verify
 - **Priority:** P1
 - **Dependencies:** None
-- **Scope:** Add the current optional registry `name` field to Kotlin SDK read/create/update/sync models,
-  then expose it in Android list and form UI while retaining URL fallback for older records.
+- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
+- **Scope:** Current Arcane and both SDKs have no registry `name` field. Derive a stable Android
+  display name from description/provider/URL with URL/ID disambiguation, preserve credentials and
+  unrelated fields on edit, and add the current `repositoryNames` field to Kotlin SDK
+  read/create/update/sync models.
 - **Acceptance criteria:**
   - [ ] Missing, blank, duplicate, and unknown-server values decode safely and display a stable URL/ID
     fallback.
@@ -567,6 +634,11 @@ The standard checks are:
     values.
   - [ ] List, preview, pull-usage, and destructive confirmations identify the same registry clearly.
   - [ ] SDK serialization plus Android mapping/form tests pass against old and current payload fixtures.
+
+  **Validation evidence (2026-09-01):** Exact current-server and both-SDK audits disproved the stale
+  `name`-field premise. Derived display identities, duplicate fallback, unknown provider types,
+  credential-preserving requests, and repository-name compatibility have focused tests. Both SDK
+  and Android automated gates pass; the consolidated live registry check remains pending.
 
 ## Phase 2: Own long-running operations before adding system surfaces
 
@@ -831,6 +903,9 @@ The standard checks are:
     decision and the image-oriented Updates screen resolve that internal inconsistency for Android.
   - Michael reproduced the Android mismatch on PAR-005: Dashboard displayed one updateable project
     while the opened image-oriented Updates screen displayed four outdated images.
+  - On 2026-09-01 Michael's physical-device/live-server retest confirmed that the Dashboard and the
+    opened image-oriented Updates screen both reported the expected four outdated images. This closes
+    the previously reproduced one-project-versus-four-images inconsistency.
   - Android now derives the fleet total from the same per-environment image summaries and leaves the
     total unavailable if any enabled environment summary fails. Streamed resource action items still
     support environment-card context but cannot override the image count.
