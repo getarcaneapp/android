@@ -134,14 +134,13 @@ internal data class DashTotals(
 internal fun displayedDashboardTotals(
     streamAggregate: DashboardStreamAggregateCounts?,
     restFallback: DashTotals?,
-    streamUpdateCount: Int?,
 ): DashTotals? = streamAggregate?.let { aggregate ->
     DashTotals(
         running = aggregate.runningContainers,
         total = aggregate.totalContainers,
         images = aggregate.totalImages,
         volumes = restFallback?.volumes,
-        updates = streamUpdateCount,
+        updates = restFallback?.updates,
         stopped = aggregate.stoppedContainers,
     )
 } ?: restFallback
@@ -319,8 +318,11 @@ fun DashboardScreen(
             null
         }
         val volumes = volumesByEnvironment?.sum()
-        val updates = overview?.imageUpdateActionCount()
-            ?: if (environmentLoadSucceeded) loadDashboardImageUpdateCount(client, loadableEnvironments) else null
+        val updates = if (environmentLoadSucceeded) {
+            loadDashboardImageUpdateCount(client, loadableEnvironments)
+        } else {
+            null
+        }
         totals = overviewTotals?.copy(volumes = volumes, updates = updates)
             ?: loadLegacyDashboardTotals(client, loadableEnvironments, volumes = volumes, updates = updates)
 
@@ -351,9 +353,6 @@ fun DashboardScreen(
         }
         loading = false
     }
-
-    val displayedImageUpdateCount = completeStreamImageUpdateCount(streamStore.statesByEnvironmentId)
-        ?: totals?.updates
 
     Scaffold(
         topBar = {
@@ -397,7 +396,6 @@ fun DashboardScreen(
                     val t = displayedDashboardTotals(
                         streamAggregate = streamStore.aggregate,
                         restFallback = totals,
-                        streamUpdateCount = displayedImageUpdateCount,
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -549,20 +547,27 @@ fun DashboardScreen(
 private suspend fun loadDashboardImageUpdateCount(
     client: app.getarcane.sdk.ArcaneClient,
     envs: List<Environment>,
-): Int? =
-    try {
-        coroutineScope {
-            envs.map { environment ->
-                async {
-                    client.dashboard.snapshot(EnvironmentId(environment.id)).actionItems.imageUpdateActionCount()
-                }
-            }.awaitAll().sum()
+): Int? = coroutineScope {
+    envs.map { environment ->
+        async {
+            try {
+                client.images.updateSummary(EnvironmentId(environment.id)).imagesWithUpdates
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                null
+            }
         }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: Throwable) {
-        null
+    }.awaitAll()
+}.completeImageUpdateSummaryCount()
+
+internal fun List<Int?>.completeImageUpdateSummaryCount(): Int? {
+    var total = 0
+    for (count in this) {
+        total += count?.coerceAtLeast(0) ?: return null
     }
+    return total
+}
 
 private suspend fun loadLegacyDashboardTotals(
     client: app.getarcane.sdk.ArcaneClient,
@@ -803,7 +808,9 @@ internal fun buildNeedsAttentionItems(
         )
     }
 
-    val updates = completeStreamImageUpdateCount(streamStates) ?: totals?.updates ?: 0
+    // Dashboard stream action items count updateable resources. The Updates screen and iOS parity
+    // surface outdated images, so only the image-summary total may populate this row.
+    val updates = totals?.updates ?: 0
     if (updates > 0) {
         items += NeedsAttentionItem(
             id = "image-updates",
@@ -899,23 +906,6 @@ private fun aggregateStreamActionItems(
         vulnerabilities = vulnerabilities,
         expiringKeys = expiringKeys,
     )
-}
-
-internal fun completeStreamImageUpdateCount(
-    streamStates: Map<String, DashboardEnvironmentStreamState>,
-): Int? {
-    if (streamStates.isEmpty()) return null
-    var total = 0
-    for (state in streamStates.values) {
-        val snapshot = state.snapshot
-        if (!state.hasLoaded || state.streamError || snapshot == null) return null
-        total += snapshot.actionItems.items
-            .firstOrNull { it.itemKind == DashboardActionItemKind.ImageUpdates }
-            ?.count
-            ?.coerceAtLeast(0)
-            ?: 0
-    }
-    return total
 }
 
 private val Environment.displayName: String

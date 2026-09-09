@@ -89,7 +89,6 @@ class DashboardOverviewSourceTest {
             DashboardEnvironmentCardOverviewCounts(running = 2, stopped = 1, images = 6),
             overview.environments.single().cardOverviewCounts(),
         )
-        assertEquals(4, overview.imageUpdateActionCount())
     }
 
     private fun overviewRow(
