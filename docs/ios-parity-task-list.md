@@ -418,9 +418,10 @@ The standard checks are:
 
 - [ ] **PAR-103 — Build the existing-project file workspace**
 
-- **Status:** Ready
+- **Status:** Done/verify
 - **Priority:** P1
 - **Dependencies:** PAR-002
+- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Use the typed Kotlin SDK project-file operations to add a file tree; Compose, `.env`,
   and text editing; save/create; rename/move/delete; variable-resolution preview; and resolved YAML.
   Keep archived and GitOps projects read-only where required.
@@ -430,6 +431,13 @@ The standard checks are:
   - [ ] Reload, save failure, concurrent server change, unsupported/binary file, and archived/GitOps
     states preserve data and explain why an action is unavailable.
   - [ ] Typed SDK calls are used directly and mapping/state logic has focused tests.
+
+  **Validation evidence (2026-09-01):** Implemented on `parity/projects-workspace-batch` using
+  `libarcane-kotlin` workspace contracts from `parity/projects-workspace-contracts`. Focused mapping,
+  protected-path/GitOps structure, conflict rebase, partial-save, path-safety, permission, and
+  read-only tests pass in the full Android unit-test gate. Arcane's present Compose/`.env` update
+  contract is explicitly surfaced as last-write-wins. The consolidated device/live-server matrix
+  remains pending.
 
 - [ ] **PAR-104 — Add signed-in account/profile management**
 
@@ -565,9 +573,10 @@ The standard checks are:
 
 - [ ] **PAR-113 — Add scoped project deploy options**
 
-- **Status:** Ready
+- **Status:** Done/verify
 - **Priority:** P1
 - **Dependencies:** PAR-002
+- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Use the Kotlin SDK's existing `DeployOptions` to let users choose pull policy and force
   recreation before deploy. Store defaults by normalized server, user, environment, and project.
   PAR-202 will later adopt the same options when it becomes the operation owner.
@@ -580,11 +589,17 @@ The standard checks are:
     fabricating success after failure or cancellation.
   - [ ] Mapping/persistence tests and device/live-server deploy evidence are recorded.
 
+  **Validation evidence (2026-09-01):** Typed missing/always/never and force-recreation values flow
+  unchanged to deploy and redeploy streams; scoped persistence and terminal failure behavior have
+  focused tests. Automated SDK and Android gates pass; consolidated device/live deploy evidence is
+  still pending.
+
 - [ ] **PAR-114 — Complete template discovery, import, and deployment**
 
-- **Status:** Ready
+- **Status:** Done/verify
 - **Priority:** P1
 - **Dependencies:** PAR-004
+- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Extend the existing Android registry CRUD, grouped browser, preview, and deploy flow with
   current iOS outcomes: search, local/remote source filtering, metadata, remote download, and complete
   result loading through the typed Kotlin template service.
@@ -597,13 +612,21 @@ The standard checks are:
     hands long-running work to PAR-202 when applicable.
   - [ ] Pagination/filter/download state has focused tests and a live-server import/deploy check.
 
+  **Validation evidence (2026-09-01):** Complete typed pagination, search/source filtering,
+  composite identity, metadata/preview retry, remote import, and exact-content project-creation
+  handoff are implemented with focused state and permission tests. Automated gates pass; the
+  consolidated live import/deploy check remains pending.
+
 - [ ] **PAR-115 — Add container-registry display names**
 
-- **Status:** Ready
+- **Status:** Done/verify
 - **Priority:** P1
 - **Dependencies:** None
-- **Scope:** Add the current optional registry `name` field to Kotlin SDK read/create/update/sync models,
-  then expose it in Android list and form UI while retaining URL fallback for older records.
+- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
+- **Scope:** Current Arcane and both SDKs have no registry `name` field. Derive a stable Android
+  display name from description/provider/URL with URL/ID disambiguation, preserve credentials and
+  unrelated fields on edit, and add the current `repositoryNames` field to Kotlin SDK
+  read/create/update/sync models.
 - **Acceptance criteria:**
   - [ ] Missing, blank, duplicate, and unknown-server values decode safely and display a stable URL/ID
     fallback.
@@ -611,6 +634,11 @@ The standard checks are:
     values.
   - [ ] List, preview, pull-usage, and destructive confirmations identify the same registry clearly.
   - [ ] SDK serialization plus Android mapping/form tests pass against old and current payload fixtures.
+
+  **Validation evidence (2026-09-01):** Exact current-server and both-SDK audits disproved the stale
+  `name`-field premise. Derived display identities, duplicate fallback, unknown provider types,
+  credential-preserving requests, and repository-name compatibility have focused tests. Both SDK
+  and Android automated gates pass; the consolidated live registry check remains pending.
 
 ## Phase 2: Own long-running operations before adding system surfaces
 
