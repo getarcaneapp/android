@@ -19,12 +19,16 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.RemoveCircle
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,6 +55,7 @@ import app.getarcane.android.core.loadCompletePaginatedCollection
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.screens.settings.CircleIcon
+import app.getarcane.android.ui.screens.settings.ConfirmDialog
 import app.getarcane.android.ui.screens.settings.FormSectionHeader
 import app.getarcane.android.ui.screens.settings.FormErrorRow
 import app.getarcane.android.ui.screens.settings.InfoAlert
@@ -61,30 +66,28 @@ import app.getarcane.android.ui.screens.settings.Pill
 import app.getarcane.android.ui.screens.settings.SettingsListScaffold
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.sdk.models.containerregistry.ContainerRegistry
-import app.getarcane.sdk.models.containerregistry.CreateContainerRegistry
-import app.getarcane.sdk.models.containerregistry.UpdateContainerRegistry
-import app.getarcane.sdk.models.user.isAdmin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Container registries list (admin-only) with create/edit/delete. Port of iOS `ContainerRegistriesView`. */
+/** Container registries list with permission-aware typed CRUD. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContainerRegistriesScreen() {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val scope = rememberCoroutineScope()
-    val isAdmin = manager.currentUser?.isAdmin ?: false
+    val permissions = registryPermissionPolicy(manager.currentUser)
 
     var state by remember { mutableStateOf<Loadable<List<ContainerRegistry>>>(Loadable.Loading) }
     var refreshKey by remember { mutableStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
     var showCreate by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<ContainerRegistry?>(null) }
+    var pendingDelete by remember { mutableStateOf<ContainerRegistryDisplay?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(refreshKey, isAdmin) {
-        if (!isAdmin || client == null) return@LaunchedEffect
+    LaunchedEffect(refreshKey, permissions.canList, permissions.canRead) {
+        if (!permissions.canList || !permissions.canRead || client == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
             Loadable.Success(
@@ -102,12 +105,12 @@ fun ContainerRegistriesScreen() {
 
     SettingsListScaffold(
         title = "Container Registries",
-        onAdd = if (isAdmin) ({ showCreate = true }) else null,
+        onAdd = if (permissions.canCreate) ({ showCreate = true }) else null,
         addContentDescription = "Add registry",
     ) { padding ->
         when {
-            !isAdmin -> Box(Modifier.fillMaxSize().padding(padding)) {
-                ContentUnavailable("Admin Required", Icons.Filled.Lock, "Only administrators can manage container registries.")
+            !permissions.canList || !permissions.canRead -> Box(Modifier.fillMaxSize().padding(padding)) {
+                ContentUnavailable("Registries Access Required", Icons.Filled.Lock, "Your role cannot view container registries.")
             }
             else -> PullToRefreshBox(
                 isRefreshing = refreshing,
@@ -122,20 +125,13 @@ fun ContainerRegistriesScreen() {
                             ContentUnavailable("No Container Registries", Icons.Filled.Cloud)
                         } else {
                             LazyColumn(Modifier.fillMaxSize()) {
-                                items(s.value, key = { it.id }) { registry ->
+                                items(containerRegistryDisplays(s.value), key = { it.registry.id }) { display ->
                                     RegistryRow(
-                                        registry = registry,
-                                        onEdit = { editing = registry },
-                                        onDelete = {
-                                            scope.launch {
-                                                try {
-                                                    client?.registries?.delete(registry.id)
-                                                    refreshKey++
-                                                } catch (e: Throwable) {
-                                                    actionError = friendlyErrorMessage(e)
-                                                }
-                                            }
-                                        },
+                                        display = display,
+                                        canEdit = permissions.canUpdate,
+                                        canDelete = permissions.canDelete,
+                                        onEdit = { editing = display.registry },
+                                        onDelete = { pendingDelete = display },
                                     )
                                 }
                             }
@@ -153,39 +149,70 @@ fun ContainerRegistriesScreen() {
         RegistryFormDialog(registry = reg, onDismiss = { editing = null }, onSaved = { editing = null; refreshKey++ })
     }
 
+    pendingDelete?.let { display ->
+        ConfirmDialog(
+            title = "Delete Registry",
+            message = "Delete ${display.title}? This removes its saved credentials.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                scope.launch {
+                    try {
+                        client?.registries?.delete(display.registry.id)
+                        refreshKey++
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        actionError = friendlyErrorMessage(e)
+                    }
+                }
+            },
+            onDismiss = { pendingDelete = null },
+        )
+    }
+
     actionError?.let { msg -> InfoAlert("Couldn't Delete Registry", msg, { actionError = null }) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RegistryRow(registry: ContainerRegistry, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun RegistryRow(
+    display: ContainerRegistryDisplay,
+    canEdit: Boolean,
+    canDelete: Boolean,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val registry = display.registry
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(onClick = onEdit, onLongClick = { menu = true })
+                .combinedClickable(
+                    onClick = { if (canEdit) onEdit() },
+                    onLongClick = { if (canEdit || canDelete) menu = true },
+                )
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             CircleIcon(Icons.Filled.Cloud, ArcanePurple, size = 36)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(registry.url, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                registry.description?.takeIf { it.isNotEmpty() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                Text(display.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(display.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (!registry.enabled) Pill("Disabled", MaterialTheme.colorScheme.onSurfaceVariant)
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() }, leadingIcon = { Icon(Icons.Filled.Edit, null) })
-            DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Filled.Delete, null) })
+            if (canEdit) {
+                DropdownMenuItem(text = { Text("Edit") }, onClick = { menu = false; onEdit() }, leadingIcon = { Icon(Icons.Filled.Edit, null) })
+            }
+            if (canDelete) {
+                DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() }, leadingIcon = { Icon(Icons.Filled.Delete, null) })
+            }
         }
     }
 }
-
-private fun String?.nilIfEmpty(): String? = this?.takeIf { it.isNotEmpty() }
 
 /** Create/edit a container registry (generic or AWS ECR). Port of iOS `RegistryFormView`. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -207,10 +234,11 @@ private fun RegistryFormDialog(registry: ContainerRegistry?, onDismiss: () -> Un
     var awsAccessKeyId by remember { mutableStateOf(registry?.awsAccessKeyId ?: "") }
     var awsSecretAccessKey by remember { mutableStateOf("") }
     var awsRegion by remember { mutableStateOf(registry?.awsRegion ?: "") }
+    var repositoryNames by remember { mutableStateOf(registry?.repositoryNames ?: emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val isAws = registryType == "ecr"
+    val isAws = registryType.equals("ecr", ignoreCase = true)
     val pickerValue = if (registryType == "ecr") "ecr" else "generic"
 
     val hasChanges: Boolean = if (registry == null) {
@@ -227,7 +255,8 @@ private fun RegistryFormDialog(registry: ContainerRegistry?, onDismiss: () -> Un
             awsAccessKeyId != (registry.awsAccessKeyId ?: "") ||
             awsRegion != (registry.awsRegion ?: "") ||
             token.isNotEmpty() ||
-            awsSecretAccessKey.isNotEmpty()
+            awsSecretAccessKey.isNotEmpty() ||
+            (manager.supportsPost26MobileFeatures && repositoryNames != registry.repositoryNames)
     }
 
     fun save() {
@@ -235,39 +264,30 @@ private fun RegistryFormDialog(registry: ContainerRegistry?, onDismiss: () -> Un
         scope.launch {
             loading = true; error = null
             try {
+                val values = ContainerRegistryFormValues(
+                    url = url,
+                    username = username,
+                    token = token,
+                    description = description,
+                    enabled = enabled,
+                    insecure = insecure,
+                    registryType = pickerValue,
+                    awsAccessKeyId = awsAccessKeyId,
+                    awsSecretAccessKey = awsSecretAccessKey,
+                    awsRegion = awsRegion,
+                    repositoryNames = repositoryNames,
+                )
                 if (registry != null) {
                     c.registries.update(
                         registry.id,
-                        UpdateContainerRegistry(
-                            url = url,
-                            username = username.nilIfEmpty(),
-                            token = token.nilIfEmpty(),
-                            description = description.nilIfEmpty(),
-                            insecure = insecure,
-                            enabled = enabled,
-                            registryType = registryType.nilIfEmpty(),
-                            awsAccessKeyId = awsAccessKeyId.nilIfEmpty(),
-                            awsSecretAccessKey = awsSecretAccessKey.nilIfEmpty(),
-                            awsRegion = awsRegion.nilIfEmpty(),
-                        ),
+                        buildUpdateRegistryRequest(values, registry, manager.supportsPost26MobileFeatures),
                     )
                 } else {
-                    c.registries.create(
-                        CreateContainerRegistry(
-                            url = url,
-                            username = username,
-                            token = token,
-                            description = description.nilIfEmpty(),
-                            insecure = insecure,
-                            enabled = enabled,
-                            registryType = registryType.ifEmpty { "custom" },
-                            awsAccessKeyId = awsAccessKeyId,
-                            awsSecretAccessKey = awsSecretAccessKey,
-                            awsRegion = awsRegion,
-                        ),
-                    )
+                    c.registries.create(buildCreateRegistryRequest(values, manager.supportsPost26MobileFeatures))
                 }
                 onSaved()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 error = friendlyErrorMessage(e)
             } finally {
@@ -304,8 +324,15 @@ private fun RegistryFormDialog(registry: ContainerRegistry?, onDismiss: () -> Un
                     label = "Type",
                     selected = pickerValue,
                     options = listOf("generic", "ecr"),
-                    optionLabel = { if (it == "ecr") "AWS ECR" else "Generic" },
+                    optionLabel = {
+                        when {
+                            isEditing && registry?.registryType !in setOf("generic", "custom", "ecr") -> registry?.registryType.orEmpty()
+                            it == "ecr" -> "AWS ECR"
+                            else -> "Generic"
+                        }
+                    },
                     onSelect = { registryType = it },
+                    enabled = !isEditing,
                 )
                 LabeledToggle("Enabled", enabled, { enabled = it })
                 LabeledToggle("Insecure", insecure, { insecure = it })
@@ -319,6 +346,35 @@ private fun RegistryFormDialog(registry: ContainerRegistry?, onDismiss: () -> Un
                     LabeledTextField("Access Key ID", awsAccessKeyId, { awsAccessKeyId = it })
                     LabeledTextField(if (isEditing) "New Secret Access Key" else "Secret Access Key", awsSecretAccessKey, { awsSecretAccessKey = it }, isPassword = true)
                     LabeledTextField("Region (e.g. us-east-1)", awsRegion, { awsRegion = it })
+                }
+
+                if (manager.supportsPost26MobileFeatures) {
+                    FormSectionHeader("Repository Names")
+                    repositoryNames.forEachIndexed { index, repository ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedTextField(
+                                value = repository,
+                                onValueChange = { value -> repositoryNames = repositoryNames.toMutableList().also { it[index] = value } },
+                                label = { Text("owner/image") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = { repositoryNames = repositoryNames.filterIndexed { itemIndex, _ -> itemIndex != index } }) {
+                                Icon(Icons.Filled.RemoveCircle, contentDescription = "Remove repository name")
+                            }
+                        }
+                    }
+                    TextButton(
+                        onClick = { repositoryNames = repositoryNames + "" },
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    ) {
+                        Icon(Icons.Filled.Add, null)
+                        Text("Add Repository Name")
+                    }
                 }
 
                 error?.let { FormErrorRow(it) }

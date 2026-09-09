@@ -19,7 +19,7 @@ Arcane Mobile is the official Android companion for [Arcane](https://github.com/
 
 ## Documentation
 
-For setup instructions, configuration details, and development guides, visit the **[official documentation site](https://getarcane.app)**.
+For setup instructions, configuration details, and development guides, visit the **[official documentation site](https://getarcane.app/docs)**.
 
 For continuation context from the currently running Android app, see [`docs/current-app-state.md`](docs/current-app-state.md).
 

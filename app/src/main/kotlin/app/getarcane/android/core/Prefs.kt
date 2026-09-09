@@ -105,6 +105,8 @@ class AppearancePreferences internal constructor(
     private val prefs: Prefs,
     private val scope: CoroutineScope,
 ) {
+    private val stateLock = Any()
+
     private val mutableThemeMode = MutableStateFlow(AppThemeMode.AUTO)
     val themeMode: StateFlow<AppThemeMode> = mutableThemeMode.asStateFlow()
 
@@ -113,41 +115,74 @@ class AppearancePreferences internal constructor(
 
     private var themeWriteJob: Job? = null
     private var accentWriteJob: Job? = null
+    private var pendingThemeMode: AppThemeMode? = null
+    private var pendingAccentHex: String? = null
 
     init {
         scope.launch {
-            prefs.themeMode.collect { mutableThemeMode.value = it }
+            prefs.themeMode.collect { persisted ->
+                synchronized(stateLock) {
+                    val pending = pendingThemeMode
+                    if (pending == null || pending == persisted) {
+                        if (pending == persisted) pendingThemeMode = null
+                        mutableThemeMode.value = persisted
+                    }
+                }
+            }
         }
         scope.launch {
-            prefs.accentHex.collect { mutableAccentHex.value = it.orEmpty() }
+            prefs.accentHex.collect { persistedValue ->
+                val persisted = persistedValue.orEmpty()
+                synchronized(stateLock) {
+                    val pending = pendingAccentHex
+                    if (pending == null || pending == persisted) {
+                        if (pending == persisted) pendingAccentHex = null
+                        mutableAccentHex.value = persisted
+                    }
+                }
+            }
         }
     }
 
     fun setThemeMode(value: AppThemeMode) {
-        mutableThemeMode.value = value
+        synchronized(stateLock) {
+            pendingThemeMode = value
+            mutableThemeMode.value = value
+        }
         themeWriteJob?.cancel()
         themeWriteJob = scope.launch {
             try {
                 prefs.setThemeMode(value)
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                if (mutableThemeMode.value == value) {
-                    mutableThemeMode.value = prefs.themeMode.first()
+                val persisted = prefs.themeMode.first()
+                synchronized(stateLock) {
+                    if (pendingThemeMode == value) {
+                        pendingThemeMode = null
+                        mutableThemeMode.value = persisted
+                    }
                 }
             }
         }
     }
 
     fun setAccentHex(value: String) {
-        mutableAccentHex.value = value
+        synchronized(stateLock) {
+            pendingAccentHex = value
+            mutableAccentHex.value = value
+        }
         accentWriteJob?.cancel()
         accentWriteJob = scope.launch {
             try {
                 prefs.setAccentHex(value)
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                if (mutableAccentHex.value == value) {
-                    mutableAccentHex.value = prefs.accentHex.first().orEmpty()
+                val persisted = prefs.accentHex.first().orEmpty()
+                synchronized(stateLock) {
+                    if (pendingAccentHex == value) {
+                        pendingAccentHex = null
+                        mutableAccentHex.value = persisted
+                    }
                 }
             }
         }

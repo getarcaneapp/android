@@ -50,6 +50,8 @@ class ArcaneClientManager(context: Context) {
     var serverUrl by mutableStateOf(""); private set
     var currentUser by mutableStateOf<User?>(null); private set
     var capabilities by mutableStateOf(ServerCapabilities.UNKNOWN); private set
+    var supportsPost26MobileFeatures by mutableStateOf(false); private set
+    var supportsProjectWorkspaceContract by mutableStateOf(false); private set
     var isLoading by mutableStateOf(false); private set
     var errorMessage by mutableStateOf<String?>(null); private set
     var oidc by mutableStateOf<OidcStatusInfo?>(null); private set
@@ -117,8 +119,13 @@ class ArcaneClientManager(context: Context) {
                 },
                 validateSavedSession = {
                     val c = requireNotNull(client)
-                    currentUser = c.auth.me()
-                    capabilities = c.serverCapabilities()
+                    val restoredUser = c.auth.me()
+                    val detectedCapabilities = c.serverCapabilities()
+                    val mobileFeatures = detectMobileFeatures(c)
+                    currentUser = restoredUser
+                    capabilities = detectedCapabilities
+                    supportsPost26MobileFeatures = mobileFeatures.post26
+                    supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
                 },
                 refreshLoginMethods = ::refreshOidc,
                 updateStatus = { authStatus = it },
@@ -228,6 +235,8 @@ class ArcaneClientManager(context: Context) {
         resetEnvironment()
         currentUser = null
         capabilities = ServerCapabilities.UNKNOWN
+        supportsPost26MobileFeatures = false
+        supportsProjectWorkspaceContract = false
         oidc = null
         cookieJar.clear()
         serverUrl = nextIdentity.normalizedUrl
@@ -251,9 +260,12 @@ class ArcaneClientManager(context: Context) {
             try {
                 val response = c.auth.login(username, password)
                 val detectedCapabilities = c.serverCapabilities()
+                val mobileFeatures = detectMobileFeatures(c)
                 if (!isCurrentClient(generation, c)) return@launch
                 currentUser = response.user
                 capabilities = detectedCapabilities
+                supportsPost26MobileFeatures = mobileFeatures.post26
+                supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
                 authStatus = AuthStatus.AUTHENTICATED
             } catch (e: CancellationException) {
                 throw e
@@ -282,6 +294,8 @@ class ArcaneClientManager(context: Context) {
             cookieJar.clear()
             currentUser = null
             capabilities = ServerCapabilities.UNKNOWN
+            supportsPost26MobileFeatures = false
+            supportsProjectWorkspaceContract = false
             oidc = null
             refreshOidc()
         }
@@ -327,9 +341,12 @@ class ArcaneClientManager(context: Context) {
                     c.auth.oidcCallback(code = code, state = state, mobileRedirectUri = oidcRedirectUri)
                 }
                 val detectedCapabilities = c.serverCapabilities()
+                val mobileFeatures = detectMobileFeatures(c)
                 if (!isCurrentClient(generation, c)) return@launch
                 currentUser = response.user
                 capabilities = detectedCapabilities
+                supportsPost26MobileFeatures = mobileFeatures.post26
+                supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
                 authStatus = AuthStatus.AUTHENTICATED
             } catch (e: CancellationException) {
                 throw e
@@ -355,6 +372,8 @@ class ArcaneClientManager(context: Context) {
         serverUrl = ""
         currentUser = null
         capabilities = ServerCapabilities.UNKNOWN
+        supportsPost26MobileFeatures = false
+        supportsProjectWorkspaceContract = false
         oidc = null
         isLoading = false
         isStartingDemo = false
@@ -436,9 +455,12 @@ class ArcaneClientManager(context: Context) {
                 try {
                     val response = c.auth.login(session.username, session.password)
                     val detectedCapabilities = c.serverCapabilities()
+                    val mobileFeatures = detectMobileFeatures(c)
                     if (!isCurrentClient(generation, c)) return@launch
                     currentUser = response.user
                     capabilities = detectedCapabilities
+                    supportsPost26MobileFeatures = mobileFeatures.post26
+                    supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
                     demoEndsAt = session.endsAtMillis
                     authStatus = AuthStatus.AUTHENTICATED
                     DemoService.startHeartbeat(scope)
@@ -476,6 +498,8 @@ class ArcaneClientManager(context: Context) {
         clientGeneration++
         currentUser = null
         capabilities = ServerCapabilities.UNKNOWN
+        supportsPost26MobileFeatures = false
+        supportsProjectWorkspaceContract = false
         oidc = null
         demoEndsAt = null
         serverUrl = ""
@@ -514,6 +538,23 @@ class ArcaneClientManager(context: Context) {
         activeEnvironmentName = name
         scope.launch { prefs.setActiveEnv(id.rawValue, name) }
     }
+
+    private suspend fun detectMobileFeatures(client: ArcaneClient): MobileFeatureSupport = try {
+        val version = client.version.appVersion()
+        MobileFeatureSupport(
+            post26 = version.supportsPost26MobileFeatures,
+            projectWorkspace = version.supportsProjectWorkspaceContract,
+        )
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Throwable) {
+        MobileFeatureSupport()
+    }
+
+    private data class MobileFeatureSupport(
+        val post26: Boolean = false,
+        val projectWorkspace: Boolean = false,
+    )
 
     private suspend fun refreshOidc() {
         val c = client ?: return
