@@ -14,9 +14,9 @@ The analysis is pinned to these product revisions:
 | --- | --- | --- |
 | iOS | [`6088fcc0ef04dc906ce74e9129dffa96894a6da5`](https://github.com/getarcaneapp/ios/tree/6088fcc0ef04dc906ce74e9129dffa96894a6da5) | Current `origin/main`; mobile behavior authority for this refresh |
 | iOS resolved Swift SDK | [`facc40e20e32b7d6600b004fd744a214bbd2a166`](https://github.com/getarcaneapp/libarcane-swift/tree/facc40e20e32b7d6600b004fd744a214bbd2a166) | Current `origin/main`; compared for account, passkey/MFA, variables, and upgrade contracts |
-| Android | [`3da9770a9621dd32fd969bee15d1c7d25c93540b`](https://github.com/getarcaneapp/android/tree/3da9770a9621dd32fd969bee15d1c7d25c93540b) | Current `origin/main`; includes the completed Projects Workspace batch and Dashboard image-count alignment |
+| Android | [`27aa01b77f10f421c7ebea5d6648b66001847cd2`](https://github.com/getarcaneapp/android/tree/27aa01b77f10f421c7ebea5d6648b66001847cd2) | Current `origin/main`; includes the completed Projects Workspace and Accounts and Administration batches |
 | Kotlin SDK | [`7787bff82973302062d1d0c8db4c12f09547c5b0`](https://github.com/getarcaneapp/libarcane-kotlin/tree/7787bff82973302062d1d0c8db4c12f09547c5b0) | Current `origin/main`; Accounts and Administration contracts merged from PR #7 |
-| Arcane | [`16db5a33747b49350407073aa0040baa5e151947`](https://github.com/getarcaneapp/arcane/tree/16db5a33747b49350407073aa0040baa5e151947) | Wire-contract authority; live compatibility exercised on 2.10.2 tag `670ee2b` |
+| Arcane | [`6a9ff7aa64fbec74e379b5dc9622699189093d73`](https://github.com/getarcaneapp/arcane/tree/6a9ff7aa64fbec74e379b5dc9622699189093d73) | Current `origin/main` wire-contract authority; live compatibility exercised on 2.10.2 tag `670ee2b` |
 
 This refresh revalidated the Accounts and Administration slice against current iOS, both SDKs,
 Arcane handlers/types, Android `origin/main`, and the canonical backlog. It also reconciles the
@@ -29,8 +29,9 @@ evidence is maintained in the canonical task list.
 ### Method and limitations
 
 Most rows remain a static source comparison. The completed Projects Workspace and Accounts and
-Administration rows additionally have API 30 live evidence against disposable Arcane 2.10.2;
-provider-dependent WebAuthn enrollment/login still requires a server with a completing ceremony.
+Administration rows additionally have API 30 live evidence against disposable Arcane 2.10.2, and
+the Android backup-policy row has API 35 cloud and device-transfer restore evidence. Provider-
+dependent WebAuthn enrollment/login still requires a server with a completing ceremony.
 Items outside those batches that depend on runtime permissions, signing, background execution, or
 distribution still require targeted runtime validation.
 
@@ -69,8 +70,9 @@ scoped global variables through typed SDK contracts.
 The most urgent Android work is smaller than those strategic gaps. PAR-002 closes the change-server
 state and credential-scoping defect; PAR-005 closes the unreachable admin-navigation paths; and
 PAR-006 gives App Settings deliberate Android/project links plus Android-owned, version-filtered
-release notes. The appearance selector is still non-persistent and does not drive the app theme.
-That should be fixed before broad parity work. The old recommendation to expose a separate
+release notes. PAR-009 now persists Light/Dark/Auto and accent choices at the app theme root, while
+PAR-007 deliberately excludes that server-adjacent preference file from backup. The old
+recommendation to expose a separate
 environment list is no longer a parity blocker: iOS 0.7.0 deliberately makes the dashboard its
 single fleet destination, which is compatible with Android's dashboard-plus-detail outcome.
 
@@ -97,7 +99,7 @@ The recommended sequence is:
 | Per-tab navigation continuity | Independent navigation stacks, environment-aware rebuild, deep-link restoration. | Android rebuilds the selected tab's content and loses that tab's nested stack when switching tabs. | **Android gap.** Preserve independent stacks across tab switches; separately validate configuration-change and process-recreation restoration. |
 | Deep links and external entry points | Deep links can select tab/environment/container/project; quick actions and widgets use them. | OIDC callback handling exists, but no comparable authenticated resource deep-link system was found. | **Android gap.** Define stable internal routes before widgets and shortcuts. |
 | Release notes | Version-aware release notes display automatically when appropriate. | A manually reachable What's New surface shows Android-owned notes at or below the installed version and identifies only an exact installed-version match. Android does not automatically present new-version notes. | **Partial.** The release data and version boundary are safe; add automatic presentation only from the exact installed-version mapping. |
-| Appearance | Accent, sidebar preference, alternate icons, material compatibility, motion-aware polish. | Accent preference exists. Light/Dark/Auto is screen-local state, resets, and does not drive the application theme. | **Partial/defect.** Wire theme mode into persistent app-wide state before adding further appearance options. |
+| Appearance | Accent, sidebar preference, alternate icons, material compatibility, motion-aware polish. | Accent and Light/Dark/Auto persist through app-owned preferences and drive the application theme root. They intentionally reset to defaults after reinstall/restore because server and environment identity shares the same protected preference file. | **Partial.** Core theme persistence is complete; iOS retains additional icon, sidebar, and motion-aware appearance options. |
 | Localization | English-only; future-language intent is visible. | Most user-visible text is hard-coded; only minimal string resources exist. | **Shared gap**, with higher Android remediation cost. New work should use resources without coupling a feature to a full rewrite. |
 | Accessibility and interaction polish | Haptics, toasts, custom confirmations, reduce-motion handling, skeletons, tips, and review prompts. | Standard Compose semantics and confirmations exist, but no comparable coordinated polish layer was identified. | **Partial.** Audit accessibility, motion, haptics, and destructive confirmations as cross-cutting work. |
 
@@ -240,16 +242,16 @@ features” project; each needs a clear user scenario and data-security review.
 
 | Capability | iOS baseline | Android baseline | Status and action |
 | --- | --- | --- | --- |
-| Tokens | Shared Keychain with migration and widget access controls. | Encrypted token storage through the Android SDK layer. | **Parity** for secure application storage; review backup/extraction behavior. |
-| Preferences | App settings, navigation, cache policy, and account context persist. | DataStore persists server, accent, environment, and navigation tabs; SharedPreferences stores pins. Theme mode does not persist. | **Partial.** Consolidate ownership when adding theme/cache/operation state. |
+| Tokens | Shared Keychain with migration and widget access controls. | Encrypted token storage through the Android SDK layer; the token ciphertext file is excluded from backup and device transfer. | **Parity** for secure application storage and Android backup isolation. |
+| Preferences | App settings, navigation, cache policy, and account context persist. | DataStore persists server, appearance, environment, and navigation tabs; SharedPreferences stores pins and server-scoped project deploy defaults. | **Partial.** Consolidate ownership when adding cache/operation state. |
 | Response data | Bounded disk cache. | No equivalent response store. | **Android gap.** |
-| Android backup policy | Not applicable. | `app/src/main/AndroidManifest.xml` sets `android:allowBackup="true"` while `res/xml/data_extraction_rules.xml` retains template TODO guidance. | **Android defect/risk.** Explicitly exclude tokens and sensitive cached/server data; validate both legacy and current backup rules. |
+| Android backup policy | Not applicable. | A deny-by-default allowlist restores only local tab customization. Credentials, server/account identity, server-derived data, caches, and operation state are excluded from legacy cloud backup, Android 12+ cloud backup, and device transfer. API 35 cloud and D2D uninstall/reinstall tests restored only the tab DataStore. | **Android-native policy complete.** Keep the formats aligned and classify every new persistence location before inclusion. |
 
 ### Quality, testing, CI, and distribution
 
 | Capability | iOS baseline | Android baseline | Status and action |
 | --- | --- | --- | --- |
-| Unit tests | 29 XCTest methods across six files, still focused mainly on utilities and post-0.6 pagination/security regressions. | 24 JVM test files and 120 test methods, with useful coverage of authentication restoration, server credential/cache scoping, navigation, dashboard/updater logic, URL handling, ANSI parsing, and container completeness. | **Android strength.** |
+| Unit tests | 29 XCTest methods across six files, still focused mainly on utilities and post-0.6 pagination/security regressions. | 44 JVM test files and 261 test methods, with useful coverage of authentication restoration, server credential/cache scoping, navigation, dashboard/updater logic, URL handling, ANSI parsing, container completeness, and backup policy. | **Android strength.** |
 | UI/instrumented tests | No meaningful UI test suite identified. | Only the template/example instrumentation test was identified. | **Shared gap.** Add a small navigation/auth/destructive-confirmation suite before attempting broad UI automation. |
 | Integration/network contract tests | No broad suite identified. | No broad end-to-end contract suite identified. | **Shared gap.** SDK serialization/service tests should carry most wire-contract coverage. |
 | CI | No repository CI workflow was identified in the inspected iOS baseline. | CI uses JDK 21/API 35 and runs unit tests/build, with optional signed tag release support. | **Android strength.** |
@@ -280,7 +282,6 @@ composition, persistence, or platform work:
 - add widgets, shortcuts, and ongoing-operation notifications;
 - add response caching around existing read services;
 - add version-gated automatic What's New presentation;
-- define Android backup/extraction rules.
 
 ### Validate SDK coverage before estimating
 
@@ -332,12 +333,11 @@ views, create a second client/cache owner, or reproduce Apple-specific UI metaph
 ### P0: Correctness and reachable functionality
 
 PAR-002 completed the change-server foundation: prior client/user/capability/environment state is
-invalidated and credentials are scoped to a normalized server identity. Remaining P0 work is:
+invalidated and credentials are scoped to a normalized server identity. PAR-007 then established
+the deny-by-default backup boundary. Remaining P0 work is:
 
 1. Add version-gated automatic What's New presentation using PAR-006's exact installed-version
    mapping.
-2. Define backup/data-extraction exclusions for tokens, server data, future caches, and operation
-   state.
 
 ### P1: Complete high-frequency operational workflows
 
