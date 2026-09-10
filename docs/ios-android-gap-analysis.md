@@ -1,6 +1,6 @@
 # iOS-to-Android gap analysis
 
-Last reviewed: 2026-09-09
+Last reviewed: 2026-09-10
 
 This document compares Arcane's iOS application with the Android application to guide Android
 product planning. It is a source-analysis snapshot, not a promise that Android will reproduce every
@@ -14,8 +14,8 @@ The analysis is pinned to these product revisions:
 | --- | --- | --- |
 | iOS | [`6088fcc0ef04dc906ce74e9129dffa96894a6da5`](https://github.com/getarcaneapp/ios/tree/6088fcc0ef04dc906ce74e9129dffa96894a6da5) | Current `origin/main`; mobile behavior authority for this refresh |
 | iOS resolved Swift SDK | [`facc40e20e32b7d6600b004fd744a214bbd2a166`](https://github.com/getarcaneapp/libarcane-swift/tree/facc40e20e32b7d6600b004fd744a214bbd2a166) | Current `origin/main`; compared for account, passkey/MFA, variables, and upgrade contracts |
-| Android | [`26efa46809a24074417d5d42c06639e4287a4b8d`](https://github.com/getarcaneapp/android/tree/26efa46809a24074417d5d42c06639e4287a4b8d) | `origin/main` after the completed Projects Workspace batch |
-| Kotlin SDK | [`b3d80a2ffd39ea8c87b4699e9798268fc0ae7a4b`](https://github.com/getarcaneapp/libarcane-kotlin/tree/b3d80a2ffd39ea8c87b4699e9798268fc0ae7a4b) | `origin/main` before the Accounts and Administration contract batch |
+| Android | [`3da9770a9621dd32fd969bee15d1c7d25c93540b`](https://github.com/getarcaneapp/android/tree/3da9770a9621dd32fd969bee15d1c7d25c93540b) | Current `origin/main`; includes the completed Projects Workspace batch and Dashboard image-count alignment |
+| Kotlin SDK | [`7787bff82973302062d1d0c8db4c12f09547c5b0`](https://github.com/getarcaneapp/libarcane-kotlin/tree/7787bff82973302062d1d0c8db4c12f09547c5b0) | Current `origin/main`; Accounts and Administration contracts merged from PR #7 |
 | Arcane | [`16db5a33747b49350407073aa0040baa5e151947`](https://github.com/getarcaneapp/arcane/tree/16db5a33747b49350407073aa0040baa5e151947) | Wire-contract authority; live compatibility exercised on 2.10.2 tag `670ee2b` |
 
 This refresh revalidated the Accounts and Administration slice against current iOS, both SDKs,

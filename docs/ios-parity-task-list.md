@@ -1,6 +1,6 @@
 # Android iOS-parity task list
 
-Last updated: 2026-09-09
+Last updated: 2026-09-10
 
 This is the working backlog for bringing Arcane Android to product-outcome parity with iOS. It
 turns the findings in [the pinned gap analysis](ios-android-gap-analysis.md) into issue-sized work;
@@ -13,8 +13,8 @@ The source comparison is pinned to:
 
 - iOS `6088fcc0ef04dc906ce74e9129dffa96894a6da5`
 - libarcane-swift `facc40e20e32b7d6600b004fd744a214bbd2a166`
-- Android `26efa46809a24074417d5d42c06639e4287a4b8d`
-- libarcane-kotlin `b3d80a2ffd39ea8c87b4699e9798268fc0ae7a4b`
+- Android `3da9770a9621dd32fd969bee15d1c7d25c93540b`
+- libarcane-kotlin `7787bff82973302062d1d0c8db4c12f09547c5b0`
 - Arcane `16db5a33747b49350407073aa0040baa5e151947` (live compatibility target:
   2.10.2 tag `670ee2b34ea7b0fb2917643229b6ce9070ee9742`)
 
@@ -108,9 +108,10 @@ passed. The provider page did not complete an actual WebAuthn ceremony; determin
 Android tests cover Credential Manager mapping and all ceremony transitions without treating that
 external-provider boundary as a successful credential.
 
-The typed contract change is libarcane-kotlin commit `bf6df2f` in PR #7, based on `b3d80a2`.
-Android integration is based on `26efa46`; SDK and Android publication remain separate so the SDK
-contract can land first.
+The typed contract change is libarcane-kotlin commit `bf6df2f` in PR #7, merged as `7787bff` on
+2026-09-10. Android integration was initially based on `26efa46` and refreshed onto `3da9770` after
+the SDK merge. SDK and Android publication remain separate; the SDK contract has landed and Android
+PR #51 is the remaining integration change.
 
 Both live matrices used image digest
 `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`. No production data or
