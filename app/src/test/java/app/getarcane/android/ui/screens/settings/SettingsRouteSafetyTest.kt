@@ -25,6 +25,7 @@ class SettingsRouteSafetyTest {
                 route = SettingsRoutes.USER_DETAIL,
                 isAdmin = false,
                 supportsV2 = true,
+                supportsPost26 = true,
             ),
         )
         assertTrue(
@@ -32,6 +33,7 @@ class SettingsRouteSafetyTest {
                 route = SettingsRoutes.ROLE_DETAIL,
                 isAdmin = true,
                 supportsV2 = false,
+                supportsPost26 = true,
             ),
         )
         assertFalse(
@@ -39,6 +41,7 @@ class SettingsRouteSafetyTest {
                 route = SettingsRoutes.ROLE_DETAIL,
                 isAdmin = true,
                 supportsV2 = true,
+                supportsPost26 = true,
             ),
         )
         assertFalse(
@@ -46,6 +49,49 @@ class SettingsRouteSafetyTest {
                 route = SettingsRoutes.APPEARANCE,
                 isAdmin = false,
                 supportsV2 = false,
+                supportsPost26 = false,
+            ),
+        )
+    }
+
+    @Test
+    fun accountSecurityResetsWhenPost26ContractsDisappear() {
+        assertTrue(
+            shouldResetUnauthorizedSettingsRoute(
+                route = SettingsRoutes.ACCOUNT_SECURITY,
+                isAdmin = false,
+                supportsV2 = true,
+                supportsPost26 = false,
+            ),
+        )
+        assertFalse(
+            shouldResetUnauthorizedSettingsRoute(
+                route = SettingsRoutes.ACCOUNT_SECURITY,
+                isAdmin = false,
+                supportsV2 = true,
+                supportsPost26 = true,
+            ),
+        )
+    }
+
+    @Test
+    fun variablesRouteResetsWhenReadPermissionDisappears() {
+        assertTrue(
+            shouldResetUnauthorizedSettingsRoute(
+                route = AppTab.Variables.id,
+                isAdmin = false,
+                supportsV2 = true,
+                supportsPost26 = true,
+                canReadVariables = false,
+            ),
+        )
+        assertFalse(
+            shouldResetUnauthorizedSettingsRoute(
+                route = AppTab.Variables.id,
+                isAdmin = false,
+                supportsV2 = true,
+                supportsPost26 = true,
+                canReadVariables = true,
             ),
         )
     }

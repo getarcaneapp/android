@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleOidcRedirectIntent(intent)
+        handleAuthenticationRedirectIntent(intent)
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
@@ -75,10 +75,18 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleOidcRedirectIntent(intent)
+        handleAuthenticationRedirectIntent(intent)
     }
 
-    private fun handleOidcRedirectIntent(intent: Intent?) {
-        arcaneManager.handleOidcRedirect(intent?.data)
+    override fun onResume() {
+        super.onResume()
+        arcaneManager.handlePasskeyBrowserResume()
+    }
+
+    private fun handleAuthenticationRedirectIntent(intent: Intent?) {
+        val uri = intent?.data
+        if (!arcaneManager.handlePasskeyRedirect(uri)) {
+            arcaneManager.handleOidcRedirect(uri)
+        }
     }
 }

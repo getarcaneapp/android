@@ -55,71 +55,95 @@ import app.getarcane.android.ui.theme.ArcaneGray
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
+import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.system.UpgradeCheckResult
-import app.getarcane.sdk.models.user.isAdmin
+import app.getarcane.sdk.models.system.TriggerUpgradeResult
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private sealed interface UpgradePhase {
-    data object Checking : UpgradePhase
-    data class Ready(val result: UpgradeCheckResult) : UpgradePhase
-    data class CheckFailed(val message: String) : UpgradePhase
+    data class Availability(val state: UpgradeAvailability) : UpgradePhase
     data object Triggering : UpgradePhase
-    data class Triggered(val message: String) : UpgradePhase
+    data class Triggered(val outcome: UpgradeTriggerOutcome) : UpgradePhase
     data class TriggerFailed(val message: String) : UpgradePhase
 }
 
 /** Self-upgrade check + trigger flow. Port of iOS `SystemUpgradeView`. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SystemUpgradeScreen(onBack: () -> Unit) {
+fun SystemUpgradeScreen(
+    onBack: () -> Unit,
+    environmentId: EnvironmentId? = null,
+    environmentName: String? = null,
+) {
     val manager = LocalArcaneManager.current
-    val client = manager.client
-    val envId = manager.activeEnvironmentId
+    val session = manager.authenticatedClientScope()
+    val user = manager.currentUser
+    val envId = environmentId ?: manager.activeEnvironmentId
+    val envName = environmentName ?: manager.activeEnvironmentName
     val scope = rememberCoroutineScope()
-    val isAdmin = manager.currentUser?.isAdmin ?: false
 
-    var phase by remember { mutableStateOf<UpgradePhase>(UpgradePhase.Checking) }
+    var phase by remember(envId.rawValue) {
+        mutableStateOf<UpgradePhase>(UpgradePhase.Availability(UpgradeAvailability.Loading))
+    }
+    var refreshKey by remember(envId.rawValue) { mutableStateOf(0) }
     var showConfirm by remember { mutableStateOf(false) }
 
-    fun check() {
-        val c = client ?: run { phase = UpgradePhase.CheckFailed("Not connected"); return }
-        scope.launch {
-            phase = UpgradePhase.Checking
-            phase = try {
-                UpgradePhase.Ready(c.system.checkUpgrade(envId))
-            } catch (e: Throwable) {
-                UpgradePhase.CheckFailed(friendlyErrorMessage(e))
-            }
-        }
-    }
-
     fun trigger() {
-        val c = client ?: run { phase = UpgradePhase.TriggerFailed("Not connected"); return }
+        val captured = session ?: run { phase = UpgradePhase.TriggerFailed("Not connected"); return }
+        if (phase !is UpgradePhase.Availability ||
+            (phase as UpgradePhase.Availability).state !is UpgradeAvailability.Ready
+        ) return
         scope.launch {
             phase = UpgradePhase.Triggering
             phase = try {
-                c.system.triggerUpgrade(envId)
-                UpgradePhase.Triggered("Upgrade initiated. Arcane will restart shortly.")
+                val result = captured.client.system.triggerUpgrade(envId)
+                if (manager.isCurrent(captured)) {
+                    UpgradePhase.Triggered(mapUpgradeTriggerResult(result))
+                } else {
+                    return@launch
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
-                UpgradePhase.TriggerFailed(friendlyErrorMessage(e))
+                if (manager.isCurrent(captured)) UpgradePhase.TriggerFailed(friendlyErrorMessage(e)) else return@launch
             }
         }
     }
 
-    LaunchedEffect(Unit) { if (isAdmin) check() }
+    LaunchedEffect(session, user, envId.rawValue, refreshKey) {
+        val captured = session
+        val capturedUser = user
+        if (captured == null || capturedUser == null) {
+            phase = UpgradePhase.Availability(UpgradeAvailability.Error("Not connected"))
+            return@LaunchedEffect
+        }
+        phase = UpgradePhase.Availability(UpgradeAvailability.Loading)
+        val availability = resolveUpgradeAvailability(
+            user = capturedUser,
+            environmentId = envId.rawValue,
+            loadVersion = { captured.client.version.environmentVersion(envId) },
+            checkUpgrade = { captured.client.system.checkUpgrade(envId) },
+            errorMessage = ::friendlyErrorMessage,
+        )
+        if (manager.isCurrent(captured)) {
+            phase = UpgradePhase.Availability(availability)
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Upgrade Arcane") },
+                title = { Text("Upgrade Arcane · $envName") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    if (isAdmin && phase is UpgradePhase.Ready) {
-                        IconButton(onClick = { check() }) { Icon(Icons.Filled.Refresh, contentDescription = "Refresh") }
+                    val availability = (phase as? UpgradePhase.Availability)?.state
+                    if (availability != null && availability !is UpgradeAvailability.Loading) {
+                        IconButton(onClick = { refreshKey++ }) { Icon(Icons.Filled.Refresh, contentDescription = "Refresh") }
                     }
                 },
             )
@@ -133,19 +157,43 @@ fun SystemUpgradeScreen(onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            if (!isAdmin) {
-                ContentUnavailable("Admins Only", Icons.Filled.Lock, "Upgrading Arcane requires an administrator account.")
-                return@Column
-            }
             when (val p = phase) {
-                is UpgradePhase.Checking -> LoadingCard()
-                is UpgradePhase.Ready -> ReadyContent(p.result, onUpgradeClick = { showConfirm = true })
-                is UpgradePhase.CheckFailed -> ContentUnavailable("Couldn't Check for Upgrade", Icons.Filled.Warning, p.message)
+                is UpgradePhase.Availability -> when (val availability = p.state) {
+                    UpgradeAvailability.Loading -> LoadingCard()
+                    is UpgradeAvailability.Ready -> ReadyContent(availability.result, onUpgradeClick = { showConfirm = true })
+                    is UpgradeAvailability.Unauthorized -> ContentUnavailable(
+                        "Not Authorized",
+                        Icons.Filled.Lock,
+                        "Your account cannot check and trigger upgrades for $envName.",
+                    )
+                    is UpgradeAvailability.OlderServer -> ContentUnavailable(
+                        "Server Update Required",
+                        Icons.Filled.Warning,
+                        availability.summary(),
+                    )
+                    is UpgradeAvailability.Unsupported -> ContentUnavailable(
+                        "Self-upgrade Unavailable",
+                        Icons.Filled.Warning,
+                        availability.message,
+                    )
+                    is UpgradeAvailability.Unavailable -> ContentUnavailable(
+                        "No Upgrade Available",
+                        Icons.Filled.CheckCircle,
+                        availability.message,
+                    )
+                    is UpgradeAvailability.Error -> {
+                        ContentUnavailable("Couldn't Check for Upgrade", Icons.Filled.Warning, availability.message)
+                        OutlinedButton(onClick = { refreshKey++ }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Filled.Refresh, null)
+                            Text("  Check Again")
+                        }
+                    }
+                }
                 is UpgradePhase.Triggering -> TriggeringCard()
-                is UpgradePhase.Triggered -> TriggeredCard(p.message)
+                is UpgradePhase.Triggered -> TriggeredCard(p.outcome)
                 is UpgradePhase.TriggerFailed -> {
                     ContentUnavailable("Upgrade Failed", Icons.Filled.Warning, p.message)
-                    OutlinedButton(onClick = { check() }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { refreshKey++ }, modifier = Modifier.fillMaxWidth()) {
                         Icon(Icons.Filled.Refresh, null)
                         Text("  Check Again")
                     }
@@ -155,9 +203,10 @@ fun SystemUpgradeScreen(onBack: () -> Unit) {
     }
 
     if (showConfirm) {
+        val confirmationText = upgradeConfirmationText(envName)
         ConfirmDialog(
-            title = "Upgrade Arcane?",
-            message = "Arcane will restart. The mobile app may briefly lose connection.",
+            title = confirmationText.title,
+            message = confirmationText.message,
             confirmLabel = "Upgrade",
             onConfirm = { trigger() },
             onDismiss = { showConfirm = false },
@@ -222,13 +271,47 @@ private fun TriggeringCard() {
 }
 
 @Composable
-private fun TriggeredCard(message: String) {
-    HeroCard(ArcaneGreen, Icons.Filled.CheckCircle, "Upgrade Initiated", message)
-    InfoCard(
-        Icons.Filled.Info, ArcaneBlue, "Reconnecting shortly",
-        "A new Arcane container is starting. The mobile app may briefly lose connection — pull to refresh once it's back.",
+private fun TriggeredCard(outcome: UpgradeTriggerOutcome) {
+    when (outcome) {
+        is UpgradeTriggerOutcome.Restarting -> {
+            HeroCard(ArcaneGreen, Icons.Filled.CheckCircle, "Upgrade Initiated", outcome.message)
+            InfoCard(
+                Icons.Filled.Info, ArcaneBlue, "Reconnecting shortly",
+                "A new Arcane container is starting. The mobile app may briefly lose connection — pull to refresh once it's back.",
+            )
+            CircularProgressIndicator()
+        }
+        is UpgradeTriggerOutcome.UpToDate -> HeroCard(
+            ArcaneGreen,
+            Icons.Filled.CheckCircle,
+            "Already Up to Date",
+            outcome.message,
+        )
+    }
+}
+
+internal sealed interface UpgradeTriggerOutcome {
+    data class Restarting(val message: String) : UpgradeTriggerOutcome
+    data class UpToDate(val message: String) : UpgradeTriggerOutcome
+}
+
+internal data class UpgradeConfirmationText(val title: String, val message: String)
+
+internal fun upgradeConfirmationText(environmentName: String): UpgradeConfirmationText {
+    val label = environmentName.trim().ifEmpty { "this environment" }
+    return UpgradeConfirmationText(
+        title = "Upgrade Arcane on $label?",
+        message = "$label will restart its Arcane service. The mobile app may briefly lose connection.",
     )
-    CircularProgressIndicator()
+}
+
+internal fun mapUpgradeTriggerResult(result: TriggerUpgradeResult): UpgradeTriggerOutcome {
+    val message = result.message.trim().takeIf(String::isNotEmpty)
+    return if (result.upToDate) {
+        UpgradeTriggerOutcome.UpToDate(message ?: "Arcane is already up to date.")
+    } else {
+        UpgradeTriggerOutcome.Restarting(message ?: "Upgrade initiated. Arcane will restart shortly.")
+    }
 }
 
 @Composable

@@ -4,7 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -60,13 +60,18 @@ import app.getarcane.android.ui.screens.swarm.SwarmScreen
 import app.getarcane.android.ui.screens.updates.UpdatesScreen
 import app.getarcane.android.ui.screens.volumes.VolumesScreen
 import app.getarcane.android.ui.screens.whatsnew.WhatsNewScreen
-import app.getarcane.android.ui.theme.ArcaneRed
+import app.getarcane.android.ui.screens.settings.variables.VariablesScreen
+import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.models.notification.NotificationProvider
+import app.getarcane.sdk.models.role.Permission
+import app.getarcane.sdk.models.user.hasPermission
 import app.getarcane.sdk.models.user.isAdmin
 
 internal object SettingsRoutes {
     const val ROOT = "root"
+    const val ACCOUNT = "account"
+    const val ACCOUNT_SECURITY = "account/security"
     const val APP_SETTINGS = "app-settings"
     const val APPEARANCE = "appearance"
     const val WHATS_NEW = "whats-new"
@@ -110,9 +115,14 @@ internal fun shouldResetUnauthorizedSettingsRoute(
     route: String?,
     isAdmin: Boolean,
     supportsV2: Boolean,
+    supportsPost26: Boolean,
+    canReadVariables: Boolean = true,
 ): Boolean {
+    if (route == SettingsRoutes.ACCOUNT_SECURITY) return !supportsPost26
     val owner = settingsRouteAccessOwner(route) ?: return false
-    return (owner.requiresAdmin && !isAdmin) || (owner.requiresV2 && !supportsV2)
+    return (owner.requiresAdmin && !isAdmin) ||
+        (owner.requiresV2 && !supportsV2) ||
+        (owner == AppTab.Variables && !canReadVariables)
 }
 
 internal fun isEnvironmentScopedSettingsDetail(route: String?): Boolean = route in setOf(
@@ -141,12 +151,21 @@ fun SettingsScreen(
     val currentRoute = currentEntry?.destination?.route
     val isAdmin = manager.currentUser?.isAdmin ?: false
     val supportsV2 = manager.capabilities.mode == ServerCapabilities.Mode.RBAC
+    val supportsPost26 = manager.supportsPost26MobileFeatures
+    val canReadVariables = manager.currentUser?.hasPermission(Permission.Variables.READ) == true
     val environmentId = manager.activeEnvironmentId.rawValue
     var navigationEnvironmentId by remember { mutableStateOf(environmentId) }
 
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = SettingsRoutes.ROOT)
-    LaunchedEffect(currentRoute, isAdmin, supportsV2) {
-        if (shouldResetUnauthorizedSettingsRoute(currentRoute, isAdmin, supportsV2)) {
+    LaunchedEffect(currentRoute, isAdmin, supportsV2, supportsPost26, canReadVariables) {
+        if (shouldResetUnauthorizedSettingsRoute(
+                currentRoute,
+                isAdmin,
+                supportsV2,
+                supportsPost26,
+                canReadVariables,
+            )
+        ) {
             nav.popBackStack(SettingsRoutes.ROOT, inclusive = false)
         }
     }
@@ -172,6 +191,15 @@ fun SettingsScreen(
     }
     NavHost(navController = nav, startDestination = SettingsRoutes.ROOT) {
         composable(SettingsRoutes.ROOT) { SettingsRoot(nav) }
+        composable(SettingsRoutes.ACCOUNT) {
+            AccountScreen(
+                onBack = { nav.popBackStack() },
+                onOpenSecurity = { nav.navigate(SettingsRoutes.ACCOUNT_SECURITY) },
+            )
+        }
+        composable(SettingsRoutes.ACCOUNT_SECURITY) {
+            PasskeySecurityScreen(onBack = { nav.popBackStack() })
+        }
         AppTab.entries.forEach { tab ->
             composable(tab.id) { SettingsTabDestination(tab = tab, nav = nav) }
         }
@@ -236,6 +264,7 @@ private fun SettingsRoot(nav: NavHostController) {
     val tabsStore = remember { NavTabsStore(context) }
     val isAdmin = manager.currentUser?.isAdmin ?: false
     val supportsV2 = manager.capabilities.mode == ServerCapabilities.Mode.RBAC
+    val canReadVariables = manager.currentUser?.hasPermission(Permission.Variables.READ) == true
     val pinnedTabs = tabsStore.pinned.toSet()
 
     fun visibleTabs(section: TabSection): List<AppTab> =
@@ -243,10 +272,9 @@ private fun SettingsRoot(nav: NavHostController) {
             tab.section == section &&
                 tab !in pinnedTabs &&
                 (isAdmin || !tab.requiresAdmin) &&
-                (supportsV2 || !tab.requiresV2)
+                (supportsV2 || !tab.requiresV2) &&
+                (tab != AppTab.Variables || canReadVariables)
         }
-
-    var showLogoutConfirm by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -256,14 +284,23 @@ private fun SettingsRoot(nav: NavHostController) {
                     IconButton(onClick = { nav.navigate(SettingsRoutes.APP_SETTINGS) }) {
                         Icon(Icons.Filled.Settings, contentDescription = "App Settings")
                     }
-                    IconButton(onClick = { showLogoutConfirm = true }) {
-                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Sign Out", tint = ArcaneRed)
-                    }
                 },
             )
         },
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+            item(key = "account-header") { SettingsSectionHeader("Account") }
+            item(key = SettingsRoutes.ACCOUNT) {
+                val user = manager.currentUser
+                SettingsRow(
+                    title = user?.displayUsername ?: "Account",
+                    subtitle = user?.let { "@${it.username}" },
+                    icon = Icons.Filled.AccountCircle,
+                    iconColor = ArcaneBlue,
+                    onClick = { nav.navigate(SettingsRoutes.ACCOUNT) },
+                    trailing = { ChevronTrailing() },
+                )
+            }
             TabSection.entries.forEach { section ->
                 val tabs = visibleTabs(section)
                 if (tabs.isNotEmpty()) {
@@ -286,15 +323,6 @@ private fun SettingsRoot(nav: NavHostController) {
         }
     }
 
-    if (showLogoutConfirm) {
-        ConfirmDialog(
-            title = "Sign Out",
-            message = "You'll be signed out of this server.",
-            confirmLabel = "Sign Out",
-            onConfirm = { manager.logout() },
-            onDismiss = { showLogoutConfirm = false },
-        )
-    }
 }
 
 @Composable
@@ -310,6 +338,15 @@ private fun SettingsTabDestination(tab: AppTab, nav: NavHostController) {
         AppTab.Updates -> UpdatesScreen()
         AppTab.Activities -> ActivitiesTab()
         AppTab.Events -> EventsScreen()
+        AppTab.Variables -> {
+            val manager = LocalArcaneManager.current
+            VariablesScreen(
+                client = manager.client,
+                currentUser = manager.currentUser,
+                sessionKey = "${manager.serverSessionIdentity}|${manager.currentUser?.id.orEmpty()}|${System.identityHashCode(manager.client)}",
+                onBack = { nav.popBackStack() },
+            )
+        }
         AppTab.GitRepositories -> GitRepositoriesScreen()
         AppTab.GitOps -> GitOpsScreen()
         AppTab.Swarm -> SwarmScreen()
