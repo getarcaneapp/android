@@ -1,19 +1,18 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ backup and transfer allowlists.
+
+    Both transports intentionally expose the same narrow boundary as backup_rules.xml. Any future
+    persistence location remains excluded until it is audited and deliberately added to all three
+    allowlists with matching validation.
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- Local UI customization only: configured tab IDs and the last selected top-level tab ID. -->
+        <include domain="file" path="datastore/arcane_tabs.preferences_pb" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <!-- Do not transfer credentials or server-derived data directly between devices. -->
+        <include domain="file" path="datastore/arcane_tabs.preferences_pb" />
     </device-transfer>
-    -->
 </data-extraction-rules>

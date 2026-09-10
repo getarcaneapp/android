@@ -13,9 +13,9 @@ The source comparison is pinned to:
 
 - iOS `6088fcc0ef04dc906ce74e9129dffa96894a6da5`
 - libarcane-swift `facc40e20e32b7d6600b004fd744a214bbd2a166`
-- Android `3da9770a9621dd32fd969bee15d1c7d25c93540b`
+- Android `27aa01b77f10f421c7ebea5d6648b66001847cd2`
 - libarcane-kotlin `7787bff82973302062d1d0c8db4c12f09547c5b0`
-- Arcane `16db5a33747b49350407073aa0040baa5e151947` (live compatibility target:
+- Arcane `6a9ff7aa64fbec74e379b5dc9622699189093d73` (live compatibility target:
   2.10.2 tag `670ee2b34ea7b0fb2917643229b6ce9070ee9742`)
 
 Revalidate conclusions against current source before starting an item. Record the Android, Kotlin
@@ -29,15 +29,8 @@ removed the Arcane Assistant.
 
 ## Recommended starting queue
 
-Work the correctness foundation before selecting a large feature:
-
-1. **PAR-003 verification**, then **PAR-004** — finish the pending device check and remove silent
-   complete-list truncation outside Containers.
-2. **PAR-005**, **PAR-008**, and **PAR-009** — repair reachable navigation, cancellation ownership,
-   and app-wide theme state.
-3. **PAR-006** and **PAR-007** — correct release/support metadata and establish the sensitive-data
-   backup boundary.
-4. **PAR-101** — validate System Prune now that PAR-002's server scoping is proven.
+The correctness foundation through PAR-009 is complete. Start with **PAR-101** to validate System
+Prune now that PAR-002's server scoping is proven.
 
 The Projects Workspace and Accounts and Administration batches are complete. The remaining
 high-value feature slices are **PAR-105** (image attestations), **PAR-106** (container actions),
@@ -346,18 +339,59 @@ The standard checks are:
     version marked **Installed**. External destination taps were not separately reported; their
     destinations are covered by the live HTTP audit and focused mapping test.
 
-- [ ] **PAR-007 — Define Android backup and data-extraction policy**
+- [x] **PAR-007 — Define Android backup and data-extraction policy**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** PAR-002
 - **Scope:** Replace template backup rules with explicit policy for tokens, server/account data,
   future caches, snapshots, and operation state across supported Android versions.
+- **Audit record:** [Android backup and data-extraction policy](backup-and-data-extraction-policy.md)
 - **Acceptance criteria:**
-  - [ ] Sensitive credentials, cookies, cached server responses, and operation payloads are excluded.
-  - [ ] Legacy backup rules and current data-extraction rules express the same intended boundary.
-  - [ ] Backup/restore behavior is checked on a supported emulator or documented platform test.
-  - [ ] No machine-specific paths, secrets, or backup artifacts are committed.
+  - [x] Sensitive credentials, cookies, cached server responses, and operation payloads are excluded.
+  - [x] Legacy backup rules and current data-extraction rules express the same intended boundary.
+  - [x] Backup/restore behavior is checked on a supported emulator or documented platform test.
+  - [x] No machine-specific paths, secrets, or backup artifacts are committed.
+- **Validation evidence (2026-09-10):**
+  - Source pins: Android base `27aa01b77f10f421c7ebea5d6648b66001847cd2`, current iOS
+    `6088fcc0ef04dc906ce74e9129dffa96894a6da5`, libarcane-kotlin
+    `7787bff82973302062d1d0c8db4c12f09547c5b0`, and Arcane
+    `6a9ff7aa64fbec74e379b5dc9622699189093d73`. No SDK or server changes are required.
+  - The persistence audit covers both app DataStores; pinned-resource and project-deploy
+    SharedPreferences; SDK token ciphertext and Android Keystore ownership; cookies; Projects
+    workspace edits; variables; account, passkey, MFA, and registry forms; response/image caches;
+    databases; files and public downloads; saved-instance state; server/environment/resource
+    identity; and operation payloads.
+  - Android 11-and-lower cloud backup, Android 12+ cloud backup, and Android 12+ device transfer use
+    the same deny-by-default allowlist. Only `file/datastore/arcane_tabs.preferences_pb` is portable;
+    it contains local bottom-tab customization and last-tab selection. All credentials,
+    server/account and environment/resource identity, caches, snapshots, operation state, other
+    private files/preferences, databases, and app-specific external files are excluded by omission.
+  - All 3 focused `BackupPolicyTest` tests passed. The CI-equivalent
+    `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed all 261 tests (0 failures,
+    0 errors, 0 skipped) and assembled the debug APK. Packaged `aapt2 dump xmltree` inspection
+    confirmed manifest wiring and found only the approved DataStore path in the compiled legacy,
+    cloud, and device-transfer sections; `git diff --check` passed.
+  - Runtime validation used the debug APK (`0.1.0`/`260901`, target SDK 35) on the disposable
+    Android 15/API 35 Google APIs AVD `par007_backup_api35`, fingerprint
+    `google/sdk_gphone64_x86_64/emu64xa:15/AE3A.240806.043/12960925:userdebug/dev-keys`, against
+    disposable Arcane 2.10.2 image
+    `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`. A temporary,
+    emulator-trusted HTTPS proxy connected the unchanged tested APK to the local HTTP server.
+  - Pre-backup state covered a customized `Networks` bottom tab and last-selected `Projects` tab;
+    server URL, session and SDK tokens; dark/custom appearance; non-local environment; project pin;
+    non-default project deploy options; loaded server data; and an unsent project form. Both the
+    encrypted local cloud transport and the separately initialized Google D2D test transport
+    returned package `Success`.
+  - After uninstall/reinstall in each cycle, the sole restored app-private file was
+    `files/datastore/arcane_tabs.preferences_pb`. Setup had an empty server URL and no preference or
+    token DataStore, SharedPreferences, cache, database, other file, or operation form. After
+    reauthentication, the customized tab layout and selected `Projects` tab returned; appearance,
+    environment, pins, and deploy options were defaults, while the disposable project appeared only
+    when current server data reloaded.
+  - The documented transport/test settings were restored and the disposable project, proxy, AVD,
+    APK copy, screenshots, and inspection files were removed. No credentials, backup data, or
+    machine-specific artifacts are present in the change.
 
 - [x] **PAR-008 — Audit coroutine cancellation and stream ownership**
 
