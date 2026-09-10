@@ -80,6 +80,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalAutofill
 import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -93,7 +95,12 @@ import app.getarcane.android.R
 import app.getarcane.android.core.ArcaneClientManager
 import app.getarcane.android.core.AuthStatus
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.PasskeyLoginState
 import app.getarcane.android.ui.components.ErrorBanner
+import app.getarcane.android.ui.components.ClearSensitiveStateOnStop
+import app.getarcane.android.ui.components.ProtectSensitiveWindow
+import app.getarcane.android.ui.components.SensitiveOutlinedField
+import app.getarcane.android.ui.screens.settings.normalizedRecoveryCode
 
 /**
  * Login / first-run setup. Port of the iOS `LoginView`: an Arcane logo tile on a brand-tinted
@@ -111,8 +118,12 @@ fun LoginScreen() {
 
     var url by rememberSaveable { mutableStateOf(manager.serverUrl) }
     var username by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    // Authentication material must not survive activity/process state restoration.
+    var password by remember { mutableStateOf("") }
     var showPasswordForm by rememberSaveable { mutableStateOf(false) }
+
+    ClearSensitiveStateOnStop { password = "" }
+    ProtectSensitiveWindow(active = password.isNotEmpty() || manager.pendingMfa != null)
 
     // When OIDC is available the password form is hidden behind a disclosure so the provider button
     // is the primary action; the user can still reveal local sign-in (admin fallback).
@@ -123,6 +134,10 @@ fun LoginScreen() {
     // Mirrors iOS `LoginView`'s `.task(id:)` OIDC refresh.
     LaunchedEffect(manager.authStatus, manager.serverUrl) {
         manager.refreshOidcStatus()
+    }
+
+    LaunchedEffect(manager.pendingMfa?.transactionId) {
+        if (manager.pendingMfa != null) password = ""
     }
 
     Box(
@@ -158,7 +173,9 @@ fun LoginScreen() {
             Header(isSetup = isSetup, isStartingDemo = manager.isStartingDemo, brand = brand)
 
             if (!manager.isStartingDemo) {
-                if (isSetup) {
+                if (manager.pendingMfa != null) {
+                    MfaChallengeContent(manager)
+                } else if (isSetup) {
                     SetupFields(value = url, onValueChange = { url = it }) {
                         focusManager.clearFocus()
                         manager.configure(url)
@@ -173,7 +190,9 @@ fun LoginScreen() {
                         showPassword = shouldShowPassword,
                         onSubmit = {
                             focusManager.clearFocus()
-                            manager.login(username.trim(), password)
+                            val submitted = password
+                            password = ""
+                            manager.login(username.trim(), submitted)
                         },
                     )
                 }
@@ -181,7 +200,7 @@ fun LoginScreen() {
                 manager.errorMessage?.let { ErrorBanner(it) }
                 manager.demoExpiredMessage?.let { InfoBanner(it) { manager.dismissDemoExpiredMessage() } }
 
-                Actions(
+                if (manager.pendingMfa == null) Actions(
                     manager = manager,
                     isSetup = isSetup,
                     brand = brand,
@@ -191,10 +210,13 @@ fun LoginScreen() {
                         manager.configure(url)
                     },
                     onOidcSignIn = { manager.startOidcSignIn(context) },
+                    onPasskeySignIn = { manager.loginWithPasskey(context) },
                     signInEnabled = username.isNotBlank() && password.isNotBlank(),
                     onSignIn = {
                         focusManager.clearFocus()
-                        manager.login(username.trim(), password)
+                        val submitted = password
+                        password = ""
+                        manager.login(username.trim(), submitted)
                     },
                     showPassword = shouldShowPassword,
                     showPasswordForm = showPasswordForm,
@@ -206,7 +228,7 @@ fun LoginScreen() {
                 )
             }
 
-            DemoCard(manager = manager, brand = brand)
+            if (manager.pendingMfa == null) DemoCard(manager = manager, brand = brand)
         }
     }
 }
@@ -340,7 +362,9 @@ private fun CredentialsFields(
                 imeAction = ImeAction.Go,
                 keyboardActions = KeyboardActions(onGo = { onSubmit() }),
                 visualTransformation = PasswordVisualTransformation(),
-                textFieldModifier = Modifier.focusRequester(passwordFocus),
+                textFieldModifier = Modifier
+                    .focusRequester(passwordFocus)
+                    .clearAndSetSemantics { contentDescription = "Password" },
                 autofillTypes = listOf(AutofillType.Password),
             )
         }
@@ -357,6 +381,7 @@ private fun Actions(
     connectEnabled: Boolean,
     onConnect: () -> Unit,
     onOidcSignIn: () -> Unit,
+    onPasskeySignIn: () -> Unit,
     signInEnabled: Boolean,
     onSignIn: () -> Unit,
     showPassword: Boolean,
@@ -374,6 +399,15 @@ private fun Actions(
                 onClick = onConnect,
             )
         } else {
+            if (manager.passkeyLoginState == PasskeyLoginState.AVAILABLE) {
+                PrimaryButton(
+                    text = "Sign in with a passkey",
+                    icon = Icons.Filled.VpnKey,
+                    enabled = !manager.isLoading,
+                    loading = false,
+                    onClick = onPasskeySignIn,
+                )
+            }
             if (manager.isOidcAvailable && !showPasswordForm) {
                 PrimaryButton(
                     text = "Continue with ${manager.oidc?.providerName?.takeIf { it.isNotBlank() } ?: "OIDC"}",
@@ -404,10 +438,83 @@ private fun Actions(
                     onClick = onSignIn,
                 )
             }
+            if (manager.passkeyBrowserInProgress) {
+                TextButton(
+                    onClick = manager::cancelPasskeyBrowserOperation,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Cancel passkey request") }
+            }
             TextButton(onClick = onChangeServer, modifier = Modifier.fillMaxWidth()) {
                 Text("Change Server", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+@Composable
+private fun MfaChallengeContent(manager: ArcaneClientManager) {
+    val context = LocalContext.current
+    var recoveryCode by remember(manager.pendingMfa?.transactionId) { mutableStateOf("") }
+    ClearSensitiveStateOnStop { recoveryCode = "" }
+    ProtectSensitiveWindow()
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            "Two-factor authentication",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            "Use a registered passkey or one of your recovery codes.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        PrimaryButton(
+            text = "Continue with passkey",
+            icon = Icons.Filled.VpnKey,
+            enabled = manager.passkeyBridgeState == PasskeyLoginState.AVAILABLE && !manager.isLoading,
+            loading = manager.isLoading && recoveryCode.isEmpty(),
+            onClick = { manager.completeMfaWithPasskey(context) },
+        )
+        if (manager.passkeyBridgeState != PasskeyLoginState.AVAILABLE) {
+            Text(
+                "Passkey verification is unavailable for this server connection. Use a recovery code.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (manager.passkeyBrowserInProgress) {
+            TextButton(
+                onClick = manager::cancelPasskeyBrowserOperation,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Cancel passkey request") }
+        }
+        SensitiveOutlinedField(
+            value = recoveryCode,
+            onValueChange = { recoveryCode = it },
+            label = "Recovery code",
+            enabled = !manager.isLoading,
+        )
+        OutlinedButton(
+            onClick = {
+                val submitted = normalizedRecoveryCode(recoveryCode)
+                recoveryCode = ""
+                manager.completeMfaWithRecovery(submitted)
+            },
+            enabled = recoveryCode.isNotBlank() && !manager.isLoading,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) { Text("Use recovery code") }
+        TextButton(
+            onClick = {
+                recoveryCode = ""
+                manager.cancelPendingMfa()
+            },
+            enabled = !manager.isLoading,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Back to sign in") }
     }
 }
 

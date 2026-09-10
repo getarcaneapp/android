@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.ArrowCircleUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -52,6 +53,10 @@ import app.getarcane.android.core.DashboardActionItemKind
 import app.getarcane.android.core.DashboardActionItemSeverity
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.runSuspendCatching
+import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.ui.screens.settings.system.UpgradeAvailability
+import app.getarcane.android.ui.screens.settings.system.canUpgrade
+import app.getarcane.android.ui.screens.settings.system.resolveUpgradeAvailability
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
@@ -60,6 +65,7 @@ import app.getarcane.android.ui.theme.ArcaneTeal
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.base.intValue
 import app.getarcane.sdk.models.system.DockerInfo
+import app.getarcane.sdk.models.version.VersionInfo
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -67,6 +73,7 @@ enum class EnvironmentCardAction(val label: String) {
     UseEnvironment("Use Environment"),
     ViewSystemDetails("View System Details"),
     Sync("Sync"),
+    UpgradeArcane("Upgrade Arcane"),
     SystemPrune("System Prune"),
 }
 
@@ -88,6 +95,7 @@ fun EnvironmentDashboardCard(
     overviewCounts: DashboardEnvironmentCardOverviewCounts? = null,
     actionItems: List<DashboardActionItem> = emptyList(),
     statsSeries: DashboardStatsSeries?,
+    versionInfo: VersionInfo? = null,
     refreshToken: Int = 0,
     onSelect: () -> Unit,
     actions: List<EnvironmentCardAction> = environmentCardActions(isAdmin = false),
@@ -95,15 +103,39 @@ fun EnvironmentDashboardCard(
 ) {
     val manager = LocalArcaneManager.current
     val client = manager.client
+    val session = manager.authenticatedClientScope()
+    val currentUser = manager.currentUser
     val envId = EnvironmentId(env.id)
     val isActive = manager.activeEnvironmentId.rawValue == env.id
 
     var dockerInfo by remember(env.id) { mutableStateOf<DockerInfo?>(null) }
+    var upgradeAvailability by remember(env.id, session) {
+        mutableStateOf<UpgradeAvailability>(UpgradeAvailability.Loading)
+    }
     var showMenu by remember { mutableStateOf(false) }
 
     LaunchedEffect(client, env.id, refreshToken) {
         dockerInfo = null
         dockerInfo = runSuspendCatching { client?.system?.dockerInfo(envId) }.getOrNull()
+    }
+
+    LaunchedEffect(session, currentUser, env.id, versionInfo, refreshToken) {
+        val captured = session ?: return@LaunchedEffect
+        val user = currentUser ?: return@LaunchedEffect
+        upgradeAvailability = UpgradeAvailability.Loading
+        val availability = resolveUpgradeAvailability(
+            user = user,
+            environmentId = env.id,
+            loadVersion = { versionInfo ?: captured.client.version.environmentVersion(envId) },
+            checkUpgrade = { captured.client.system.checkUpgrade(envId) },
+            errorMessage = ::friendlyErrorMessage,
+        )
+        if (manager.isCurrent(captured)) upgradeAvailability = availability
+    }
+
+    val visibleActions = remember(actions, upgradeAvailability) {
+        actions.filterNot { it == EnvironmentCardAction.UpgradeArcane } +
+            listOfNotNull(EnvironmentCardAction.UpgradeArcane.takeIf { upgradeAvailability.canUpgrade })
     }
 
     val stats = statsSeries?.latest
@@ -150,7 +182,7 @@ fun EnvironmentDashboardCard(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false },
                     ) {
-                        actions.forEach { action ->
+                        visibleActions.forEach { action ->
                             DropdownMenuItem(
                                 text = { Text(action.label) },
                                 leadingIcon = { Icon(action.icon, contentDescription = null) },
@@ -220,6 +252,7 @@ private val EnvironmentCardAction.icon: androidx.compose.ui.graphics.vector.Imag
         EnvironmentCardAction.UseEnvironment -> Icons.Filled.CheckCircle
         EnvironmentCardAction.ViewSystemDetails -> Icons.Filled.Dns
         EnvironmentCardAction.Sync -> Icons.Filled.Sync
+        EnvironmentCardAction.UpgradeArcane -> Icons.Filled.ArrowCircleUp
         EnvironmentCardAction.SystemPrune -> Icons.Filled.Delete
     }
 

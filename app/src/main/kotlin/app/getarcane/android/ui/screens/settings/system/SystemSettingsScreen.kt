@@ -27,14 +27,19 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.screens.settings.SettingsSectionFooter
 import app.getarcane.android.ui.screens.settings.SettingsSectionHeader
-import app.getarcane.sdk.models.user.isAdmin
 
 /** Field types in a settings category. Mirrors iOS `SettingFieldType`. */
 sealed interface SettingFieldType {
@@ -166,7 +171,26 @@ val systemSettingsCategories: List<SettingsCategoryDef> = listOf(
 @Composable
 fun SystemSettingsScreen(onOpenCategory: (categoryId: String) -> Unit, onUpgrade: () -> Unit) {
     val manager = LocalArcaneManager.current
-    val isAdmin = manager.currentUser?.isAdmin ?: false
+    val session = manager.authenticatedClientScope()
+    val user = manager.currentUser
+    val environmentId = manager.activeEnvironmentId
+    var upgradeAvailability by remember(session, environmentId.rawValue) {
+        mutableStateOf<UpgradeAvailability>(UpgradeAvailability.Loading)
+    }
+
+    LaunchedEffect(session, user, environmentId.rawValue) {
+        val captured = session ?: return@LaunchedEffect
+        val capturedUser = user ?: return@LaunchedEffect
+        upgradeAvailability = UpgradeAvailability.Loading
+        val resolved = resolveUpgradeAvailability(
+            user = capturedUser,
+            environmentId = environmentId.rawValue,
+            loadVersion = { captured.client.version.environmentVersion(environmentId) },
+            checkUpgrade = { captured.client.system.checkUpgrade(environmentId) },
+            errorMessage = ::friendlyErrorMessage,
+        )
+        if (manager.isCurrent(captured)) upgradeAvailability = resolved
+    }
 
     Scaffold(topBar = { TopAppBar(title = { Text("System Settings") }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
@@ -176,14 +200,23 @@ fun SystemSettingsScreen(onOpenCategory: (categoryId: String) -> Unit, onUpgrade
             item(key = "settings-footer") {
                 SettingsSectionFooter("Settings apply to the active environment: ${manager.activeEnvironmentName}")
             }
-            if (isAdmin) {
-                item(key = "maint-header") { SettingsSectionHeader("Maintenance") }
+            item(key = "maint-header") { SettingsSectionHeader("Maintenance") }
+            if (upgradeAvailability.canUpgrade) {
                 item(key = "upgrade") {
                     CategoryRowRaw(
                         icon = Icons.Filled.ArrowCircleUp,
                         title = "Upgrade Arcane",
                         summary = "Update to the latest Arcane release",
                         onClick = onUpgrade,
+                    )
+                }
+            } else {
+                item(key = "upgrade-status") {
+                    CategoryRowRaw(
+                        icon = Icons.Filled.ArrowCircleUp,
+                        title = "Upgrade status",
+                        summary = upgradeAvailability.summary(),
+                        onClick = null,
                     )
                 }
             }
@@ -197,11 +230,10 @@ private fun CategoryRow(category: SettingsCategoryDef, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CategoryRowRaw(icon: ImageVector, title: String, summary: String, onClick: () -> Unit) {
+private fun CategoryRowRaw(icon: ImageVector, title: String, summary: String, onClick: (() -> Unit)?) {
     Row(
-        modifier = Modifier
+        modifier = (if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .fillMaxWidth()
-            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

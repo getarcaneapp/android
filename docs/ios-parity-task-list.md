@@ -1,6 +1,6 @@
 # Android iOS-parity task list
 
-Last updated: 2026-09-01
+Last updated: 2026-09-10
 
 This is the working backlog for bringing Arcane Android to product-outcome parity with iOS. It
 turns the findings in [the pinned gap analysis](ios-android-gap-analysis.md) into issue-sized work;
@@ -11,10 +11,12 @@ this canonical backlog through local validation and a review-ready pull request.
 
 The source comparison is pinned to:
 
-- iOS `2d7f277fe322d67c88d62b826f068fa92785e3fe`
-- libarcane-swift `38b5c32dde5b17eb0bc22b1c13fb4204699c8faf`
-- Android `10b26b2275fb8b9772ff69f2e1f6418225be532a`
-- libarcane-kotlin `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`
+- iOS `6088fcc0ef04dc906ce74e9129dffa96894a6da5`
+- libarcane-swift `facc40e20e32b7d6600b004fd744a214bbd2a166`
+- Android `3da9770a9621dd32fd969bee15d1c7d25c93540b`
+- libarcane-kotlin `7787bff82973302062d1d0c8db4c12f09547c5b0`
+- Arcane `16db5a33747b49350407073aa0040baa5e151947` (live compatibility target:
+  2.10.2 tag `670ee2b34ea7b0fb2917643229b6ce9070ee9742`)
 
 Revalidate conclusions against current source before starting an item. Record the Android, Kotlin
 SDK, and Arcane server revisions in the resulting issue or pull request.
@@ -37,9 +39,10 @@ Work the correctness foundation before selecting a large feature:
    backup boundary.
 4. **PAR-101** — validate System Prune now that PAR-002's server scoping is proven.
 
-After that foundation, the highest-value feature slice is **PAR-103** (project files), followed by
-**PAR-104** (account/profile), **PAR-110** (passkeys/MFA), and **PAR-111** (global variables). Tasks
-without dependencies can move sooner when they do not distract from the P0 queue.
+The Projects Workspace and Accounts and Administration batches are complete. The remaining
+high-value feature slices are **PAR-105** (image attestations), **PAR-106** (container actions),
+**PAR-107** (log continuity), and **PAR-112** (image layer history). Tasks without dependencies can
+move sooner when they do not distract from the P0 queue.
 
 ## Status legend
 
@@ -87,6 +90,34 @@ An implementation task is done only when:
 - device/emulator and live-server results are reported separately where required;
 - sensitive state is scoped by normalized server and user identity; and
 - the gap analysis and this backlog are updated when the work lands.
+
+### 2026-09-09 consolidated live evidence
+
+The Projects Workspace batch (PAR-103, PAR-113, PAR-114, and PAR-115) passed on an API 30 emulator
+against disposable Arcane 2.10.2, covering workspace mutations and conflicts, variables/resolved
+YAML, archived/GitOps restrictions, deploy options, templates, registry identity, and encrypted
+credential preservation. SDK PR #6 merged as `b3d80a2`, followed by Android PR #49 as `26efa46`.
+
+The Accounts and Administration batch used fingerprint
+`google/sdk_gphone_x86_64/generic_x86_64_arm64:11/RSR1.240422.006/12134477:userdebug/dev-keys`
+against a separate disposable Arcane 2.10.2 server. Account/profile propagation, password errors
+and successful reauthentication, permission isolation, variable create/edit/delete/scope/sync across
+26 environments, secret preservation/protection, server/account/environment isolation, current-
+server upgrade gating, passkey/MFA availability, password step-up, and safe ceremony cancellation
+passed. The provider page did not complete an actual WebAuthn ceremony; deterministic SDK and
+Android tests cover Credential Manager mapping and all ceremony transitions without treating that
+external-provider boundary as a successful credential.
+
+The typed contract change is libarcane-kotlin commit `bf6df2f` in PR #7, merged as `7787bff` on
+2026-09-10. Android integration was initially based on `26efa46` and refreshed onto `3da9770` after
+the SDK merge. SDK and Android publication remain separate; the SDK contract has landed and Android
+PR #51 is the remaining integration change.
+
+Both live matrices used image digest
+`sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`. No production data or
+accounts were targeted. The standard SDK and Android gates below both passed after the live-test
+harness was removed; `:arcane-android:testDebugUnitTest` also passed for the Credential Manager
+adapter and browser bridge.
 
 The standard checks are:
 
@@ -402,56 +433,68 @@ The standard checks are:
   - [ ] The UI reports server results accurately and cannot imply success after a failed mutation.
   - [ ] Results identify tested Android, SDK, server, and API versions.
 
-- [ ] **PAR-102 — Match per-environment Upgrade Arcane capability gating**
+- [x] **PAR-102 — Match per-environment Upgrade Arcane capability gating**
 
-- **Status:** Needs revalidation
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-004
 - **Scope:** Recheck current server/SDK support for the iOS `checkUpgrade.canUpgrade` outcome. Show
   the environment action only from authoritative capability/version data, not duplicated UI
   heuristics.
 - **Acceptance criteria:**
-  - [ ] Current Arcane handler/type and both SDK contracts are compared before implementation.
-  - [ ] The action is visible and enabled only when the selected environment can upgrade.
-  - [ ] Unsupported, unauthorized, loading, error, and older-server states are explicit.
-  - [ ] Multi-environment tests prove gating is calculated per environment.
+  - [x] Current Arcane handler/type and both SDK contracts are compared before implementation.
+  - [x] The action is visible and enabled only when the selected environment can upgrade.
+  - [x] Unsupported, unauthorized, loading, error, and older-server states are explicit.
+  - [x] Multi-environment tests prove gating is calculated per environment.
 
-- [ ] **PAR-103 — Build the existing-project file workspace**
+  **Validation evidence (2026-09-09):** The SDK models Arcane's authoritative upgrade check and
+  Android resolves it for the selected environment without version heuristics. Focused tests cover
+  eligible/current, unsupported, unauthorized, loading, error, older-server, cancellation, and
+  independent multi-environment states. On the API 30 live matrix, current Arcane 2.10.2 correctly
+  hid the upgrade action while 25 unreachable disposable remotes retained independent error state.
 
-- **Status:** Done/verify
+- [x] **PAR-103 — Build the existing-project file workspace**
+
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-002
-- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Use the typed Kotlin SDK project-file operations to add a file tree; Compose, `.env`,
   and text editing; save/create; rename/move/delete; variable-resolution preview; and resolved YAML.
   Keep archived and GitOps projects read-only where required.
 - **Acceptance criteria:**
-  - [ ] Users can inspect and perform every supported file mutation with clear dirty/conflict state.
-  - [ ] Destructive actions identify the project/environment and require confirmation.
-  - [ ] Reload, save failure, concurrent server change, unsupported/binary file, and archived/GitOps
+  - [x] Users can inspect and perform every supported file mutation with clear dirty/conflict state.
+  - [x] Destructive actions identify the project/environment and require confirmation.
+  - [x] Reload, save failure, concurrent server change, unsupported/binary file, and archived/GitOps
     states preserve data and explain why an action is unavailable.
-  - [ ] Typed SDK calls are used directly and mapping/state logic has focused tests.
+  - [x] Typed SDK calls are used directly and mapping/state logic has focused tests.
 
-  **Validation evidence (2026-09-01):** Implemented on `parity/projects-workspace-batch` using
-  `libarcane-kotlin` workspace contracts from `parity/projects-workspace-contracts`. Focused mapping,
-  protected-path/GitOps structure, conflict rebase, partial-save, path-safety, permission, and
-  read-only tests pass in the full Android unit-test gate. Arcane's present Compose/`.env` update
-  contract is explicitly surfaced as last-write-wins. The consolidated device/live-server matrix
-  remains pending.
+  **Validation evidence (updated 2026-09-09):** SDK PR #6 merged as `b3d80a2`, followed by Android
+  PR #49 as `26efa46`. Focused mapping, protected-path/GitOps structure, conflict rebase,
+  partial-save, path-safety, permission, and read-only tests passed in the full SDK and Android
+  gates. Arcane's present Compose/`.env` update contract is explicitly surfaced as last-write-wins.
+  Live testing passed on an API 30 emulator against disposable Arcane 2.10.2 image digest
+  `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`, covering workspace
+  mutations, conflicts, variables/resolved YAML, and archived/GitOps restrictions.
 
-- [ ] **PAR-104 — Add signed-in account/profile management**
+- [x] **PAR-104 — Add signed-in account/profile management**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-002
 - **Scope:** Add a non-admin account destination for viewing/updating display name and email,
   changing password, displaying avatar/Gravatar behavior, signing out, and changing server using
   existing SDK support.
 - **Acceptance criteria:**
-  - [ ] Profile editing and password change validate inputs and report server errors without losing data.
-  - [ ] The route is clearly distinct from administrator user management.
-  - [ ] Updated identity propagates to current-user state and authorization-dependent UI.
-  - [ ] Sign-out and change-server paths satisfy PAR-002's invalidation rules.
+  - [x] Profile editing and password change validate inputs and report server errors without losing data.
+  - [x] The route is clearly distinct from administrator user management.
+  - [x] Updated identity propagates to current-user state and authorization-dependent UI.
+  - [x] Sign-out and change-server paths satisfy PAR-002's invalidation rules.
+
+  **Validation evidence (2026-09-09):** Focused tests cover profile/password validation, avatar
+  mapping, diagnostic redaction, mutation state, cancellation, and scoped session invalidation.
+  Live API 30 testing verified immediate display-name propagation, email/avatar behavior, password
+  policy errors, a successful password change and re-login, the non-admin account boundary, sign
+  out, and sign out plus change server against disposable Arcane 2.10.2.
 
 - [ ] **PAR-105 — Add image attestation workflows**
 
@@ -519,9 +562,9 @@ The standard checks are:
   - [ ] Tests cover terminal stream error, heartbeat timeout, one-environment failure, full failure, and
     successful recovery.
 
-- [ ] **PAR-110 — Add passkey sign-in and MFA management**
+- [x] **PAR-110 — Add passkey sign-in and MFA management**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-001, PAR-002
 - **Scope:** Inspect the current Arcane passkey/WebAuthn handlers and Swift SDK, add typed passkey,
@@ -529,31 +572,50 @@ The standard checks are:
   Manager for login and signed-in account management. Do not duplicate ceremony JSON or endpoints in
   the app.
 - **Acceptance criteria:**
-  - [ ] Server capabilities gate passkey login, enrollment, rename/delete, step-up, MFA policy, and
+  - [x] Server capabilities gate passkey login, enrollment, rename/delete, step-up, MFA policy, and
     recovery; older/unsupported servers retain password/OIDC paths.
-  - [ ] Credential creation/assertion maps origin, RP ID, challenge, cancellation, and provider errors
+  - [x] Credential creation/assertion maps origin, RP ID, challenge, cancellation, and provider errors
     through typed SDK models without logging sensitive ceremony data.
-  - [ ] Login, pending MFA, account management, last-passkey restrictions, recovery, process recreation,
+  - [x] Login, pending MFA, account management, last-passkey restrictions, recovery, process recreation,
     and server/account changes fail safely.
-  - [ ] SDK contract tests, Android state tests, and device/live-server passkey validation are recorded
+  - [x] SDK contract tests, Android state tests, and device/live-server passkey validation are recorded
     separately with Android, SDK, and Arcane revisions.
 
-- [ ] **PAR-111 — Add scoped global-variable management**
+  **Validation evidence (2026-09-09):** Kotlin contract tests cover every typed passkey, MFA,
+  step-up, recovery, and mobile-login route plus browser-bridge state, bounded manifest retrieval,
+  sensitive-model redaction, and Android Credential Manager mapping. Android tests cover capability
+  and permission gates, enrollment/delete policy, recovery-material clearing/normalization, grant
+  expiry, provider cancellation, browser return/dismissal, retry, and stale-callback rejection. On
+  API 30, Arcane 2.10.2 reported no enrolled passkeys and MFA
+  disabled; password step-up failure/success and browser-return cancellation were verified. The
+  disposable server served the mobile manifest/bridge, but its WebAuthn provider page did not
+  complete a ceremony, so no credential was fabricated and that provider-dependent boundary is
+  recorded separately from the deterministic Credential Manager coverage.
 
-- **Status:** Ready
+- [x] **PAR-111 — Add scoped global-variable management**
+
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-002, PAR-004
 - **Scope:** Model the current v2 variables API in `libarcane-kotlin`, then add permission-gated Android
   list/search/create/edit/delete/sync flows for secret and non-secret values scoped to all or selected
   environments. The older template-variable endpoints are not the same contract.
 - **Acceptance criteria:**
-  - [ ] Variable models, permission constants, mutations, sync requests, and per-environment sync status
+  - [x] Variable models, permission constants, mutations, sync requests, and per-environment sync status
     are typed and tested in the SDK first.
-  - [ ] Secret values never appear in logs, clipboard actions, accessibility text, or stale UI; copying
+  - [x] Secret values never appear in logs, clipboard actions, accessibility text, or stale UI; copying
     non-secret keys/values is explicit.
-  - [ ] Unsupported, unauthorized, empty, partial-sync, failed-sync, concurrent edit, and server change
+  - [x] Unsupported, unauthorized, empty, partial-sync, failed-sync, concurrent edit, and server change
     states preserve scope and report accurate outcomes.
-  - [ ] More than 20 environments can be selected and reported without omissions or duplicate sync work.
+  - [x] More than 20 environments can be selected and reported without omissions or duplicate sync work.
+
+  **Validation evidence (2026-09-09):** SDK serialization/route tests and Android reducer/model tests
+  cover permission mapping, search, create/edit/delete, optimistic conflicts, secret handling,
+  all/selected scope, partial failure, retry, cancellation, deduplication, and stale-result rejection.
+  Live API 30 testing created, searched, edited, synced, and deleted secret and non-secret variables;
+  preserved an omitted secret value; blocked the route for an unauthorized account; protected the
+  secret screen with `FLAG_SECURE`; and selected 24 named environments. Sync reported one local
+  success and 25 unreachable remote failures once each without omissions or duplicate work.
 
 - [ ] **PAR-112 — Add image layer history**
 
@@ -571,74 +633,78 @@ The standard checks are:
   - [ ] Focused Android tests and live-server validation cover a multi-layer image and a history-less
     image.
 
-- [ ] **PAR-113 — Add scoped project deploy options**
+- [x] **PAR-113 — Add scoped project deploy options**
 
-- **Status:** Done/verify
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-002
-- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Use the Kotlin SDK's existing `DeployOptions` to let users choose pull policy and force
   recreation before deploy. Store defaults by normalized server, user, environment, and project.
   PAR-202 will later adopt the same options when it becomes the operation owner.
 - **Acceptance criteria:**
-  - [ ] Default, always-pull, never-pull, force-recreate, cancel, unsupported, and server-error behavior
+  - [x] Default, always-pull, never-pull, force-recreate, cancel, unsupported, and server-error behavior
     are explicit and map to typed SDK values.
-  - [ ] Preferences cannot cross servers, accounts, environments, or projects and are cleared or
+  - [x] Preferences cannot cross servers, accounts, environments, or projects and are cleared or
     migrated according to PAR-002.
-  - [ ] The launched stream receives exactly the selected options and reports the server result without
+  - [x] The launched stream receives exactly the selected options and reports the server result without
     fabricating success after failure or cancellation.
-  - [ ] Mapping/persistence tests and device/live-server deploy evidence are recorded.
+  - [x] Mapping/persistence tests and device/live-server deploy evidence are recorded.
 
-  **Validation evidence (2026-09-01):** Typed missing/always/never and force-recreation values flow
-  unchanged to deploy and redeploy streams; scoped persistence and terminal failure behavior have
-  focused tests. Automated SDK and Android gates pass; consolidated device/live deploy evidence is
-  still pending.
+  **Validation evidence (updated 2026-09-09):** Typed missing/always/never and force-recreation
+  values flow unchanged to deploy and redeploy streams; scoped persistence and terminal failure
+  behavior have focused tests. SDK PR #6 merged as `b3d80a2`, followed by Android PR #49 as
+  `26efa46`; both automated gates passed. Deploy options passed live testing on an API 30 emulator
+  against disposable Arcane 2.10.2 image digest
+  `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`.
 
-- [ ] **PAR-114 — Complete template discovery, import, and deployment**
+- [x] **PAR-114 — Complete template discovery, import, and deployment**
 
-- **Status:** Done/verify
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-004
-- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Extend the existing Android registry CRUD, grouped browser, preview, and deploy flow with
   current iOS outcomes: search, local/remote source filtering, metadata, remote download, and complete
   result loading through the typed Kotlin template service.
 - **Acceptance criteria:**
-  - [ ] Search and source filters cover all loaded templates and clearly distinguish local, configured-
+  - [x] Search and source filters cover all loaded templates and clearly distinguish local, configured-
     registry, and remote entries.
-  - [ ] Metadata/preview and remote download handle unsupported, malformed, duplicate, unauthorized,
+  - [x] Metadata/preview and remote download handle unsupported, malformed, duplicate, unauthorized,
     offline, and partial-page states without losing the current selection.
-  - [ ] Deploying a selected template preserves its identity and content through project creation and
+  - [x] Deploying a selected template preserves its identity and content through project creation and
     hands long-running work to PAR-202 when applicable.
-  - [ ] Pagination/filter/download state has focused tests and a live-server import/deploy check.
+  - [x] Pagination/filter/download state has focused tests and a live-server import/deploy check.
 
-  **Validation evidence (2026-09-01):** Complete typed pagination, search/source filtering,
+  **Validation evidence (updated 2026-09-09):** Complete typed pagination, search/source filtering,
   composite identity, metadata/preview retry, remote import, and exact-content project-creation
-  handoff are implemented with focused state and permission tests. Automated gates pass; the
-  consolidated live import/deploy check remains pending.
+  handoff are implemented with focused state and permission tests. SDK PR #6 merged as `b3d80a2`,
+  followed by Android PR #49 as `26efa46`; both automated gates passed. Template discovery, import,
+  and deployment passed live testing on an API 30 emulator against disposable Arcane 2.10.2 image
+  digest `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`.
 
-- [ ] **PAR-115 — Add container-registry display names**
+- [x] **PAR-115 — Add container-registry display names**
 
-- **Status:** Done/verify
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** None
-- **Active batch:** [Projects workspace parity batch](tasks/projects-workspace-parity-batch.md)
 - **Scope:** Current Arcane and both SDKs have no registry `name` field. Derive a stable Android
   display name from description/provider/URL with URL/ID disambiguation, preserve credentials and
   unrelated fields on edit, and add the current `repositoryNames` field to Kotlin SDK
   read/create/update/sync models.
 - **Acceptance criteria:**
-  - [ ] Missing, blank, duplicate, and unknown-server values decode safely and display a stable URL/ID
+  - [x] Missing, blank, duplicate, and unknown-server values decode safely and display a stable URL/ID
     fallback.
-  - [ ] Create/edit preserves credentials and unrelated registry fields and never logs token/secret
+  - [x] Create/edit preserves credentials and unrelated registry fields and never logs token/secret
     values.
-  - [ ] List, preview, pull-usage, and destructive confirmations identify the same registry clearly.
-  - [ ] SDK serialization plus Android mapping/form tests pass against old and current payload fixtures.
+  - [x] List, preview, pull-usage, and destructive confirmations identify the same registry clearly.
+  - [x] SDK serialization plus Android mapping/form tests pass against old and current payload fixtures.
 
-  **Validation evidence (2026-09-01):** Exact current-server and both-SDK audits disproved the stale
-  `name`-field premise. Derived display identities, duplicate fallback, unknown provider types,
-  credential-preserving requests, and repository-name compatibility have focused tests. Both SDK
-  and Android automated gates pass; the consolidated live registry check remains pending.
+  **Validation evidence (updated 2026-09-09):** Exact current-server and both-SDK audits disproved
+  the stale `name`-field premise. Derived display identities, duplicate fallback, unknown provider
+  types, credential-preserving requests, and repository-name compatibility have focused tests. SDK
+  PR #6 merged as `b3d80a2`, followed by Android PR #49 as `26efa46`; both automated gates passed.
+  Registry identity and credential preservation passed live testing on an API 30 emulator against
+  disposable Arcane 2.10.2 image digest
+  `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`.
 
 ## Phase 2: Own long-running operations before adding system surfaces
 

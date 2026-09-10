@@ -13,7 +13,14 @@ import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.android.AndroidSecureTokenStore
 import app.getarcane.sdk.android.oidc.OidcAuthenticator
+import app.getarcane.sdk.android.passkey.AndroidPasskeyBrowserBridge
+import app.getarcane.sdk.android.passkey.PasskeyBrowserBridgeResult
+import app.getarcane.sdk.android.passkey.PasskeyBrowserBridgeCancelledException
+import app.getarcane.sdk.models.auth.AuthenticationResult
+import app.getarcane.sdk.models.auth.MFAChallenge
 import app.getarcane.sdk.models.auth.OidcStatusInfo
+import app.getarcane.sdk.models.auth.PasskeySummary
+import app.getarcane.sdk.models.auth.StepUpGrant
 import app.getarcane.sdk.models.user.User
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
@@ -30,6 +37,43 @@ import okhttp3.CookieJar
 import okhttp3.HttpUrl
 
 enum class AuthStatus { SETUP, AUTHENTICATING, LOGIN, AUTHENTICATED }
+enum class PasskeyLoginState { LOADING, AVAILABLE, UNAVAILABLE, ERROR }
+
+internal sealed interface PasskeySecurityResult {
+    data class Registration(val passkey: PasskeySummary) : PasskeySecurityResult
+    data class StepUp(val grant: StepUpGrant) : PasskeySecurityResult
+    data class Failure(val message: String) : PasskeySecurityResult
+    data object Cancelled : PasskeySecurityResult
+}
+
+internal data class PasskeySecurityEvent(
+    val id: Long,
+    val owner: PasskeySecurityOwner,
+    val result: PasskeySecurityResult,
+)
+
+internal class PasskeySecurityOwner
+
+private enum class PasskeyBrowserPurpose { LOGIN, MFA, REGISTRATION, STEP_UP }
+
+private data class PasskeyBrowserInvocation(
+    val purpose: PasskeyBrowserPurpose,
+    val client: ArcaneClient,
+    val generation: Long,
+    val securityOwner: PasskeySecurityOwner? = null,
+)
+
+/**
+ * Identifies one authenticated client/account session. Long-running UI mutations capture this
+ * before making a request, then use [ArcaneClientManager.isCurrent] before publishing results so a
+ * response from a previous server or account cannot leak into the replacement session.
+ */
+internal data class AuthenticatedClientScope(
+    val client: ArcaneClient,
+    val serverIdentity: String,
+    val userId: String,
+    internal val generation: Long,
+)
 
 /**
  * Central app state: server config, the [ArcaneClient], auth state, current user, server
@@ -45,6 +89,11 @@ class ArcaneClientManager(context: Context) {
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val cookieJar = ArcaneCookieJar()
     private var clientGeneration = 0L
+    private var passkeyBrowserBridge: AndroidPasskeyBrowserBridge? = null
+    private var passkeyBrowserClient: ArcaneClient? = null
+    private var passkeyBrowserInvocation: PasskeyBrowserInvocation? = null
+    private val passkeyBrowserReturnTracker = PasskeyBrowserReturnTracker()
+    private var nextPasskeySecurityEventId = 0L
 
     var authStatus by mutableStateOf(AuthStatus.AUTHENTICATING); private set
     var serverUrl by mutableStateOf(""); private set
@@ -55,6 +104,11 @@ class ArcaneClientManager(context: Context) {
     var isLoading by mutableStateOf(false); private set
     var errorMessage by mutableStateOf<String?>(null); private set
     var oidc by mutableStateOf<OidcStatusInfo?>(null); private set
+    var passkeyLoginState by mutableStateOf(PasskeyLoginState.LOADING); private set
+    var passkeyBridgeState by mutableStateOf(PasskeyLoginState.LOADING); private set
+    var pendingMfa by mutableStateOf<MFAChallenge?>(null); private set
+    var passkeyBrowserInProgress by mutableStateOf(false); private set
+    internal var passkeySecurityEvent by mutableStateOf<PasskeySecurityEvent?>(null); private set
 
     // Demo state (parity with iOS): a temporary hosted instance with an expiry.
     var isStartingDemo by mutableStateOf(false); private set
@@ -77,6 +131,9 @@ class ArcaneClientManager(context: Context) {
         const val OIDC_REDIRECT_SCHEME_LEGACY = "app.getarcane.android"
         const val OIDC_REDIRECT_HOST_LEGACY = "oidc"
         const val OIDC_REDIRECT_PATH_LEGACY = "callback"
+
+        const val PASSKEY_REDIRECT_SCHEME = "arcane-mobile"
+        const val PASSKEY_REDIRECT_HOST = "passkey-callback"
     }
 
     val isOidcAvailable: Boolean get() =
@@ -127,9 +184,10 @@ class ArcaneClientManager(context: Context) {
                     supportsPost26MobileFeatures = mobileFeatures.post26
                     supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
                 },
-                refreshLoginMethods = ::refreshOidc,
+                refreshLoginMethods = ::refreshLoginMethods,
                 updateStatus = { authStatus = it },
             )
+            if (authStatus == AuthStatus.AUTHENTICATED) refreshLoginMethods()
         }
     }
 
@@ -165,9 +223,29 @@ class ArcaneClientManager(context: Context) {
         )
 
     private fun replaceSessionScope() {
+        invalidatePasskeyBrowser()
         sessionJob.cancel()
         sessionJob = SupervisorJob()
         scope = CoroutineScope(sessionJob + Dispatchers.Main.immediate)
+    }
+
+    private fun browserBridge(c: ArcaneClient): AndroidPasskeyBrowserBridge {
+        if (passkeyBrowserClient !== c) {
+            passkeyBrowserBridge?.cancel()
+            passkeyBrowserClient = c
+            passkeyBrowserBridge = AndroidPasskeyBrowserBridge(c)
+        }
+        return requireNotNull(passkeyBrowserBridge)
+    }
+
+    private fun invalidatePasskeyBrowser() {
+        passkeyBrowserBridge?.cancel()
+        passkeyBrowserBridge = null
+        passkeyBrowserClient = null
+        passkeyBrowserInvocation = null
+        passkeyBrowserReturnTracker.reset()
+        passkeyBrowserInProgress = false
+        passkeySecurityEvent = null
     }
 
     private fun resetEnvironment() {
@@ -177,6 +255,29 @@ class ArcaneClientManager(context: Context) {
 
     private fun isCurrentClient(generation: Long, expectedClient: ArcaneClient? = null): Boolean =
         generation == clientGeneration && (expectedClient == null || client === expectedClient)
+
+    internal fun authenticatedClientScope(): AuthenticatedClientScope? {
+        val activeClient = client ?: return null
+        val user = currentUser ?: return null
+        return AuthenticatedClientScope(
+            client = activeClient,
+            serverIdentity = serverSessionIdentity,
+            userId = user.id,
+            generation = clientGeneration,
+        )
+    }
+
+    internal fun isCurrent(session: AuthenticatedClientScope): Boolean =
+        isCurrentClient(session.generation, session.client) &&
+            serverSessionIdentity == session.serverIdentity &&
+            currentUser?.id == session.userId
+
+    /** Publish a self-profile mutation only when it still belongs to the captured account. */
+    internal fun acceptCurrentUserUpdate(session: AuthenticatedClientScope, updated: User): Boolean {
+        if (updated.id != session.userId || !isCurrent(session)) return false
+        currentUser = updated
+        return true
+    }
 
     private fun cleanupServer(
         previousUrl: String,
@@ -238,6 +339,9 @@ class ArcaneClientManager(context: Context) {
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
         oidc = null
+        pendingMfa = null
+        passkeyLoginState = PasskeyLoginState.LOADING
+        passkeyBridgeState = PasskeyLoginState.LOADING
         cookieJar.clear()
         serverUrl = nextIdentity.normalizedUrl
         client = makeClient(nextIdentity.normalizedUrl)
@@ -247,7 +351,7 @@ class ArcaneClientManager(context: Context) {
         scope.launch {
             prefs.setServerUrl(nextIdentity.normalizedUrl)
             if (!isCurrentClient(generation)) return@launch
-            refreshOidc()
+            refreshLoginMethods()
         }
     }
 
@@ -258,21 +362,268 @@ class ArcaneClientManager(context: Context) {
             isLoading = true
             errorMessage = null
             try {
-                val response = c.auth.login(username, password)
-                val detectedCapabilities = c.serverCapabilities()
-                val mobileFeatures = detectMobileFeatures(c)
-                if (!isCurrentClient(generation, c)) return@launch
-                currentUser = response.user
-                capabilities = detectedCapabilities
-                supportsPost26MobileFeatures = mobileFeatures.post26
-                supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
-                authStatus = AuthStatus.AUTHENTICATED
+                acceptAuthentication(c, generation, c.auth.authenticate(username, password))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
                 if (isCurrentClient(generation, c)) errorMessage = friendlyErrorMessage(e)
             } finally {
                 if (isCurrentClient(generation, c)) isLoading = false
+            }
+        }
+    }
+
+    /** Starts Arcane's same-origin browser ceremony, which delegates WebAuthn to Android. */
+    fun loginWithPasskey(context: Context) {
+        beginPasskeyBrowserOperation(context, PasskeyBrowserPurpose.LOGIN) { bridge ->
+            bridge.startLogin(context)
+        }
+    }
+
+    /** Completes a pending passkey MFA assertion through Arcane's same-origin browser bridge. */
+    fun completeMfaWithPasskey(context: Context) {
+        val challenge = pendingMfa ?: return
+        beginPasskeyBrowserOperation(context, PasskeyBrowserPurpose.MFA) { bridge ->
+            bridge.startMfa(context, challenge)
+        }
+    }
+
+    internal fun beginPasskeyRegistration(
+        context: Context,
+        name: String?,
+        stepUpToken: String?,
+        owner: PasskeySecurityOwner,
+    ) {
+        beginPasskeyBrowserOperation(context, PasskeyBrowserPurpose.REGISTRATION, owner) { bridge ->
+            bridge.startRegistration(context, name, stepUpToken)
+        }
+    }
+
+    internal fun beginPasskeyStepUp(context: Context, owner: PasskeySecurityOwner) {
+        beginPasskeyBrowserOperation(context, PasskeyBrowserPurpose.STEP_UP, owner) { bridge ->
+            bridge.startStepUp(context)
+        }
+    }
+
+    private fun beginPasskeyBrowserOperation(
+        context: Context,
+        purpose: PasskeyBrowserPurpose,
+        securityOwner: PasskeySecurityOwner? = null,
+        start: suspend (AndroidPasskeyBrowserBridge) -> Unit,
+    ) {
+        val c = client ?: return
+        val generation = clientGeneration
+        if (passkeyBrowserInProgress) return
+        val bridge = browserBridge(c)
+        passkeyBrowserInvocation = PasskeyBrowserInvocation(purpose, c, generation, securityOwner)
+        check(passkeyBrowserReturnTracker.start())
+        passkeyBrowserInProgress = true
+        if (purpose == PasskeyBrowserPurpose.LOGIN || purpose == PasskeyBrowserPurpose.MFA) {
+            isLoading = true
+            errorMessage = null
+        } else {
+            passkeySecurityEvent = null
+        }
+        scope.launch {
+            try {
+                start(bridge)
+                if (isCurrentPasskeyInvocation(c, generation, purpose)) {
+                    passkeyBrowserReturnTracker.launched()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                finishPasskeyBrowserFailure(c, generation, purpose, e)
+            }
+        }
+    }
+
+    /** Returns true when [uri] belongs to the passkey callback route, even if it is rejected. */
+    fun handlePasskeyRedirect(uri: Uri?): Boolean {
+        val callback = uri?.takeIf {
+            it.scheme.equals(PASSKEY_REDIRECT_SCHEME, ignoreCase = true) &&
+                it.host == PASSKEY_REDIRECT_HOST
+        } ?: return false
+        if (!passkeyBrowserReturnTracker.callback()) return true
+        val invocation = passkeyBrowserInvocation ?: return true
+        val bridge = passkeyBrowserBridge ?: return true
+        scope.launch {
+            try {
+                val result = bridge.complete(callback)
+                if (!isCurrentPasskeyInvocation(
+                        invocation.client,
+                        invocation.generation,
+                        invocation.purpose,
+                    )
+                ) return@launch
+                when (result) {
+                    is PasskeyBrowserBridgeResult.Login -> {
+                        require(invocation.purpose == PasskeyBrowserPurpose.LOGIN)
+                        acceptAuthentication(invocation.client, invocation.generation, result.result)
+                    }
+                    is PasskeyBrowserBridgeResult.Mfa -> {
+                        require(invocation.purpose == PasskeyBrowserPurpose.MFA)
+                        acceptAuthentication(invocation.client, invocation.generation, result.result)
+                    }
+                    is PasskeyBrowserBridgeResult.Registration -> {
+                        require(invocation.purpose == PasskeyBrowserPurpose.REGISTRATION)
+                        publishPasskeySecurityResult(invocation, PasskeySecurityResult.Registration(result.passkey))
+                    }
+                    is PasskeyBrowserBridgeResult.StepUp -> {
+                        require(invocation.purpose == PasskeyBrowserPurpose.STEP_UP)
+                        publishPasskeySecurityResult(invocation, PasskeySecurityResult.StepUp(result.grant))
+                    }
+                }
+                finishPasskeyBrowserInvocation(invocation)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                finishPasskeyBrowserFailure(
+                    invocation.client,
+                    invocation.generation,
+                    invocation.purpose,
+                    e,
+                )
+            }
+        }
+        return true
+    }
+
+    /** Treat returning from a dismissed Custom Tab without a callback as explicit cancellation. */
+    fun handlePasskeyBrowserResume() {
+        if (!passkeyBrowserReturnTracker.shouldCancelOnResume()) return
+        cancelPasskeyBrowserOperation(notifySecurity = true)
+    }
+
+    fun cancelPasskeyBrowserOperation() {
+        cancelPasskeyBrowserOperation(notifySecurity = true)
+    }
+
+    private fun cancelPasskeyBrowserOperation(notifySecurity: Boolean) {
+        val invocation = passkeyBrowserInvocation ?: return
+        passkeyBrowserBridge?.cancel()
+        if (
+            notifySecurity &&
+            (invocation.purpose == PasskeyBrowserPurpose.REGISTRATION ||
+                invocation.purpose == PasskeyBrowserPurpose.STEP_UP)
+        ) {
+            publishPasskeySecurityResult(invocation, PasskeySecurityResult.Cancelled)
+        }
+        finishPasskeyBrowserInvocation(invocation)
+    }
+
+    internal fun consumePasskeySecurityEvent(id: Long) {
+        if (passkeySecurityEvent?.id == id) passkeySecurityEvent = null
+    }
+
+    internal fun cancelPasskeySecurityOperation(owner: PasskeySecurityOwner) {
+        if (passkeyBrowserInvocation?.securityOwner === owner) {
+            cancelPasskeyBrowserOperation(notifySecurity = false)
+        }
+        if (passkeySecurityEvent?.owner === owner) passkeySecurityEvent = null
+    }
+
+    private fun isCurrentPasskeyInvocation(
+        c: ArcaneClient,
+        generation: Long,
+        purpose: PasskeyBrowserPurpose,
+    ): Boolean =
+        isCurrentClient(generation, c) &&
+            passkeyBrowserInvocation?.let {
+                it.purpose == purpose && it.client === c && it.generation == generation
+            } == true
+
+    private fun finishPasskeyBrowserFailure(
+        c: ArcaneClient,
+        generation: Long,
+        purpose: PasskeyBrowserPurpose,
+        failure: Throwable,
+    ) {
+        if (!isCurrentPasskeyInvocation(c, generation, purpose)) return
+        val invocation = requireNotNull(passkeyBrowserInvocation)
+        val cancelled = failure is PasskeyBrowserBridgeCancelledException
+        passkeyBrowserBridge?.cancel()
+        if (purpose == PasskeyBrowserPurpose.LOGIN || purpose == PasskeyBrowserPurpose.MFA) {
+            if (!cancelled) errorMessage = friendlyErrorMessage(failure)
+        } else {
+            publishPasskeySecurityResult(
+                invocation,
+                if (cancelled) PasskeySecurityResult.Cancelled
+                else PasskeySecurityResult.Failure(friendlyErrorMessage(failure)),
+            )
+        }
+        finishPasskeyBrowserInvocation(invocation)
+    }
+
+    private fun finishPasskeyBrowserInvocation(invocation: PasskeyBrowserInvocation) {
+        if (passkeyBrowserInvocation != invocation) return
+        passkeyBrowserInvocation = null
+        passkeyBrowserReturnTracker.reset()
+        passkeyBrowserInProgress = false
+        if (invocation.purpose == PasskeyBrowserPurpose.LOGIN || invocation.purpose == PasskeyBrowserPurpose.MFA) {
+            isLoading = false
+        }
+    }
+
+    private fun publishPasskeySecurityResult(
+        invocation: PasskeyBrowserInvocation,
+        result: PasskeySecurityResult,
+    ) {
+        val owner = invocation.securityOwner ?: return
+        passkeySecurityEvent = PasskeySecurityEvent(++nextPasskeySecurityEventId, owner, result)
+    }
+
+    /** Completes pending MFA with a one-time recovery code. The code is never retained. */
+    fun completeMfaWithRecovery(code: String) {
+        val c = client ?: return
+        val challenge = pendingMfa ?: return
+        val generation = clientGeneration
+        scope.launch {
+            isLoading = true
+            errorMessage = null
+            try {
+                acceptAuthentication(
+                    c,
+                    generation,
+                    c.passkeys.finishRecovery(challenge.transactionId, code),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (isCurrentClient(generation, c)) errorMessage = friendlyErrorMessage(e)
+            } finally {
+                if (isCurrentClient(generation, c)) isLoading = false
+            }
+        }
+    }
+
+    fun cancelPendingMfa() {
+        if (passkeyBrowserInvocation?.purpose == PasskeyBrowserPurpose.MFA) {
+            cancelPasskeyBrowserOperation(notifySecurity = false)
+        }
+        pendingMfa = null
+        errorMessage = null
+    }
+
+    private suspend fun acceptAuthentication(
+        c: ArcaneClient,
+        generation: Long,
+        result: AuthenticationResult,
+    ) {
+        if (!isCurrentClient(generation, c)) return
+        when (result) {
+            is AuthenticationResult.MfaRequired -> pendingMfa = result.challenge
+            is AuthenticationResult.Authenticated -> {
+                val detectedCapabilities = c.serverCapabilities()
+                val mobileFeatures = detectMobileFeatures(c)
+                if (!isCurrentClient(generation, c)) return
+                pendingMfa = null
+                currentUser = result.response.user
+                capabilities = detectedCapabilities
+                supportsPost26MobileFeatures = mobileFeatures.post26
+                supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
+                authStatus = AuthStatus.AUTHENTICATED
+                refreshLoginMethods()
             }
         }
     }
@@ -289,6 +640,7 @@ class ArcaneClientManager(context: Context) {
                 // SDK logout clears local credentials even when the remote request fails.
             }
             if (!isCurrentClient(generation, c)) return@launch
+            invalidatePasskeyBrowser()
             authStatus = AuthStatus.LOGIN
             mainTabSelectionStore.clear()
             cookieJar.clear()
@@ -297,7 +649,10 @@ class ArcaneClientManager(context: Context) {
             supportsPost26MobileFeatures = false
             supportsProjectWorkspaceContract = false
             oidc = null
-            refreshOidc()
+            pendingMfa = null
+            passkeyLoginState = PasskeyLoginState.LOADING
+            passkeyBridgeState = PasskeyLoginState.LOADING
+            refreshLoginMethods()
         }
     }
 
@@ -329,25 +684,15 @@ class ArcaneClientManager(context: Context) {
             try {
                 val (code, state) = extractOidcCallbackParams(callback)
                     ?: throw IllegalArgumentException("Missing OAuth callback parameters")
-                val response = if (
-                    callback.getQueryParameter("code") != null &&
-                    callback.getQueryParameter("state") != null
-                ) {
-                    OidcAuthenticator(c).completeSignIn(
-                        callbackUri = callback,
-                        redirectUri = oidcRedirectUri,
-                    )
-                } else {
-                    c.auth.oidcCallback(code = code, state = state, mobileRedirectUri = oidcRedirectUri)
-                }
-                val detectedCapabilities = c.serverCapabilities()
-                val mobileFeatures = detectMobileFeatures(c)
-                if (!isCurrentClient(generation, c)) return@launch
-                currentUser = response.user
-                capabilities = detectedCapabilities
-                supportsPost26MobileFeatures = mobileFeatures.post26
-                supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
-                authStatus = AuthStatus.AUTHENTICATED
+                acceptAuthentication(
+                    c,
+                    generation,
+                    c.auth.authenticateOidcCallback(
+                        code = code,
+                        state = state,
+                        mobileRedirectUri = oidcRedirectUri,
+                    ),
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
@@ -375,6 +720,9 @@ class ArcaneClientManager(context: Context) {
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
         oidc = null
+        pendingMfa = null
+        passkeyLoginState = PasskeyLoginState.LOADING
+        passkeyBridgeState = PasskeyLoginState.LOADING
         isLoading = false
         isStartingDemo = false
         demoEndsAt = null
@@ -463,6 +811,7 @@ class ArcaneClientManager(context: Context) {
                     supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
                     demoEndsAt = session.endsAtMillis
                     authStatus = AuthStatus.AUTHENTICATED
+                    refreshLoginMethods()
                     DemoService.startHeartbeat(scope)
                     scheduleDemoExpiry(session.endsAtMillis)
                 } catch (e: CancellationException) {
@@ -595,6 +944,39 @@ class ArcaneClientManager(context: Context) {
         )
     }
 
+    private suspend fun refreshPasskeyAvailability() {
+        val c = client ?: return
+        val generation = clientGeneration
+        if (isCurrentClient(generation, c)) {
+            passkeyLoginState = PasskeyLoginState.LOADING
+            passkeyBridgeState = PasskeyLoginState.LOADING
+        }
+        val bridgeState = try {
+            if (browserBridge(c).isBridgeAvailable()) {
+                PasskeyLoginState.AVAILABLE
+            } else {
+                PasskeyLoginState.UNAVAILABLE
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            PasskeyLoginState.ERROR
+        }
+        if (!isCurrentClient(generation, c)) return
+        passkeyBridgeState = bridgeState
+        // Current iOS and Arcane gate mobile sign-in on the versioned same-origin bridge manifest.
+        // The older public availability endpoint is absent on current Arcane and cannot be a
+        // prerequisite, though the SDK keeps it for legacy callers.
+        passkeyLoginState = bridgeState
+    }
+
+    private suspend fun refreshLoginMethods() {
+        // These checks are intentionally isolated: a legacy/failed passkey endpoint must not hide
+        // an otherwise usable OIDC provider, and vice versa.
+        refreshOidc()
+        refreshPasskeyAvailability()
+    }
+
     private fun isExpectedOidcCallback(uri: Uri): Boolean {
         if (uri.scheme.equals(OIDC_REDIRECT_SCHEME, ignoreCase = true)) {
             return uri.host == OIDC_REDIRECT_HOST ||
@@ -608,6 +990,7 @@ class ArcaneClientManager(context: Context) {
             false
         }
     }
+
 
     private fun extractOidcCallbackParams(uri: Uri): Pair<String, String>? {
         val code = uri.getQueryParameter("code")
@@ -645,7 +1028,12 @@ class ArcaneClientManager(context: Context) {
      */
     fun refreshOidcStatus() {
         if (authStatus == AuthStatus.SETUP || serverUrl.isBlank() || client == null) return
-        scope.launch { refreshOidc() }
+        scope.launch { refreshLoginMethods() }
+    }
+
+    fun refreshPasskeySupport() {
+        if (authStatus == AuthStatus.SETUP || serverUrl.isBlank() || client == null) return
+        scope.launch { refreshPasskeyAvailability() }
     }
 
 }

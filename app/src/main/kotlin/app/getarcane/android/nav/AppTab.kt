@@ -77,6 +77,7 @@ enum class AppTab(
     Swarm("swarm", "Swarm", "Swarm", Icons.Filled.Hub, ArcaneMint, TabSection.Swarm, requiresAdmin = true),
 
     Events("events", "Events", "Events", Icons.Filled.History, ArcaneRed, TabSection.Administration),
+    Variables("variables", "Global Variables", "Variables", Icons.Filled.Sync, ArcaneTeal, TabSection.Administration, requiresV2 = true),
     Users("users", "Users", "Users", Icons.Filled.Groups, ArcaneBlue, TabSection.Administration, requiresAdmin = true),
     ApiKeys("apiKeys", "API Keys", "API Keys", Icons.Filled.VpnKey, ArcaneYellow, TabSection.Administration, requiresAdmin = true),
     Notifications("notifications", "Notifications", "Notifications", Icons.Filled.Notifications, ArcaneRed, TabSection.Administration, requiresAdmin = true),
@@ -114,6 +115,7 @@ enum class AppTab(
             Authentication,
             Roles,
             OidcRoleMappings -> false
+            Variables -> false
         }
 
     fun isAvailableForBottomBar(isAdmin: Boolean, supportsV2: Boolean): Boolean =
