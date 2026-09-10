@@ -962,10 +962,10 @@ The standard checks are:
     `a3440b05238d2620b91d984557c87994ab15fb28`, libarcane-kotlin
     `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
     `8d10b7db2d34aefa44f0f9a684f3b84b2ae355d7`.
-  - Current iOS loads `images.updateSummary(...).imagesWithUpdates` for every enabled environment,
-    and its Dashboard source explicitly documents the image total as the intended mobile value. Its
-    current streamed-count precedence can still expose the resource count, so the explicit product
-    decision and the image-oriented Updates screen resolve that internal inconsistency for Android.
+  - At the pinned iOS revision, iOS loaded `images.updateSummary(...).imagesWithUpdates` for every
+    enabled environment and documented the image total as the intended mobile value, although its
+    streamed-count precedence could still expose the resource count. The explicit product decision
+    and the image-oriented Updates screen resolved that internal inconsistency for Android.
   - Michael reproduced the Android mismatch on PAR-005: Dashboard displayed one updateable project
     while the opened image-oriented Updates screen displayed four outdated images.
   - On 2026-09-01 Michael's physical-device/live-server retest confirmed that the Dashboard and the
@@ -977,6 +977,16 @@ The standard checks are:
   - Focused dashboard mapping/count tests passed (10 tests). The CI-equivalent
     `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed. Multi-environment device
     confirmation remains pending.
+  - Publication revalidation on 2026-09-09 compared Android `26efa46809a24074417d5d42c06639e4287a4b8d`,
+    iOS `6088fcc0ef04dc906ce74e9129dffa96894a6da5`, libarcane-kotlin
+    `b3d80a2ffd39ea8c87b4699e9798268fc0ae7a4b`, and Arcane
+    `16db5a33747b49350407073aa0040baa5e151947`. Current iOS now explicitly prioritizes summary-based
+    image totals over streamed resource counts for both Dashboard entry points. Michael reproduced
+    the still-unmerged Android behavior with a Dashboard total of four and an Updates-screen total
+    of eleven; branch validation against that multi-environment server remains pending.
+  - After refreshing the branch onto Android `26efa46809a24074417d5d42c06639e4287a4b8d`,
+    the focused dashboard count/mapping tests and the CI-equivalent
+    `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed on 2026-09-09.
 
 - [ ] **PAR-502 — Multi-server profiles**
 
