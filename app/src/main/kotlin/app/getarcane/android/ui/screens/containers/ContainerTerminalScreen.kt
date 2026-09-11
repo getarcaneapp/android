@@ -1,5 +1,9 @@
 package app.getarcane.android.ui.screens.containers
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -14,10 +18,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -43,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -54,6 +61,8 @@ import app.getarcane.android.core.runSuspendCatching
 import app.getarcane.android.ui.components.BannerSeverity
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.theme.ArcaneBlue
+import app.getarcane.sdk.models.role.Permission
+import app.getarcane.sdk.models.user.hasPermission
 import app.getarcane.sdk.streaming.TerminalSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -61,7 +70,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val shells = listOf("/bin/sh", "/bin/bash", "/bin/zsh", "/bin/ash")
-private const val CHAR_BUDGET = 200_000
+private const val INPUT_CHARACTER_BUDGET = 16_384
 
 // Control sequences (kept as \u escapes so no raw control bytes live in source).
 private const val ESC = "\u001b"
@@ -79,9 +88,13 @@ fun ContainerTerminalScreen(id: String, title: String, onClose: () -> Unit) {
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val outputBuffer = remember { TerminalOutputBuffer() }
+    val canExec = manager.currentUser?.hasPermission(Permission.Containers.EXEC, envId.rawValue) == true
+    val currentUserId = manager.currentUser?.id.orEmpty()
 
-    var output by remember { mutableStateOf("") }
+    var output by remember { mutableStateOf(TerminalOutputSnapshot()) }
     var input by remember { mutableStateOf("") }
     var session by remember { mutableStateOf<TerminalSession?>(null) }
     var connectError by remember { mutableStateOf<String?>(null) }
@@ -91,6 +104,7 @@ fun ContainerTerminalScreen(id: String, title: String, onClose: () -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }
     var retryKey by remember { mutableStateOf(0) }
     var outputClient by remember { mutableStateOf(client) }
+    var outputUserId by remember { mutableStateOf(currentUserId) }
     var outputEnvironmentId by remember { mutableStateOf(envId.rawValue) }
     var outputContainerId by remember { mutableStateOf(id) }
 
@@ -109,17 +123,24 @@ fun ContainerTerminalScreen(id: String, title: String, onClose: () -> Unit) {
         }
     }
 
-    LaunchedEffect(client, envId.rawValue, id, shell, retryKey) {
+    LaunchedEffect(client, currentUserId, envId.rawValue, id, shell, retryKey, canExec) {
         val activeClient = client
         if (outputClient !== activeClient ||
+            outputUserId != currentUserId ||
             outputEnvironmentId != envId.rawValue ||
-            outputContainerId != id
+            outputContainerId != id ||
+            !canExec
         ) {
-            output = ""
+            output = outputBuffer.clear()
             input = ""
             outputClient = activeClient
+            outputUserId = currentUserId
             outputEnvironmentId = envId.rawValue
             outputContainerId = id
+        }
+        if (!canExec) {
+            connectError = "You don't have permission to open a terminal for this container in ${manager.activeEnvironmentName}."
+            return@LaunchedEffect
         }
         if (activeClient == null) {
             connectError = "Not connected to a server."
@@ -141,12 +162,7 @@ fun ContainerTerminalScreen(id: String, title: String, onClose: () -> Unit) {
                     runSuspendCatching { activeSession.send(ESC + "[1;1R") }
                 }
                 val stripped = AnsiSanitizer.strip(raw)
-                val combined = output + stripped
-                output = if (combined.length > CHAR_BUDGET) {
-                    combined.substring(combined.length - CHAR_BUDGET + CHAR_BUDGET / 10)
-                } else {
-                    combined
-                }
+                output = outputBuffer.append(stripped)
             }
         } catch (e: CancellationException) {
             throw e
@@ -217,8 +233,18 @@ fun ContainerTerminalScreen(id: String, title: String, onClose: () -> Unit) {
                             }
                             HorizontalDivider()
                             DropdownMenuItem(
+                                text = { Text("Copy All Retained") },
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    clipboard.setPrimaryClip(ClipData.newPlainText("$title terminal output", output.text))
+                                    menuOpen = false
+                                },
+                                enabled = output.text.isNotEmpty(),
+                                leadingIcon = { Icon(Icons.Filled.ContentCopy, null) },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Clear Output") },
-                                onClick = { output = ""; menuOpen = false },
+                                onClick = { output = outputBuffer.clear(); menuOpen = false },
                                 leadingIcon = { Icon(Icons.Filled.Clear, null) },
                             )
                         }
@@ -237,6 +263,15 @@ fun ContainerTerminalScreen(id: String, title: String, onClose: () -> Unit) {
                 )
             }
 
+            if (output.discardedCharacters > 0) {
+                Text(
+                    "Showing the latest retained output; ${output.discardedCharacters} earlier characters were discarded.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
+
             Box(
                 Modifier
                     .weight(1f)
@@ -244,13 +279,21 @@ fun ContainerTerminalScreen(id: String, title: String, onClose: () -> Unit) {
                     .background(MaterialTheme.colorScheme.background)
                     .verticalScroll(scrollState),
             ) {
-                Text(
-                    text = output.ifEmpty { "Connecting to $shell…" },
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                )
+                SelectionContainer {
+                    Text(
+                        text = output.text.ifEmpty {
+                            when {
+                                isConnecting -> "Connecting to $shell…"
+                                isConnected -> "Connected to $shell. Waiting for output…"
+                                else -> "No terminal output retained."
+                            }
+                        },
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    )
+                }
             }
 
             HorizontalDivider()
@@ -292,7 +335,7 @@ private fun InputBar(
                 Text("$", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(
                     value = input,
-                    onValueChange = onInputChange,
+                    onValueChange = { onInputChange(it.take(INPUT_CHARACTER_BUDGET)) },
                     placeholder = { Text("command", fontFamily = FontFamily.Monospace) },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),

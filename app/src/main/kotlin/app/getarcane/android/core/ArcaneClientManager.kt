@@ -101,6 +101,7 @@ class ArcaneClientManager(context: Context) {
     var capabilities by mutableStateOf(ServerCapabilities.UNKNOWN); private set
     var supportsPost26MobileFeatures by mutableStateOf(false); private set
     var supportsProjectWorkspaceContract by mutableStateOf(false); private set
+    var supportsContainerReliabilityActions by mutableStateOf(false); private set
     var isLoading by mutableStateOf(false); private set
     var errorMessage by mutableStateOf<String?>(null); private set
     var oidc by mutableStateOf<OidcStatusInfo?>(null); private set
@@ -119,7 +120,7 @@ class ArcaneClientManager(context: Context) {
     var activeEnvironmentId by mutableStateOf(EnvironmentId.LOCAL_DOCKER); private set
     var activeEnvironmentName by mutableStateOf("Local Docker"); private set
 
-    var client: ArcaneClient? = null; private set
+    var client by mutableStateOf<ArcaneClient?>(null); private set
 
     private val oidcRedirectUri = OIDC_REDIRECT_URI
 
@@ -183,6 +184,7 @@ class ArcaneClientManager(context: Context) {
                     capabilities = detectedCapabilities
                     supportsPost26MobileFeatures = mobileFeatures.post26
                     supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
+                    supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
                 },
                 refreshLoginMethods = ::refreshLoginMethods,
                 updateStatus = { authStatus = it },
@@ -338,6 +340,7 @@ class ArcaneClientManager(context: Context) {
         capabilities = ServerCapabilities.UNKNOWN
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
+        supportsContainerReliabilityActions = false
         oidc = null
         pendingMfa = null
         passkeyLoginState = PasskeyLoginState.LOADING
@@ -622,6 +625,7 @@ class ArcaneClientManager(context: Context) {
                 capabilities = detectedCapabilities
                 supportsPost26MobileFeatures = mobileFeatures.post26
                 supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
+                supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
                 authStatus = AuthStatus.AUTHENTICATED
                 refreshLoginMethods()
             }
@@ -648,6 +652,7 @@ class ArcaneClientManager(context: Context) {
             capabilities = ServerCapabilities.UNKNOWN
             supportsPost26MobileFeatures = false
             supportsProjectWorkspaceContract = false
+            supportsContainerReliabilityActions = false
             oidc = null
             pendingMfa = null
             passkeyLoginState = PasskeyLoginState.LOADING
@@ -719,6 +724,7 @@ class ArcaneClientManager(context: Context) {
         capabilities = ServerCapabilities.UNKNOWN
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
+        supportsContainerReliabilityActions = false
         oidc = null
         pendingMfa = null
         passkeyLoginState = PasskeyLoginState.LOADING
@@ -809,6 +815,7 @@ class ArcaneClientManager(context: Context) {
                     capabilities = detectedCapabilities
                     supportsPost26MobileFeatures = mobileFeatures.post26
                     supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
+                    supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
                     demoEndsAt = session.endsAtMillis
                     authStatus = AuthStatus.AUTHENTICATED
                     refreshLoginMethods()
@@ -849,6 +856,7 @@ class ArcaneClientManager(context: Context) {
         capabilities = ServerCapabilities.UNKNOWN
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
+        supportsContainerReliabilityActions = false
         oidc = null
         demoEndsAt = null
         serverUrl = ""
@@ -893,6 +901,7 @@ class ArcaneClientManager(context: Context) {
         MobileFeatureSupport(
             post26 = version.supportsPost26MobileFeatures,
             projectWorkspace = version.supportsProjectWorkspaceContract,
+            containerReliabilityActions = version.supportsContainerReliabilityActions(),
         )
     } catch (e: CancellationException) {
         throw e
@@ -903,6 +912,7 @@ class ArcaneClientManager(context: Context) {
     private data class MobileFeatureSupport(
         val post26: Boolean = false,
         val projectWorkspace: Boolean = false,
+        val containerReliabilityActions: Boolean = false,
     )
 
     private suspend fun refreshOidc() {

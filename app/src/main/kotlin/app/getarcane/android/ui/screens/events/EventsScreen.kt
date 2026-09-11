@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
@@ -41,6 +43,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,10 +54,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -74,8 +82,11 @@ import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcanePink
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.models.base.JsonValue
+import app.getarcane.sdk.models.base.SortOrder
 import app.getarcane.sdk.models.base.stringValue
 import app.getarcane.sdk.models.event.Event
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
@@ -109,6 +120,7 @@ fun EventsScreen(popToRootSignal: Int = 0) {
 }
 
 private const val PAGE_SIZE = 50
+private const val MAX_RETAINED_EVENTS = 200
 
 private enum class EventSeverityFilter(
     val title: String,
@@ -128,6 +140,16 @@ private fun EventListScreen(onLoaded: (List<Event>) -> Unit, onOpen: (String) ->
     val manager = LocalArcaneManager.current
     val client = manager.client
     val scope = rememberCoroutineScope()
+    val navigationLifecycleOwner = LocalLifecycleOwner.current
+    // The Settings sub-route is STARTED (not RESUMED) while visibly foreground in the app's
+    // retained-tab navigation. Composition owns route visibility; the host lifecycle additionally
+    // stops polling when the whole app backgrounds.
+    val hostLifecycleOwner = LocalContext.current as? LifecycleOwner ?: navigationLifecycleOwner
+    var isForeground by remember(hostLifecycleOwner) {
+        mutableStateOf(hostLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+    }
+    val activeSourceKey =
+        "${System.identityHashCode(client)}:${manager.serverSessionIdentity}:${manager.currentUser?.id.orEmpty()}"
 
     var state by remember { mutableStateOf<Loadable<List<Event>>>(Loadable.Loading) }
     var search by remember { mutableStateOf("") }
@@ -138,36 +160,107 @@ private fun EventListScreen(onLoaded: (List<Event>) -> Unit, onOpen: (String) ->
     var refreshKey by remember { mutableStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var liveEnabled by remember { mutableStateOf(true) }
+    var liveError by remember { mutableStateOf<String?>(null) }
+    var loadedSourceKey by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(refreshKey) {
+    DisposableEffect(hostLifecycleOwner) {
+        val observer = LifecycleEventObserver { _, _ ->
+            isForeground = hostLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        }
+        hostLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { hostLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(activeSourceKey, refreshKey) {
         if (client == null) return@LaunchedEffect
+        if (loadedSourceKey != activeSourceKey) {
+            state = Loadable.Loading
+            limit = PAGE_SIZE
+            hasMore = false
+            liveError = null
+        }
         if (state !is Loadable.Success) state = Loadable.Loading
         state = try {
-            val response = client.events.listPaginated(start = 0, limit = limit)
-            val sorted = response.data.sortedByDescending { it.timestamp }
-            hasMore = response.data.size >= limit
+            val response = client.events.listPaginated(
+                sort = "timestamp",
+                order = SortOrder.DESCENDING,
+                start = 0,
+                limit = limit,
+            )
+            val sorted = mergeEventHistory(emptyList(), response.data, minOf(limit, MAX_RETAINED_EVENTS))
+            hasMore = sorted.size < MAX_RETAINED_EVENTS && response.pagination.totalItems > sorted.size.toLong()
             onLoaded(sorted)
+            loadedSourceKey = activeSourceKey
+            liveError = null
             Loadable.Success(sorted)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             Loadable.Error(friendlyErrorMessage(e))
         }
         refreshing = false
     }
 
+    LaunchedEffect(activeSourceKey, liveEnabled, isForeground) {
+        if (client == null || !liveEnabled || !isForeground) return@LaunchedEffect
+        val expectedIdentity = manager.serverSessionIdentity
+        var failures = 0
+        while (true) {
+            delay(nextEventPollDelayMillis(failures))
+            if (refreshing || isLoadingMore) continue
+            try {
+                val response = client.events.listPaginated(
+                    sort = "timestamp",
+                    order = SortOrder.DESCENDING,
+                    start = 0,
+                    limit = PAGE_SIZE,
+                )
+                val current = (state as? Loadable.Success)?.value.orEmpty()
+                val merged = mergeEventHistory(
+                    current,
+                    response.data,
+                    minOf(MAX_RETAINED_EVENTS, maxOf(PAGE_SIZE, current.size)),
+                )
+                if (manager.client !== client || manager.serverSessionIdentity != expectedIdentity) return@LaunchedEffect
+                state = Loadable.Success(merged)
+                hasMore = merged.size < MAX_RETAINED_EVENTS && response.pagination.totalItems > merged.size.toLong()
+                onLoaded(merged)
+                liveError = null
+                failures = 0
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                failures++
+                liveError = "Live refresh failed; retained events are still shown. Retrying in up to 60 seconds: ${friendlyErrorMessage(e)}"
+            }
+        }
+    }
+
     fun loadMore() {
         if (client == null || isLoadingMore || !hasMore) return
         isLoadingMore = true
-        val newLimit = limit + PAGE_SIZE
+        val newLimit = minOf(limit + PAGE_SIZE, MAX_RETAINED_EVENTS)
+        val expectedClient = client
+        val expectedIdentity = manager.serverSessionIdentity
         scope.launch {
             try {
-                val response = client.events.listPaginated(start = 0, limit = newLimit)
-                val sorted = response.data.sortedByDescending { it.timestamp }
+                val response = client.events.listPaginated(
+                    sort = "timestamp",
+                    order = SortOrder.DESCENDING,
+                    start = 0,
+                    limit = newLimit,
+                )
+                if (manager.client !== expectedClient || manager.serverSessionIdentity != expectedIdentity) return@launch
+                val sorted = mergeEventHistory(emptyList(), response.data, newLimit)
                 limit = newLimit
-                hasMore = response.data.size >= newLimit
+                hasMore = sorted.size < MAX_RETAINED_EVENTS && response.pagination.totalItems > sorted.size.toLong()
                 onLoaded(sorted)
                 state = Loadable.Success(sorted)
-            } catch (_: Throwable) {
-                // Keep existing page on a failed "load more".
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                liveError = "Couldn't load more events: ${friendlyErrorMessage(e)}"
             } finally {
                 isLoadingMore = false
             }
@@ -179,6 +272,12 @@ private fun EventListScreen(onLoaded: (List<Event>) -> Unit, onOpen: (String) ->
             TopAppBar(
                 title = { Text("Events") },
                 actions = {
+                    IconButton(onClick = { liveEnabled = !liveEnabled }) {
+                        Icon(
+                            if (liveEnabled) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            if (liveEnabled) "Pause live events" else "Resume live events",
+                        )
+                    }
                     Box {
                         IconButton(onClick = { menuOpen = true }) {
                             Icon(
@@ -235,6 +334,22 @@ private fun EventListScreen(onLoaded: (List<Event>) -> Unit, onOpen: (String) ->
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
+            if (!liveEnabled) {
+                Text(
+                    "Live events paused. Manual refresh remains available.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            liveError?.let { message ->
+                ErrorBanner(
+                    message,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    severity = app.getarcane.android.ui.components.BannerSeverity.Warning,
+                    onRetry = { refreshing = true; refreshKey++ },
+                )
+            }
             PullToRefreshBox(
                 isRefreshing = refreshing,
                 onRefresh = { refreshing = true; refreshKey++ },

@@ -200,6 +200,7 @@ internal fun ProjectDetailScreen(
     val project = (state as? Loadable.Success)?.value
     val title = project?.displayName ?: "Project"
     val canDeploy = manager.currentUser?.hasPermission(Permission.Projects.DEPLOY, envId.rawValue) == true
+    val canReadLogs = manager.currentUser?.hasPermission(Permission.Projects.LOGS, envId.rawValue) == true
 
     fun beginDeploy(action: String, projectName: String) {
         val streamTitle = if (action == ProjectAction.REDEPLOY) "Redeploy $projectName" else "Deploy $projectName"
@@ -306,8 +307,10 @@ internal fun ProjectDetailScreen(
                                         onStream(projectId, ProjectAction.BUILD, "Build Images", null)
                                     }
                                 }
-                                ActionChip("Logs", Icons.AutoMirrored.Filled.Article, MaterialTheme.colorScheme.onSurfaceVariant, !actioning) {
-                                    onLogs(projectId, p.displayName)
+                                if (canReadLogs) {
+                                    ActionChip("Logs", Icons.AutoMirrored.Filled.Article, MaterialTheme.colorScheme.onSurfaceVariant, !actioning) {
+                                        onLogs(projectId, p.displayName)
+                                    }
                                 }
                             }
                         }

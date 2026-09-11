@@ -19,17 +19,19 @@ import app.getarcane.sdk.models.base.SortOrder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
  * Compose-observable state holder for the Activity Center. Port of the iOS `ActivityCenterStore`.
  *
- * Fans out activity listing/streaming across every environment the user can see, buckets activities
- * per environment (capped at [PAGE_SIZE]), and merges + sorts them into a single observable list.
+ * Fans out initial listing across every environment, then consumes Arcane's one multiplexed activity
+ * stream. Buckets are capped at [PAGE_SIZE] and merged without letting a failed source erase healthy data.
  *
  * @param scope a [CoroutineScope] used to run the live streams. Pass the composition scope
  *   (`rememberCoroutineScope()`); cancelling it stops all streams.
@@ -44,6 +46,8 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
     var errorMessage by mutableStateOf<String?>(null); private set
     var streamErrorMessage by mutableStateOf<String?>(null); private set
     var environmentIds: List<String> by mutableStateOf(emptyList()); private set
+    internal var sourceFailures by mutableStateOf<List<ActivitySourceFailure>>(emptyList()); private set
+    internal var retryingSourceIds by mutableStateOf<Set<String>>(emptySet()); private set
 
     // Filter inputs (observable; mutated by the UI).
     var searchText by mutableStateOf("")
@@ -55,7 +59,8 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
     private var limit = PAGE_SIZE
     private val activityBuckets = LinkedHashMap<String, List<Activity>>()
     private val environmentNames = HashMap<String, String>()
-    private val streamJobs = HashMap<String, Job>()
+    private var streamJob: Job? = null
+    private val sourceFailureRegistry = ActivitySourceFailureRegistry()
     private var loadJob: Job? = null
     private var clientGeneration = 0L
     private var loadGeneration = 0L
@@ -97,6 +102,8 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         isLoadingMore = false
         errorMessage = null
         streamErrorMessage = null
+        sourceFailures = sourceFailureRegistry.clear()
+        retryingSourceIds = emptySet()
     }
 
     /** Fan out `listPaginated` across all environments, bucket per env, merge + sort. */
@@ -112,28 +119,40 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         errorMessage = null
         try {
             val environments = resolveEnvironments(client)
-            val results: List<Pair<ActivityEnvironment, List<Activity>?>> = coroutineScope {
+            val results: List<SourceLoadResult> = coroutineScope {
                 environments.map { environment ->
                     async {
-                        val data = runSuspendCatching {
+                        runSuspendCatching {
                             client.activities.listPaginated(
                                 envId = environment.id,
                                 order = SortOrder.DESCENDING,
                                 start = 0,
                                 limit = pageLimit,
                             ).data
-                        }.getOrNull()
-                        environment to data
+                        }.fold(
+                            onSuccess = { SourceLoadResult(environment, it, null) },
+                            onFailure = { SourceLoadResult(environment, null, friendlyErrorMessage(it)) },
+                        )
                     }
                 }.awaitAll()
             }
 
-            val buckets = LinkedHashMap<String, List<Activity>>()
+            val currentEnvironmentIds = environments.mapTo(HashSet()) { it.id.rawValue }
+            if (!isCurrentLoad(client, expectedClientGeneration, operationGeneration)) return
+            val buckets = LinkedHashMap(activityBuckets.filterKeys { it in currentEnvironmentIds })
             var anyHasMore = false
             var failures = 0
-            for ((environment, data) in results) {
+            val nextFailures = ArrayList<ActivitySourceFailure>()
+            for ((environment, data, failureMessage) in results) {
                 if (data == null) {
                     failures += 1
+                    nextFailures +=
+                        ActivitySourceFailure(
+                            sourceId = environment.id.rawValue,
+                            sourceName = environment.name,
+                            message = failureMessage ?: "Activity source unavailable.",
+                            kind = ActivityFailureKind.InitialLoad,
+                        )
                     continue
                 }
                 val normalized = data.map { normalize(it, environment) }
@@ -141,17 +160,24 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
                 if (data.size >= pageLimit) anyHasMore = true
             }
 
-            if (!isCurrentLoad(client, expectedClientGeneration, operationGeneration)) return
             limit = pageLimit
             environmentIds = environments.map { it.id.rawValue }
             environmentNames.clear()
             environments.forEach { environmentNames[it.id.rawValue] = it.name }
+            sourceFailures = sourceFailureRegistry.retain(currentEnvironmentIds)
+            results.filter { it.data != null }.forEach { sourceFailures = sourceFailureRegistry.recover(it.environment.id.rawValue) }
+            nextFailures.forEach { sourceFailures = sourceFailureRegistry.record(it) }
             activityBuckets.clear()
             activityBuckets.putAll(buckets)
             hasMore = anyHasMore
             rebuildActivities()
             if (failures > 0) {
-                streamErrorMessage = "Some environments could not load. Pull to refresh."
+                streamErrorMessage = "Some activity sources could not load. Healthy environments are preserved."
+                if (sourceFailureRegistry.allEnvironmentSourcesFailed(environmentIds) && activities.isEmpty()) {
+                    errorMessage = "No activity source could be loaded. Retry an environment below."
+                }
+            } else if (sourceFailureRegistry.isEmpty()) {
+                streamErrorMessage = null
             }
             if (streamingRequested) restartStreams()
         } catch (e: CancellationException) {
@@ -182,7 +208,7 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         }
     }
 
-    /** One coroutine per environment collecting `client.activities.stream(...)`. */
+    /** One owned coroutine collecting Arcane's multiplexed activity stream. */
     fun startStream() {
         streamingRequested = true
         restartStreams()
@@ -192,19 +218,13 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         val client = client ?: return
         cancelStreamJobs()
         streamErrorMessage = null
-
-        val environments = environmentIds.map { id ->
-            ActivityEnvironment(EnvironmentId(id), environmentNames[id] ?: id)
-        }
-        if (environments.isEmpty()) return
+        if (environmentIds.isEmpty()) return
 
         val expectedClientGeneration = clientGeneration
         val expectedStreamGeneration = streamGeneration
         isStreaming = true
-        for (environment in environments) {
-            streamJobs[environment.id.rawValue] = scope.launch {
-                consumeStream(client, environment, expectedClientGeneration, expectedStreamGeneration)
-            }
+        streamJob = scope.launch {
+            consumeStream(client, expectedClientGeneration, expectedStreamGeneration)
         }
     }
 
@@ -215,8 +235,8 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
 
     private fun cancelStreamJobs() {
         streamGeneration++
-        streamJobs.values.forEach { it.cancel() }
-        streamJobs.clear()
+        streamJob?.cancel()
+        streamJob = null
         isStreaming = false
     }
 
@@ -269,33 +289,149 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         return ClearHistoryResult(deleted = deleted, failed = failed)
     }
 
+    /** Retry just one failed source; healthy environment buckets and the aggregate stream stay intact. */
+    internal fun retrySource(sourceId: String) {
+        if (sourceId in retryingSourceIds) return
+        if (sourceId == ACTIVITY_STREAM_SOURCE_ID) {
+            clearSourceFailure(sourceId)
+            restartStreams()
+            return
+        }
+        val client = client ?: return
+        val environment = environmentFor(EnvironmentId(sourceId))
+        val expectedClientGeneration = clientGeneration
+        retryingSourceIds = retryingSourceIds + sourceId
+        scope.launch {
+            try {
+                val data = client.activities.listPaginated(
+                    envId = environment.id,
+                    order = SortOrder.DESCENDING,
+                    start = 0,
+                    limit = limit,
+                ).data
+                if (this@ActivityCenterStore.client === client && clientGeneration == expectedClientGeneration) {
+                    activityBuckets[sourceId] = sortActivities(data.map { normalize(it, environment) })
+                    clearSourceFailure(sourceId)
+                    errorMessage = null
+                    rebuildActivities()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                if (this@ActivityCenterStore.client === client && clientGeneration == expectedClientGeneration) {
+                    setSourceFailure(
+                        ActivitySourceFailure(sourceId, environment.name, friendlyErrorMessage(e), ActivityFailureKind.InitialLoad),
+                    )
+                }
+            } finally {
+                if (this@ActivityCenterStore.client === client && clientGeneration == expectedClientGeneration) {
+                    retryingSourceIds = retryingSourceIds - sourceId
+                }
+            }
+        }
+    }
+
     private suspend fun consumeStream(
         client: ArcaneClient,
-        environment: ActivityEnvironment,
         expectedClientGeneration: Long,
         expectedStreamGeneration: Long,
     ) {
         val owningJob = currentCoroutineContext()[Job]
+        var failedAttempt = 0
         try {
-            client.activities.stream(envId = environment.id, limit = PAGE_SIZE).collect { event ->
-                if (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration)) {
-                    apply(event, environment)
+            while (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration)) {
+                var stableHeartbeatCount = 0
+                try {
+                    client.activities.stream(limit = PAGE_SIZE)
+                        .withActivityHeartbeatTimeout(ACTIVITY_HEARTBEAT_TIMEOUT_MILLIS)
+                        .collect { event ->
+                            if (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration)) {
+                                clearSourceFailure(ACTIVITY_STREAM_SOURCE_ID)
+                                apply(event)
+                                if (event.type == ActivityStreamEventType.HEARTBEAT) stableHeartbeatCount++
+                            }
+                        }
+                    throw IllegalStateException("Activity stream ended.")
+                } catch (e: TimeoutCancellationException) {
+                    if (!isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration)) return
+                    setSourceFailure(
+                        ActivitySourceFailure(
+                            ACTIVITY_STREAM_SOURCE_ID,
+                            "Activity stream",
+                            "No heartbeat was received for 45 seconds.",
+                            ActivityFailureKind.Connection,
+                        ),
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    if (!isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration)) return
+                    setSourceFailure(
+                        ActivitySourceFailure(
+                            ACTIVITY_STREAM_SOURCE_ID,
+                            "Activity stream",
+                            friendlyErrorMessage(e),
+                            ActivityFailureKind.Connection,
+                        ),
+                    )
                 }
+                if (stableHeartbeatCount >= 3) failedAttempt = 0
+                val retryDelay = activityReconnectDelayMillis(failedAttempt++) ?: break
+                delay(retryDelay)
+            }
+            if (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration)) {
+                streamErrorMessage = "Live activity updates stopped after three reconnect attempts."
             }
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Throwable) {
-            if (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration)) {
-                streamErrorMessage = "Live updates paused. Pull to refresh."
-            }
         } finally {
-            val id = environment.id.rawValue
-            if (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration) &&
-                streamJobs[id] === owningJob
-            ) {
-                streamJobs.remove(id)
-                isStreaming = streamJobs.isNotEmpty()
+            if (isCurrentStream(client, expectedClientGeneration, expectedStreamGeneration) && streamJob === owningJob) {
+                streamJob = null
+                isStreaming = false
             }
+        }
+    }
+
+    private fun setSourceFailure(failure: ActivitySourceFailure) {
+        sourceFailures = sourceFailureRegistry.record(failure)
+    }
+
+    private fun clearSourceFailure(sourceId: String) {
+        sourceFailures = sourceFailureRegistry.recover(sourceId)
+        if (sourceFailureRegistry.isEmpty()) streamErrorMessage = null
+    }
+
+    private fun apply(event: ActivityStreamEvent) {
+        val eventEnvironmentId = event.environmentId
+        val environment = eventEnvironmentId?.let { environmentFor(EnvironmentId(it)) }
+        when (event.type) {
+            ActivityStreamEventType.SNAPSHOT -> if (environment != null) {
+                replaceSnapshot(event.activities, environment)
+                clearSourceFailure(environment.id.rawValue)
+            }
+            ActivityStreamEventType.ACTIVITY -> event.activity?.let { activity ->
+                val source = environment ?: environmentFor(EnvironmentId(activity.sourceEnvironmentKey))
+                upsert(normalize(activity, source))
+                clearSourceFailure(source.id.rawValue)
+            }
+            ActivityStreamEventType.MESSAGE -> event.message?.let { applyMessage(it) }
+            ActivityStreamEventType.MISSED ->
+                streamErrorMessage = "Some activity updates were missed. Pull to refresh."
+            ActivityStreamEventType.ERROR -> if (environment != null) {
+                setSourceFailure(
+                    ActivitySourceFailure(
+                        environment.id.rawValue,
+                        environment.name,
+                        event.error ?: "Live activity source unavailable.",
+                        ActivityFailureKind.EnvironmentStream,
+                    ),
+                )
+            } else {
+                streamErrorMessage = event.error ?: "Live activity updates reported an error."
+            }
+            ActivityStreamEventType.HEARTBEAT,
+            ActivityStreamEventType.UNKNOWN,
+            -> Unit
         }
     }
 
@@ -308,21 +444,6 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
         this.client === client &&
             this.clientGeneration == clientGeneration &&
             this.streamGeneration == streamGeneration
-
-    private fun apply(event: ActivityStreamEvent, environment: ActivityEnvironment) {
-        when (event.type) {
-            ActivityStreamEventType.SNAPSHOT -> replaceSnapshot(event.activities, environment)
-            ActivityStreamEventType.ACTIVITY -> event.activity?.let { upsert(normalize(it, environment)) }
-            ActivityStreamEventType.MESSAGE -> event.message?.let { applyMessage(it) }
-            ActivityStreamEventType.MISSED ->
-                streamErrorMessage = "Some activity updates were missed. Pull to refresh."
-            ActivityStreamEventType.ERROR ->
-                streamErrorMessage = event.error ?: "Live updates paused. Pull to refresh."
-            ActivityStreamEventType.HEARTBEAT,
-            ActivityStreamEventType.UNKNOWN,
-            -> Unit
-        }
-    }
 
     private fun replaceSnapshot(snapshot: List<Activity>, environment: ActivityEnvironment) {
         val normalized = snapshot.map { normalize(it, environment) }
@@ -403,10 +524,17 @@ class ActivityCenterStore(private val scope: CoroutineScope) {
     private fun sortActivities(items: List<Activity>): List<Activity> =
         items.sortedWith(
             compareByDescending<Activity> { it.isCancellable }
-                .thenByDescending { it.sortTime },
+                .thenByDescending { it.sortTime }
+                .thenBy { it.id },
         )
 
     private data class ActivityEnvironment(val id: EnvironmentId, val name: String)
+
+    private data class SourceLoadResult(
+        val environment: ActivityEnvironment,
+        val data: List<Activity>?,
+        val failureMessage: String?,
+    )
 
     data class ClearHistoryResult(val deleted: Long, val failed: Int)
 
