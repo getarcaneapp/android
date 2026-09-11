@@ -1,5 +1,6 @@
 package app.getarcane.android.ui.screens.containers
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -29,9 +30,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
@@ -69,6 +71,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,6 +81,7 @@ import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.formatBytes
+import app.getarcane.android.core.supportsContainerReliabilityActions
 import app.getarcane.android.ui.components.CachedAsyncImage
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.components.StatusBadge
@@ -95,6 +99,9 @@ import app.getarcane.sdk.models.container.ContainerHostConfig
 import app.getarcane.sdk.models.container.ContainerNetworkEndpoint
 import app.getarcane.sdk.models.container.ContainerPort
 import app.getarcane.sdk.models.container.ContainerState
+import app.getarcane.sdk.models.user.permissions
+import app.getarcane.sdk.EnvironmentId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private enum class DetailTab(val title: String) { Overview("Overview"), Stats("Stats"), Logs("Logs") }
@@ -105,7 +112,7 @@ private val ContainerDetails.iconUrl: String?
 
 /**
  * Container detail experience. Segmented control (Overview / Stats / Logs) with content switching
- * below. Top bar: Inspect, Terminal (if running), overflow (Rename / Delete). Overview has a bottom
+ * below. Top bar: Inspect, Terminal (if running), overflow (Kill / Delete). Overview has a bottom
  * action toolbar of circular icon buttons. Port of iOS `ContainerDetailView`.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -120,6 +127,7 @@ fun ContainerDetailScreen(
     val manager = LocalArcaneManager.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var state by remember { mutableStateOf<Loadable<ContainerDetails>>(Loadable.Loading) }
@@ -127,16 +135,39 @@ fun ContainerDetailScreen(
     var busy by remember { mutableStateOf(false) }
     var runningActionId by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    var showRename by remember { mutableStateOf(false) }
+    var pendingAction by remember { mutableStateOf<ContainerDetailAction?>(null) }
     var overflowOpen by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(DetailTab.Overview) }
+    var loadedSourceKey by remember { mutableStateOf<String?>(null) }
+    var supportsPauseKillForEnvironment by remember { mutableStateOf(false) }
 
-    LaunchedEffect(id, refreshKey) {
+    LaunchedEffect(client, envId.rawValue, manager.supportsContainerReliabilityActions) {
+        supportsPauseKillForEnvironment = when {
+            client == null -> false
+            envId == EnvironmentId.LOCAL_DOCKER -> manager.supportsContainerReliabilityActions
+            else -> try {
+                client.version.environmentVersion(envId).supportsContainerReliabilityActions()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                false
+            }
+        }
+    }
+
+    LaunchedEffect(client, envId.rawValue, id, refreshKey) {
         if (client == null) return@LaunchedEffect
-        // Don't reset to Loading on refresh — keep showing prior content like iOS.
+        val sourceKey = "${System.identityHashCode(client)}:${envId.rawValue}:$id"
+        if (loadedSourceKey != sourceKey) {
+            state = Loadable.Loading
+            errorMessage = null
+            selectedTab = DetailTab.Overview
+        }
         try {
             state = Loadable.Success(client.containers.inspect(envId = envId, id = id))
+            loadedSourceKey = sourceKey
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             if (state !is Loadable.Success) state = Loadable.Error(friendlyErrorMessage(e))
         }
@@ -147,19 +178,57 @@ fun ContainerDetailScreen(
     val isRunning = details?.state?.running ?: false
     val statusString = details?.state?.status ?: ""
     val isPaused = statusString.equals("paused", ignoreCase = true)
+    val permissions = manager.currentUser?.permissions(envId.rawValue).orEmpty()
+    val availableActions = availableContainerActions(
+        isRunning = isRunning,
+        isPaused = isPaused,
+        permissions = permissions,
+        supportsPauseKill = supportsPauseKillForEnvironment,
+    )
+    val visibleTabs = DetailTab.entries.filter { it != DetailTab.Logs || ContainerDetailAction.Logs in availableActions }
 
-    fun perform(actionId: String, block: suspend () -> Unit) {
+    fun perform(action: ContainerDetailAction) {
         if (client == null) return
         scope.launch {
             busy = true
-            runningActionId = actionId
+            runningActionId = action.name.lowercase()
             errorMessage = null
-            val result = runCatching { block() }
-            result.exceptionOrNull()?.let { errorMessage = friendlyErrorMessage(it) }
-            busy = false
-            runningActionId = null
-            refreshKey++
+            try {
+                when (action) {
+                    ContainerDetailAction.Start -> client.containers.start(envId = envId, id = id)
+                    ContainerDetailAction.Stop -> client.containers.stop(envId = envId, id = id)
+                    ContainerDetailAction.Restart -> client.containers.restart(envId = envId, id = id)
+                    ContainerDetailAction.Pause -> client.containers.pause(envId = envId, id = id)
+                    ContainerDetailAction.Unpause -> client.containers.unpause(envId = envId, id = id)
+                    ContainerDetailAction.Kill -> client.containers.kill(envId = envId, id = id)
+                    ContainerDetailAction.Redeploy -> client.containers.redeploy(envId = envId, id = id)
+                    ContainerDetailAction.Delete -> client.containers.delete(envId = envId, id = id, force = true)
+                    else -> return@launch
+                }
+                Toast.makeText(context, action.successMessage, Toast.LENGTH_SHORT).show()
+                if (action == ContainerDetailAction.Delete) onBack() else refreshKey++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                errorMessage = friendlyErrorMessage(e)
+            } finally {
+                busy = false
+                runningActionId = null
+            }
         }
+    }
+
+    fun request(action: ContainerDetailAction) {
+        if (action !in availableActions) return
+        if (action.confirmationMessage(title, manager.activeEnvironmentName) != null) {
+            pendingAction = action
+        } else {
+            perform(action)
+        }
+    }
+
+    LaunchedEffect(visibleTabs, selectedTab) {
+        if (selectedTab !in visibleTabs) selectedTab = DetailTab.Overview
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -170,29 +239,35 @@ fun ContainerDetailScreen(
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                 },
                 actions = {
-                    IconButton(onClick = { onInspect(id) }, enabled = !busy) {
-                        Icon(Icons.Outlined.Description, "Inspect")
+                    if (ContainerDetailAction.Inspect in availableActions) {
+                        IconButton(onClick = { onInspect(id) }, enabled = !busy) {
+                            Icon(Icons.Outlined.Description, "Inspect")
+                        }
                     }
-                    if (isRunning && !isPaused) {
+                    if (ContainerDetailAction.Terminal in availableActions) {
                         IconButton(onClick = { onTerminal(id) }, enabled = !busy) {
                             Icon(Icons.Filled.Terminal, "Terminal")
                         }
                     }
-                    Box {
+                    if (availableActions.any { it in setOf(ContainerDetailAction.Kill, ContainerDetailAction.Delete) }) Box {
                         IconButton(onClick = { overflowOpen = true }, enabled = !busy) {
                             Icon(Icons.Filled.MoreVert, "More")
                         }
                         DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Rename") },
-                                onClick = { overflowOpen = false; showRename = true },
-                                leadingIcon = { Icon(Icons.Filled.Edit, null) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Delete", color = ArcaneRed) },
-                                onClick = { overflowOpen = false; confirmDelete = true },
-                                leadingIcon = { Icon(Icons.Filled.Delete, null, tint = ArcaneRed) },
-                            )
+                            if (ContainerDetailAction.Kill in availableActions) {
+                                DropdownMenuItem(
+                                    text = { Text("Force Kill", color = ArcaneRed) },
+                                    onClick = { overflowOpen = false; request(ContainerDetailAction.Kill) },
+                                    leadingIcon = { Icon(Icons.Filled.Bolt, null, tint = ArcaneRed) },
+                                )
+                            }
+                            if (ContainerDetailAction.Delete in availableActions) {
+                                DropdownMenuItem(
+                                    text = { Text("Delete", color = ArcaneRed) },
+                                    onClick = { overflowOpen = false; request(ContainerDetailAction.Delete) },
+                                    leadingIcon = { Icon(Icons.Filled.Delete, null, tint = ArcaneRed) },
+                                )
+                            }
                         }
                     }
                 },
@@ -204,11 +279,11 @@ fun ContainerDetailScreen(
                     .padding(horizontal = 16.dp)
                     .padding(top = 8.dp, bottom = 4.dp),
             ) {
-                DetailTab.entries.forEachIndexed { index, tab ->
+                visibleTabs.forEachIndexed { index, tab ->
                     SegmentedButton(
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
-                        shape = SegmentedButtonDefaults.itemShape(index, DetailTab.entries.size),
+                        shape = SegmentedButtonDefaults.itemShape(index, visibleTabs.size),
                         label = { Text(tab.title) },
                     )
                 }
@@ -232,11 +307,8 @@ fun ContainerDetailScreen(
                         errorMessage = errorMessage,
                         onRetry = { refreshKey++ },
                         onDismissError = { errorMessage = null },
-                        onStart = { perform("start") { client!!.containers.start(envId = envId, id = id) } },
-                        onStop = { perform("stop") { client!!.containers.stop(envId = envId, id = id) } },
-                        onRestart = { perform("restart") { client!!.containers.restart(envId = envId, id = id) } },
-                        onUnpause = { perform("unpause") { client!!.containers.unpause(envId = envId, id = id) } },
-                        onRedeploy = { perform("redeploy") { client!!.containers.redeploy(envId = envId, id = id) } },
+                        availableActions = availableActions,
+                        onAction = ::request,
                     )
                     DetailTab.Stats -> ContainerStatsScreen(id = id)
                     DetailTab.Logs -> EmbeddedLogsView(id = id, title = title)
@@ -245,40 +317,21 @@ fun ContainerDetailScreen(
         }
     }
 
-    if (confirmDelete) {
+    pendingAction?.let { action ->
         AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete Container") },
-            text = { Text("This will permanently delete the container and cannot be undone.") },
+            onDismissRequest = { pendingAction = null },
+            title = { Text("${action.title} Container?") },
+            text = { Text(requireNotNull(action.confirmationMessage(title, manager.activeEnvironmentName))) },
             confirmButton = {
                 TextButton(onClick = {
-                    confirmDelete = false
-                    if (client != null) scope.launch {
-                        busy = true
-                        val result = runCatching { client.containers.delete(envId = envId, id = id, force = true) }
-                        busy = false
-                        if (result.isSuccess) onBack() else errorMessage = friendlyErrorMessage(result.exceptionOrNull()!!)
-                    }
-                }) { Text("Delete", color = ArcaneRed) }
+                    pendingAction = null
+                    perform(action)
+                }) { Text(action.title, color = if (action in setOf(ContainerDetailAction.Kill, ContainerDetailAction.Delete)) ArcaneRed else MaterialTheme.colorScheme.primary) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Cancel") } },
         )
     }
 
-    if (showRename) {
-        RenameContainerSheet(
-            currentName = title,
-            onDismiss = { showRename = false },
-            onRename = { newName ->
-                runCatching {
-                    client?.containers?.rename(envId = envId, id = id, newName = newName)
-                }.fold(
-                    onSuccess = { showRename = false; refreshKey++; null },
-                    onFailure = { friendlyErrorMessage(it) },
-                )
-            },
-        )
-    }
 }
 
 @Composable
@@ -293,11 +346,8 @@ private fun OverviewTab(
     errorMessage: String?,
     onRetry: () -> Unit,
     onDismissError: () -> Unit,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-    onRestart: () -> Unit,
-    onUnpause: () -> Unit,
-    onRedeploy: () -> Unit,
+    availableActions: Set<ContainerDetailAction>,
+    onAction: (ContainerDetailAction) -> Unit,
 ) {
     Box(Modifier.fillMaxSize()) {
         when (state) {
@@ -334,18 +384,23 @@ private fun OverviewTab(
         }
 
         // Bottom action toolbar: circular icon buttons.
-        if (details != null) {
+        if (details != null && availableActions.any { action ->
+                action in setOf(
+                    ContainerDetailAction.Start,
+                    ContainerDetailAction.Stop,
+                    ContainerDetailAction.Restart,
+                    ContainerDetailAction.Pause,
+                    ContainerDetailAction.Unpause,
+                    ContainerDetailAction.Redeploy,
+                )
+            }
+        ) {
             ActionToolbar(
                 modifier = Modifier.align(Alignment.BottomCenter),
-                isRunning = isRunning,
-                isPaused = isPaused,
+                availableActions = availableActions,
                 busy = busy,
                 runningActionId = runningActionId,
-                onStart = onStart,
-                onStop = onStop,
-                onRestart = onRestart,
-                onUnpause = onUnpause,
-                onRedeploy = onRedeploy,
+                onAction = onAction,
             )
         }
     }
@@ -409,15 +464,10 @@ private fun PulsingStatusDot(color: Color, animate: Boolean, modifier: Modifier 
 @Composable
 private fun ActionToolbar(
     modifier: Modifier = Modifier,
-    isRunning: Boolean,
-    isPaused: Boolean,
+    availableActions: Set<ContainerDetailAction>,
     busy: Boolean,
     runningActionId: String?,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-    onRestart: () -> Unit,
-    onUnpause: () -> Unit,
-    onRedeploy: () -> Unit,
+    onAction: (ContainerDetailAction) -> Unit,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -429,15 +479,23 @@ private fun ActionToolbar(
             horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            when {
-                isPaused -> CircleActionButton("Unpause", Icons.Filled.PlayArrow, ArcaneGreen, busy, runningActionId == "unpause", onUnpause)
-                isRunning -> {
-                    CircleActionButton("Stop", Icons.Filled.Stop, ArcaneRed, busy, runningActionId == "stop", onStop)
-                    CircleActionButton("Restart", Icons.Filled.Refresh, ArcaneOrange, busy, runningActionId == "restart", onRestart)
-                }
-                else -> CircleActionButton("Start", Icons.Filled.PlayArrow, ArcaneGreen, busy, runningActionId == "start", onStart)
+            val toolbarActions = listOf(
+                ContainerDetailAction.Unpause to Triple(Icons.Filled.PlayArrow, ArcaneGreen, "unpause"),
+                ContainerDetailAction.Start to Triple(Icons.Filled.PlayArrow, ArcaneGreen, "start"),
+                ContainerDetailAction.Stop to Triple(Icons.Filled.Stop, ArcaneRed, "stop"),
+                ContainerDetailAction.Restart to Triple(Icons.Filled.Refresh, ArcaneOrange, "restart"),
+                ContainerDetailAction.Pause to Triple(Icons.Filled.Pause, ArcaneOrange, "pause"),
+                ContainerDetailAction.Redeploy to Triple(Icons.Outlined.Autorenew, ArcaneBlue, "redeploy"),
+            )
+            toolbarActions.filter { it.first in availableActions }.forEach { (action, presentation) ->
+                CircleActionButton(
+                    action.title,
+                    presentation.first,
+                    presentation.second,
+                    busy,
+                    runningActionId == presentation.third,
+                ) { onAction(action) }
             }
-            CircleActionButton("Redeploy", Icons.Outlined.Autorenew, ArcaneBlue, busy, runningActionId == "redeploy", onRedeploy)
         }
     }
 }

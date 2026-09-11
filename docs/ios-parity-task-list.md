@@ -1,6 +1,6 @@
 # Android iOS-parity task list
 
-Last updated: 2026-09-10
+Last updated: 2026-09-11
 
 This is the working backlog for bringing Arcane Android to product-outcome parity with iOS. It
 turns the findings in [the pinned gap analysis](ios-android-gap-analysis.md) into issue-sized work;
@@ -13,9 +13,9 @@ The source comparison is pinned to:
 
 - iOS `6088fcc0ef04dc906ce74e9129dffa96894a6da5`
 - libarcane-swift `facc40e20e32b7d6600b004fd744a214bbd2a166`
-- Android `27aa01b77f10f421c7ebea5d6648b66001847cd2`
-- libarcane-kotlin `7787bff82973302062d1d0c8db4c12f09547c5b0`
-- Arcane `6a9ff7aa64fbec74e379b5dc9622699189093d73` (live compatibility target:
+- Android `1fb86f8560c39f119ca63625a0ab2039bbdb9201`
+- libarcane-kotlin `b21faefd091de53fa30e6b5b910c66f49ec8076c`
+- Arcane `5df09ed475c4bac4ab6f54e1b9bdde1ac1c55105` (live compatibility target:
   2.10.2 tag `670ee2b34ea7b0fb2917643229b6ce9070ee9742`)
 
 Revalidate conclusions against current source before starting an item. Record the Android, Kotlin
@@ -591,58 +591,91 @@ The standard checks are:
   - [ ] Copied/exported data is complete and intentionally labeled.
   - [ ] DTO/serialization coverage remains in the SDK; Android adds state and presentation tests.
 
-- [ ] **PAR-106 — Complete container lifecycle and detail actions**
+- [x] **PAR-106 — Complete container lifecycle and detail actions**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-003
 - **Scope:** Compare current Android actions with supported server/SDK operations and add high-value
   omissions such as pause and kill where appropriate, without copying unsupported iOS behavior.
 - **Acceptance criteria:**
-  - [ ] An action inventory records parity, intentional omission, permission gate, and server gate.
-  - [ ] Added actions use resource/environment-specific confirmation and accurate result/error feedback.
-  - [ ] State refreshes after success without losing selection or showing stale controls.
-  - [ ] Device/live-server validation covers each destructive lifecycle action added.
+  - [x] An action inventory records parity, intentional omission, permission gate, and server gate.
+  - [x] Added actions use resource/environment-specific confirmation and accurate result/error feedback.
+  - [x] State refreshes after success without losing selection or showing stale controls.
+  - [x] Device/live-server validation covers each destructive lifecycle action added.
 
-- [ ] **PAR-107 — Add log and terminal copy/share/export continuity**
+  **Validation evidence (2026-09-11):** The inventory and contract decisions are recorded in
+  [container-activity-reliability.md](container-activity-reliability.md). API 30 AVD testing against
+  disposable Arcane 2.10.2/Docker 29.1.3 proved pause, unpause, and SIGKILL with Docker state before
+  and after, resource/environment-specific confirmations, updated controls, and retained detail
+  selection. Permission, version, state, feedback, and forced-delete confirmation rules have focused
+  tests. Rename is intentionally absent because pinned Arcane has no matching handler.
 
-- **Status:** Ready
+- [x] **PAR-107 — Add log and terminal copy/share/export continuity**
+
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-008
 - **Scope:** Provide Android Sharesheet/Storage Access Framework or MediaStore outcomes for container
   and project logs, plus consistent search, copy, pause/resume, timestamp, ANSI, retention, and
   terminal copy/clear behavior.
 - **Acceptance criteria:**
-  - [ ] Users can copy selected content and share/export a clearly scoped log without truncation surprises.
-  - [ ] Large streams use bounded memory and cancellation; secrets receive an explicit product review.
-  - [ ] Export failure, permission/canceled picker, reconnect, and environment changes are safe.
-  - [ ] Shared formatting/state logic has focused tests and device sharing is exercised.
+  - [x] Users can copy selected content and share/export a clearly scoped log without truncation surprises.
+  - [x] Large streams use bounded memory and cancellation; secrets receive an explicit product review.
+  - [x] Export failure, permission/canceled picker, reconnect, and environment changes are safe.
+  - [x] Shared formatting/state logic has focused tests and device sharing is exercised.
 
-- [ ] **PAR-108 — Add lifecycle-aware live event refresh**
+  **Validation evidence (2026-09-11):** Focused tests cover bounded line/character retention,
+  reconnect deduplication, ANSI/plain export formatting, timestamps, search inputs, manual versus
+  scroll pause, cancellation, safe filenames, terminal retention, and clearing. On the AVD, ANSI and
+  noisy fixtures exercised the container/project viewers; the Android Sharesheet received stripped
+  plain text, the Storage Access Framework showed a scoped filename and preserved logs on
+  cancellation, manual pause retained and counted new lines until explicit resume, and an interactive
+  terminal proved command output, copy-all, and clear. Export confirmation names the source,
+  environment, exact retained window, discarded/shortened scope, and secret risk.
 
-- **Status:** Ready
+- [x] **PAR-108 — Add lifecycle-aware live event refresh**
+
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-008
 - **Scope:** Provide live-enough Events behavior via a server-supported stream or bounded,
   lifecycle-aware polling. Do not invent an app-local protocol.
 - **Acceptance criteria:**
-  - [ ] The chosen mechanism and interval/backoff are based on the current Arcane/SDK contract.
-  - [ ] Events update while visible, stop when no longer owned, and do not duplicate or reorder entries.
-  - [ ] Refresh, reconnect, partial failure, environment change, and stale-state UI are covered.
-  - [ ] Battery/network impact is bounded and documented.
+  - [x] The chosen mechanism and interval/backoff are based on the current Arcane/SDK contract.
+  - [x] Events update while visible, stop when no longer owned, and do not duplicate or reorder entries.
+  - [x] Refresh, reconnect, partial failure, environment change, and stale-state UI are covered.
+  - [x] Battery/network impact is bounded and documented.
 
-- [ ] **PAR-109 — Add Activity Center terminal-failure retry**
+  **Validation evidence (2026-09-11):** Current Arcane and SDK expose paginated reads but no Events
+  stream, so the visible route uses five-second polling with 10/20/40/60-second failure backoff and a
+  200-row cap. Deterministic tests prove ID deduplication, stable timestamp ordering, and bounded
+  backoff. On the AVD, a newly emitted `user.login` event was fetched on the next visible poll (server
+  creation 16:38:11 UTC, app request 16:38:12 UTC); server request logs proved the bounded cadence.
+  Manual/live pause, route ownership, client/session generation guards, and refresh error retention
+  use structured cancellation so hidden/background routes perform no polling.
 
-- **Status:** Ready
+- [x] **PAR-109 — Add Activity Center terminal-failure retry**
+
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-008
 - **Scope:** Add an explicit recovery path when live or paginated activity loading terminates, while
   preserving healthy data from other environments.
 - **Acceptance criteria:**
-  - [ ] Users can identify which environment/source failed and retry it without discarding healthy results.
-  - [ ] Repeated retry is bounded, cancellation-aware, and does not duplicate activities.
-  - [ ] Tests cover terminal stream error, heartbeat timeout, one-environment failure, full failure, and
+  - [x] Users can identify which environment/source failed and retry it without discarding healthy results.
+  - [x] Repeated retry is bounded, cancellation-aware, and does not duplicate activities.
+  - [x] Tests cover terminal stream error, heartbeat timeout, one-environment failure, full failure, and
     successful recovery.
+
+  **Validation evidence (2026-09-11):** libarcane-kotlin PR #8 corrected the SDK to Arcane's
+  multiplexed activity stream and merged as `b21faefd091de53fa30e6b5b910c66f49ec8076c` after its
+  102-test/release-assembly baseline passed. Android tests cover the finite 1/2/4-second reconnect
+  budget, heartbeat timeout and healthy heartbeat, owner cancellation, one-source failure, full
+  failure, source identity, and individual recovery. On the AVD, a deliberately unreachable second
+  environment showed its own Retry while Local Docker activities remained healthy; retry preserved
+  them. A later terminal stream timeout exposed the separate stream Retry, whose recovery cleared
+  only that failure while the unreachable environment remained identifiable.
 
 - [x] **PAR-110 — Add passkey sign-in and MFA management**
 

@@ -40,7 +40,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,7 +51,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import app.getarcane.android.core.ActivityCenterStore
+import app.getarcane.android.core.ActivitySourceFailure
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.ErrorBanner
@@ -60,6 +63,7 @@ import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.components.StatusBadge
 import app.getarcane.sdk.models.activity.Activity
 import app.getarcane.sdk.models.user.hasPermission
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
 
@@ -83,6 +87,7 @@ fun ActivitiesScreen(
     val supportsActivities = manager.capabilities.supportsActivities
     val scope = rememberCoroutineScope()
     val store = remember { ActivityCenterStore(scope) }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     var refreshing by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
@@ -97,18 +102,22 @@ fun ActivitiesScreen(
     }
     val canClearHistory = clearableEnvironmentIds.isNotEmpty()
 
-    // Load + start the live stream on appear; stop streams on dispose.
+    // Own network work only while this destination is the resumed/visible navigation entry.
     LaunchedEffect(manager.client, supportsActivities) {
         store.configure(manager.client)
         if (!supportsActivities) {
             store.stopStream()
             return@LaunchedEffect
         }
-        store.load(refresh = true)
-        store.startStream()
-    }
-    DisposableEffect(Unit) {
-        onDispose { store.stopStream() }
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            store.load(refresh = true)
+            store.startStream()
+            try {
+                awaitCancellation()
+            } finally {
+                store.stopStream()
+            }
+        }
     }
 
     Scaffold(
@@ -154,6 +163,12 @@ fun ActivitiesScreen(
                 )
 
                 store.isLoading && store.activities.isEmpty() -> SkeletonListLoadingView()
+
+                store.sourceFailures.isNotEmpty() && store.activities.isEmpty() -> ActivitySourceFailureList(
+                    failures = store.sourceFailures,
+                    retryingSourceIds = store.retryingSourceIds,
+                    onRetry = store::retrySource,
+                )
 
                 store.errorMessage != null && store.activities.isEmpty() -> ContentUnavailable(
                     "Couldn't Load Activities",
@@ -268,7 +283,15 @@ private fun ActivityListContent(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp),
             ) {
-                store.streamErrorMessage?.let { streamError ->
+                if (store.sourceFailures.isNotEmpty()) {
+                    items(store.sourceFailures, key = { "source-failure:${it.sourceId}" }) { failure ->
+                        ActivitySourceFailureBanner(
+                            failure = failure,
+                            retrying = failure.sourceId in store.retryingSourceIds,
+                            onRetry = { store.retrySource(failure.sourceId) },
+                        )
+                    }
+                } else store.streamErrorMessage?.let { streamError ->
                     item(key = "stream-error") {
                         ErrorBanner(
                             message = streamError,
@@ -304,6 +327,49 @@ private fun ActivityListContent(
             }
         }
     }
+}
+
+@Composable
+private fun ActivitySourceFailureList(
+    failures: List<ActivitySourceFailure>,
+    retryingSourceIds: Set<String>,
+    onRetry: (String) -> Unit,
+) {
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Text("Activity sources unavailable", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Retry each source independently. A successful source will recover without clearing data from other environments.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        items(failures, key = { it.sourceId }) { failure ->
+            ActivitySourceFailureBanner(
+                failure,
+                retrying = failure.sourceId in retryingSourceIds,
+                onRetry = { onRetry(failure.sourceId) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ActivitySourceFailureBanner(
+    failure: ActivitySourceFailure,
+    retrying: Boolean,
+    onRetry: () -> Unit,
+) {
+    ErrorBanner(
+        message = "${failure.sourceName}: ${failure.message}",
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        severity = app.getarcane.android.ui.components.BannerSeverity.Warning,
+        onRetry = if (retrying) null else onRetry,
+    )
 }
 
 @Composable
