@@ -13,8 +13,8 @@ The source comparison is pinned to:
 
 - iOS `6088fcc0ef04dc906ce74e9129dffa96894a6da5`
 - libarcane-swift `facc40e20e32b7d6600b004fd744a214bbd2a166`
-- Android `1fb86f8560c39f119ca63625a0ab2039bbdb9201`
-- libarcane-kotlin `b21faefd091de53fa30e6b5b910c66f49ec8076c`
+- Android `75fde394f61ee8838f201f25b42a3e83af146513` (Image Insights branch base)
+- libarcane-kotlin `275e7a533bd5f68063d3e275012041d0f846e251` (Image History PR #9)
 - Arcane `5df09ed475c4bac4ab6f54e1b9bdde1ac1c55105` (live compatibility target:
   2.10.2 tag `670ee2b34ea7b0fb2917643229b6ce9070ee9742`)
 
@@ -32,10 +32,9 @@ removed the Arcane Assistant.
 The P0 correctness foundation through **PAR-101** and PAR-501's multi-environment validation are
 complete. Continue with the remaining P1 workflow slices.
 
-The Projects Workspace and Accounts and Administration batches are complete. The remaining
-high-value feature slices are **PAR-105** (image attestations), **PAR-106** (container actions),
-**PAR-107** (log continuity), and **PAR-112** (image layer history). Tasks without dependencies can
-move sooner when they do not distract from the P0 queue.
+The Projects Workspace, Accounts and Administration, Container and Activity Reliability, and Image
+Insights batches are complete; the last is on its review branches. Continue with the remaining
+Ready items according to priority and dependencies.
 
 ## Status legend
 
@@ -578,18 +577,32 @@ The standard checks are:
   policy errors, a successful password change and re-login, the non-admin account boundary, sign
   out, and sign out plus change server against disposable Arcane 2.10.2.
 
-- [ ] **PAR-105 — Add image attestation workflows**
+- [x] **PAR-105 — Add image attestation workflows**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** None
 - **Scope:** Use existing Kotlin SDK support to provide attestation list, filter, detail, and safe
   statement copy for an image.
 - **Acceptance criteria:**
-  - [ ] Empty, malformed/unknown, loading, error, unauthorized, and unsupported-server states are clear.
-  - [ ] Selection remains tied to the correct image digest and environment.
-  - [ ] Copied/exported data is complete and intentionally labeled.
-  - [ ] DTO/serialization coverage remains in the SDK; Android adds state and presentation tests.
+  - [x] Empty, malformed/unknown, loading, error, unauthorized, and unsupported-server states are clear.
+  - [x] Selection remains tied to the correct image digest and environment.
+  - [x] Copied/exported data is complete and intentionally labeled.
+  - [x] DTO/serialization coverage remains in the SDK; Android adds state and presentation tests.
+
+  **Validation evidence (2026-09-11):** Android's image detail now opens an environment-, session-,
+  and immutable-image-scoped Attestations destination using the existing typed SDK service. It
+  provides predicate filtering, exact digest/predicate/platform selection, defensive unknown and
+  optional-field rendering, a no-trust warning, bounded raw preview, complete explicitly labeled
+  clipboard copy, and complete Storage Access Framework export. The shared nine-test Image Insights
+  suite covers identity/route scoping, filtering and filtered-empty state, exact selection, stale
+  success/failure rejection, cancellation/error mapping, formatting, and bounded preview versus
+  complete export. Live API 30 validation against Arcane 2.10.2 exercised two predicate types,
+  unknown predicate/no-subject data, a 110,330-byte statement, unattested, malformed, registry-error
+  recovery, unauthorized, v2.1.0 unsupported, refresh, environment switching, force-stop, and
+  repeated navigation. Presence is presented as metadata, never as cryptographic verification.
+  Full source, contract, fixture, limitation, and cleanup evidence is recorded in
+  [Image Insights parity evidence](image-insights-parity.md).
 
 - [x] **PAR-106 — Complete container lifecycle and detail actions**
 
@@ -732,21 +745,33 @@ The standard checks are:
   secret screen with `FLAG_SECURE`; and selected 24 named environments. Sync reported one local
   success and 25 unreachable remote failures once each without omissions or duplicate work.
 
-- [ ] **PAR-112 — Add image layer history**
+- [x] **PAR-112 — Add image layer history**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** None
 - **Scope:** Add the typed per-image Docker layer-history contract to `libarcane-kotlin`, then expose a
   History destination in image detail. Keep this distinct from the existing image-build history API.
 - **Acceptance criteria:**
-  - [ ] Layer ID/missing-layer, command, size, created time, and tags decode unknown/optional fields
+  - [x] Layer ID/missing-layer, command, size, created time, and tags decode unknown/optional fields
     defensively in SDK tests.
-  - [ ] Loading, empty, error, unauthorized, and unsupported-server states identify the image and
+  - [x] Loading, empty, error, unauthorized, and unsupported-server states identify the image and
     environment without leaking a prior selection.
-  - [ ] Refresh and environment/server changes cannot publish history for the wrong image digest.
-  - [ ] Focused Android tests and live-server validation cover a multi-layer image and a history-less
+  - [x] Refresh and environment/server changes cannot publish history for the wrong image digest.
+  - [x] Focused Android tests and live-server validation cover a multi-layer image and a history-less
     image.
+
+  **Validation evidence (2026-09-11):** libarcane-kotlin PR #9 adds the typed per-image history
+  route and defensive model, with two focused contract tests covering route encoding, server order,
+  null/missing fields, and ignored unknown fields. Its full gate passed 104 tests with zero failures
+  or errors and one skipped (103 passed), plus Android release assembly; GitHub CI is green. Android
+  presents Docker layer history—not image-build or updater history—with metadata-only layers,
+  commands, sizes, timestamps, tags, and comments. The full Android gate passed 303 tests and debug
+  assembly. Live API 30 testing proved newest-first rendering of seven deterministic layers, a
+  genuine zero-history scratch image, pull refresh, exact image/environment labeling, cancellation
+  on navigation, environment switching, unauthorized and v2.1.0 unsupported states, and no stale
+  data after force-stop/reopen or repeated navigation. See
+  [Image Insights parity evidence](image-insights-parity.md).
 
 - [x] **PAR-113 — Add scoped project deploy options**
 

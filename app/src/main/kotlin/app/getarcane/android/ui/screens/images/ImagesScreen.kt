@@ -12,6 +12,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.displayName
 import app.getarcane.android.nav.PopToRootOnSignal
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.image.ImageSummary
@@ -35,6 +37,7 @@ fun ImagesScreen(
     onInitialDestinationHandled: () -> Unit = {},
     onInitialDestinationBack: (() -> Unit)? = null,
 ) {
+    val manager = LocalArcaneManager.current
     val initialRoute = remember { initialDestination.startRoute }
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
@@ -66,18 +69,37 @@ fun ImagesScreen(
         composable("list") {
             ImageListScreen(
                 onLoaded = { loadedImages = it },
-                onOpen = { id -> nav.navigate("detail/$id") },
+                onOpen = { image ->
+                    val identity = ImageInsightIdentity(
+                        sessionKey = imageInsightSessionKey(
+                            manager.serverSessionIdentity,
+                            manager.currentUser?.id.orEmpty(),
+                        ),
+                        environmentId = manager.activeEnvironmentId.rawValue,
+                        environmentName = manager.activeEnvironmentName,
+                        imageId = image.id,
+                        imageDisplayName = image.displayName,
+                    )
+                    nav.navigate(imageInsightRoute("detail", identity))
+                },
                 onOpenUpdates = { nav.navigate("updates") },
                 onOpenVulnerabilities = { nav.navigate("vulnerabilities") },
             )
         }
         composable(
-            "detail/{id}",
-            arguments = listOf(navArgument("id") { type = NavType.StringType }),
+            "detail/$IMAGE_INSIGHT_ROUTE_PATTERN",
+            arguments = imageInsightRouteArguments,
         ) { entry ->
+            val identity = imageInsightIdentityFromRoute { entry.arguments?.getString(it) }
             ImageDetailScreen(
-                id = entry.arguments?.getString("id").orEmpty(),
+                identity = identity,
                 onBack = { nav.popBackStack() },
+                onOpenAttestations = {
+                    nav.navigate(imageInsightRoute("attestations", identity))
+                },
+                onOpenHistory = {
+                    nav.navigate(imageInsightRoute("history", identity))
+                },
                 onOpenVulnerabilities = { imageId, displayName ->
                     nav.navigate(
                         "imageVulns/${
@@ -88,6 +110,24 @@ fun ImagesScreen(
                         }/${java.net.URLEncoder.encode(displayName, "UTF-8")}"
                     )
                 },
+            )
+        }
+        composable(
+            "attestations/$IMAGE_INSIGHT_ROUTE_PATTERN",
+            arguments = imageInsightRouteArguments,
+        ) { entry ->
+            ImageAttestationsScreen(
+                identity = imageInsightIdentityFromRoute { entry.arguments?.getString(it) },
+                onBack = { nav.popBackStack() },
+            )
+        }
+        composable(
+            "history/$IMAGE_INSIGHT_ROUTE_PATTERN",
+            arguments = imageInsightRouteArguments,
+        ) { entry ->
+            ImageHistoryScreen(
+                identity = imageInsightIdentityFromRoute { entry.arguments?.getString(it) },
+                onBack = { nav.popBackStack() },
             )
         }
         composable(
@@ -134,6 +174,17 @@ fun ImagesScreen(
         }
     }
 }
+
+private const val IMAGE_INSIGHT_ROUTE_PATTERN =
+    "{sessionKey}/{environmentId}/{environmentName}/{imageId}/{imageDisplayName}"
+
+private val imageInsightRouteArguments = listOf(
+    "sessionKey",
+    "environmentId",
+    "environmentName",
+    "imageId",
+    "imageDisplayName",
+).map { name -> navArgument(name) { type = NavType.StringType } }
 
 internal val ImagesInitialDestination.startRoute: String
     get() = when (this) {

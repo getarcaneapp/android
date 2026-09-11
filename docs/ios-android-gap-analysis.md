@@ -1,6 +1,6 @@
 # iOS-to-Android gap analysis
 
-Last reviewed: 2026-09-10
+Last reviewed: 2026-09-11
 
 This document compares Arcane's iOS application with the Android application to guide Android
 product planning. It is a source-analysis snapshot, not a promise that Android will reproduce every
@@ -14,13 +14,13 @@ The analysis is pinned to these product revisions:
 | --- | --- | --- |
 | iOS | [`6088fcc0ef04dc906ce74e9129dffa96894a6da5`](https://github.com/getarcaneapp/ios/tree/6088fcc0ef04dc906ce74e9129dffa96894a6da5) | Current `origin/main`; mobile behavior authority for this refresh |
 | iOS resolved Swift SDK | [`facc40e20e32b7d6600b004fd744a214bbd2a166`](https://github.com/getarcaneapp/libarcane-swift/tree/facc40e20e32b7d6600b004fd744a214bbd2a166) | Current `origin/main`; compared for account, passkey/MFA, variables, and upgrade contracts |
-| Android | [`27aa01b77f10f421c7ebea5d6648b66001847cd2`](https://github.com/getarcaneapp/android/tree/27aa01b77f10f421c7ebea5d6648b66001847cd2) | Current `origin/main`; includes the completed Projects Workspace and Accounts and Administration batches |
-| Kotlin SDK | [`7787bff82973302062d1d0c8db4c12f09547c5b0`](https://github.com/getarcaneapp/libarcane-kotlin/tree/7787bff82973302062d1d0c8db4c12f09547c5b0) | Current `origin/main`; Accounts and Administration contracts merged from PR #7 |
-| Arcane | [`6a9ff7aa64fbec74e379b5dc9622699189093d73`](https://github.com/getarcaneapp/arcane/tree/6a9ff7aa64fbec74e379b5dc9622699189093d73) | Current `origin/main` wire-contract authority; live compatibility exercised on 2.10.2 tag `670ee2b` |
+| Android | [`75fde394f61ee8838f201f25b42a3e83af146513`](https://github.com/getarcaneapp/android/tree/75fde394f61ee8838f201f25b42a3e83af146513) | Current `origin/main` and Image Insights branch base |
+| Kotlin SDK | [`275e7a533bd5f68063d3e275012041d0f846e251`](https://github.com/getarcaneapp/libarcane-kotlin/tree/275e7a533bd5f68063d3e275012041d0f846e251) | Image History PR #9 head; based on current `origin/main` `b21faefd091de53fa30e6b5b910c66f49ec8076c` |
+| Arcane | [`5df09ed475c4bac4ab6f54e1b9bdde1ac1c55105`](https://github.com/getarcaneapp/arcane/tree/5df09ed475c4bac4ab6f54e1b9bdde1ac1c55105) | Current `origin/main` wire-contract authority; live compatibility exercised on 2.10.2 tag `670ee2b` |
 
-This refresh revalidated the Accounts and Administration slice against current iOS, both SDKs,
-Arcane handlers/types, Android `origin/main`, and the canonical backlog. It also reconciles the
-completed Projects Workspace batch (PAR-103, PAR-113, PAR-114, and PAR-115).
+This refresh revalidated Image Insights against current iOS, both SDKs, Arcane handlers/types,
+Android `origin/main`, and the canonical backlog. It also reconciles the completed Projects
+Workspace and Accounts and Administration batches.
 
 Parity status also reflects the locally validated PAR-001 session-restoration hardening and PAR-002
 server-session scoping layered on the pinned Android base. Their exact implementation and validation
@@ -61,11 +61,11 @@ also has live streams for important operational views and a larger JVM unit-test
 CI than the iOS repository.
 
 The largest remaining difference is depth and continuity, not the count of resource screens. iOS
-still has disk-backed stale-while-revalidate caching, adaptive tablet navigation, richer log
-workflows, image attestations/layer history, persistent deployment progress, several native entry
+still has disk-backed stale-while-revalidate caching, adaptive tablet navigation, persistent deployment progress, several native entry
 points, activity-start feedback, and interactive network topology. Android now covers profile,
-project-file workspace, deploy options, template discovery, registry identity, passkeys/MFA, and
-scoped global variables through typed SDK contracts.
+project-file workspace, deploy options, template discovery, registry identity, passkeys/MFA,
+scoped global variables, rich log continuity, container lifecycle actions, and Image Insights
+through typed SDK contracts.
 
 The most urgent Android work is smaller than those strategic gaps. PAR-002 closes the change-server
 state and credential-scoping defect; PAR-005 closes the unreachable admin-navigation paths; and
@@ -78,13 +78,10 @@ single fleet destination, which is compatible with Android's dashboard-plus-deta
 
 The recommended sequence is:
 
-1. Fix reachable-navigation and settings defects.
-2. Complete the remaining high-value workflows: logs, image attestations/history, and missing
-   container actions.
-3. Add resilient cached reads and persistent long-running operation state.
-4. Add Android-native equivalents for adaptive navigation, widgets, shortcuts, deep links, and
+1. Add persistent long-running operation state and resilient cached reads.
+2. Add Android-native equivalents for adaptive navigation, widgets, shortcuts, deep links, and
    ongoing-operation notifications.
-5. Consider optional product expansion such as multi-server profiles only after the operational
+3. Consider optional product expansion such as multi-server profiles only after the operational
    foundation is reliable.
 
 ## Detailed capability matrix
@@ -162,8 +159,8 @@ release. Do not add application-local HTTP calls or duplicate DTOs.
 | --- | --- | --- | --- |
 | Image inventory and lifecycle | List/detail, pull, streamed tar upload through `UploadImageView`, delete/prune, inspect/config/layers, and update workflows. | Filtered inventory, streamed pull, tar upload, remove/prune, inspect/config/layers, and update flows. | **Parity.** |
 | Vulnerability scanning | Scan, filter, ignore, and inspect vulnerabilities. Some DTOs are app-local raw REST because of an iOS SDK mismatch. | Scan/filter/ignore and aggregate/detail vulnerability flows are present through the Kotlin stack. | **Parity/Android strength.** Keep DTOs in the SDK and verify unknown values defensively. |
-| Image attestations | Attestation list/filter/detail and statement copy. | No attestation UI was identified; the pinned Kotlin SDK exposes attestation operations. | **Android UI gap.** Add the workflow using SDK types and confirm payload behavior against the target server. |
-| Image layer history | Image detail shows Docker layer history with command, size, date, and tags. | No image layer-history route exists. The Kotlin SDK exposes image build history, which is a different API, but not per-image Docker layer history. | **Android plus SDK gap.** Add the typed history endpoint first, then an environment- and digest-scoped detail tab. |
+| Image attestations | Attestation list/filter/detail and statement copy. | **Complete on PAR-105 review branch.** Image detail exposes a scoped list/filter/detail flow with complete labeled copy/export, defensive states, and no trust implication. | Outcome parity complete; retain the Android-native destination/bottom-sheet presentation. |
+| Image layer history | Image detail shows Docker layer history with command, size, date, and tags. | **Complete on PAR-112 review branches.** Kotlin PR #9 adds the typed route; Android renders environment/digest-scoped Docker layer history separately from image-build/updater history. | Outcome parity complete, pending SDK-before-Android PR merge ordering. |
 | Image updates | Per-image and fleet update flows. | Per-image, update overview, updater, and fleet-update flows. | **Parity/Android strength.** Android has substantial explicit updater behavior. |
 
 ### Volumes, networks, and ports
@@ -274,10 +271,6 @@ tests, then build the Android UI.
 These items appear to have sufficient application or SDK foundations and are primarily Android
 composition, persistence, or platform work:
 
-- add log copy/share/export;
-- add image-attestation presentation using the existing SDK operations;
-- expose supported container pause/kill actions with safe confirmation;
-- add lifecycle-aware event refresh and Activity Center failure recovery;
 - add adaptive navigation and authenticated resource deep links;
 - add widgets, shortcuts, and ongoing-operation notifications;
 - add response caching around existing read services;
@@ -287,21 +280,21 @@ composition, persistence, or platform work:
 
 These need an explicit SDK/server capability check at the pinned revisions:
 
-- per-image Docker layer history (distinct from the Kotlin SDK's image-build history);
 - exact activity stream error, heartbeat, and forward-compatible event handling;
 - dynamic/generic resource descriptors, if a generic fallback UI is desired;
 - server-version fallbacks for dashboard and fleet updates.
 
-The pinned Kotlin SDK already exposes image-attestation operations, explicit environment pagination
-queries, container pause/kill, typed project-file changes, and activity/stream APIs. Attestation and
-container-action gaps therefore remain Android UI/state work. Profile and project-workspace outcomes
-are complete, and complete-fleet pagination plus coroutine ownership were addressed in PAR-004 and
-PAR-008.
+The pinned Kotlin SDK exposes image-attestation and per-image Docker layer-history operations,
+explicit environment pagination queries, container pause/kill, typed project-file changes, and
+activity/stream APIs. Image Insights is complete on PAR-105/PAR-112 review branches; remaining
+container-action gaps are Android UI/state work. Profile and project-workspace outcomes are complete,
+and complete-fleet pagination plus coroutine ownership were addressed in PAR-004 and PAR-008.
 
 The Accounts and Administration batch adds the previously missing typed passkey/MFA and current
-global-variable contracts to Kotlin before Android consumes them. Per-image layer history remains
-an SDK prerequisite. The pinned SDK revision, sibling composite-build revision, and target server
-version remain recorded together because active SDK development can change those conclusions.
+global-variable contracts to Kotlin before Android consumes them. Per-image layer history was added
+in Kotlin SDK PR #9 before Android consumed it. The pinned SDK revision, sibling composite-build
+revision, and target server version remain recorded together because active SDK development can
+change those conclusions.
 
 ### Server or product-definition prerequisites
 
@@ -341,13 +334,8 @@ the deny-by-default backup boundary. Remaining P0 work is:
 
 ### P1: Complete high-frequency operational workflows
 
-1. Complete log search/copy/share/export and lifecycle consistency across container/project logs.
-2. Add image attestation list/detail/filter/copy using the existing SDK support.
-3. Fill missing container lifecycle/detail actions that the server and SDK support.
-4. Add image layer history through a typed Kotlin SDK.
-5. Add application-owned long-running operation state with reconnect/cancel and an in-app progress
+1. Add application-owned long-running operation state with reconnect/cancel and an in-app progress
    surface.
-6. Add lifecycle-aware event refresh and an explicit Activity Center retry path.
 
 ### P2: Resilience and Android-native continuity
 
