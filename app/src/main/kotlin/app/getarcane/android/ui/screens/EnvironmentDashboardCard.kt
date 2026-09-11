@@ -77,12 +77,12 @@ enum class EnvironmentCardAction(val label: String) {
     SystemPrune("System Prune"),
 }
 
-fun environmentCardActions(isAdmin: Boolean): List<EnvironmentCardAction> =
+fun environmentCardActions(canPrune: Boolean): List<EnvironmentCardAction> =
     buildList {
         add(EnvironmentCardAction.UseEnvironment)
         add(EnvironmentCardAction.ViewSystemDetails)
         add(EnvironmentCardAction.Sync)
-        if (isAdmin) {
+        if (canPrune) {
             add(EnvironmentCardAction.SystemPrune)
         }
     }
@@ -98,7 +98,7 @@ fun EnvironmentDashboardCard(
     versionInfo: VersionInfo? = null,
     refreshToken: Int = 0,
     onSelect: () -> Unit,
-    actions: List<EnvironmentCardAction> = environmentCardActions(isAdmin = false),
+    actions: List<EnvironmentCardAction> = environmentCardActions(canPrune = false),
     onAction: (EnvironmentCardAction) -> Unit = {},
 ) {
     val manager = LocalArcaneManager.current

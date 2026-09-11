@@ -29,8 +29,8 @@ removed the Arcane Assistant.
 
 ## Recommended starting queue
 
-The correctness foundation through PAR-009 is complete. Start with **PAR-101** to validate System
-Prune now that PAR-002's server scoping is proven.
+The P0 correctness foundation through **PAR-101** is complete. Continue with the remaining P1
+workflow slices and PAR-501's multi-environment live validation.
 
 The Projects Workspace and Accounts and Administration batches are complete. The remaining
 high-value feature slices are **PAR-105** (image attestations), **PAR-106** (container actions),
@@ -452,20 +452,68 @@ The standard checks are:
 
 ## Phase 1: Validate destructive behavior and complete daily workflows
 
-- [ ] **PAR-101 — Validate System Prune end to end**
+- [x] **PAR-101 — Validate System Prune end to end**
 
-- **Status:** Needs revalidation
+- **Status:** Complete
 - **Priority:** P0
 - **Dependencies:** PAR-002
-- **Scope:** Treat PR #12's UI/result handling as implemented but not operationally proven. Exercise
-  prune against disposable environments with known resources; do not infer server effects from UI
-  or unit tests.
+- **Scope:** Audit stale PR #12 without assuming its result handling is current, then exercise prune
+  against disposable environments with known resources; do not infer server effects from UI or unit
+  tests.
 - **Acceptance criteria:**
-  - [ ] A real-device/emulator plus live-server matrix covers success, nothing-to-prune, partial/error,
+  - [x] A real-device/emulator plus live-server matrix covers success, nothing-to-prune, partial/error,
     authorization failure, disconnect, cancellation, and repeated invocation.
-  - [ ] Before/after server state proves exactly which eligible resources were removed and retained.
-  - [ ] The UI reports server results accurately and cannot imply success after a failed mutation.
-  - [ ] Results identify tested Android, SDK, server, and API versions.
+  - [x] Before/after server state proves exactly which eligible resources were removed and retained.
+  - [x] The UI reports server results accurately and cannot imply success after a failed mutation.
+  - [x] Results identify tested Android, SDK, server, and API versions.
+- **Validation evidence (2026-09-10):**
+  - Source pins: Android base `9b16902dde5c96fac0c55fd5360288d6c3ac544f`, current iOS
+    `6088fcc0ef04dc906ce74e9129dffa96894a6da5`, libarcane-kotlin
+    `7787bff82973302062d1d0c8db4c12f09547c5b0`, and Arcane
+    `a50ab984528cf443c07e1a58052a09af2632dd63`. Current iOS loads the server's
+    per-environment prune defaults, gates the action with `system:prune`, and treats an accepted
+    background activity as pending Activity Center work rather than a completed prune.
+  - Stale PR #12 (`97209135b01d2cbc379be287b38d625b40e8811f`) was closed without merge,
+    had no review, and had two failed Build APK checks. Its useful defaults, build-cache/result, and
+    dismissal ideas were re-evaluated against the current activity contract rather than reused. The
+    resulting fix loads safe server defaults, checks `system:prune` for the target environment,
+    prevents duplicate submission, preserves structured cancellation, reports synchronous errors
+    and partial results as errors, and directs accepted asynchronous work to Activity Center.
+  - Exact current main reproduced the defect: invalid container age
+    `definitely-invalid-duration` created failed activity
+    `c3422f42-781f-49a8-9c83-e967afaf951f` while Docker state remained byte-for-byte unchanged
+    (`docker system df` hash `9468160ad60d59907aaaa852855c23043f976879246dff7050c639bdf30afb3c`),
+    but Android displayed the green message `No resources pruned.` The fixed build created failed
+    activity `067b9856-c546-4b0c-a44d-2d6d18414d23` for the equivalent invalid request, retained
+    the identical Docker-state hash, and did not show completed-success feedback.
+  - Live API 30 testing used AVD `arcane_test_api30` against disposable LXD `arcane-e2e`, Arcane
+    2.10.2 image digest
+    `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`,
+    Docker 29.1.3 / API 1.52, and environment `0` (`Local Docker`). Successful activity
+    `a4e43c9f-37dc-4481-9bed-85583fc9bb4e` removed the known stopped container, dangling image,
+    unused volume, and unused network while retaining the running container, tagged image, mounted
+    volume, and attached network. Docker counts changed from 5 to 4 images, 3 to 2 containers, and
+    2 to 1 volumes exactly as expected.
+  - The same measured matrix covered a no-op (`8675de56-5831-4eae-a15c-005c15c0150d`, identical
+    before/after hash `51b67ea642f7d3a229a3c3ad7fbc9f0a45ac08c231a30f188ae9e79a40fb868a`),
+    partial failure (`b4b1c4c0-d5f6-4ca5-9f2b-0a01ac9bb4fe`, unused network removed while the
+    invalid-age container prune failed and its stopped container remained), and two simultaneous
+    taps producing exactly one activity (`a3755975-13fb-49c4-ac04-6742ed11ef97`).
+  - Back navigation from the configured sheet produced no activity and left Docker state unchanged
+    (activity count 56 to 56; hash
+    `5be0da1ae58f7b37523e5d7badadc92d69e7734c934b695178c9271553a46af0`). With Arcane stopped,
+    Android showed `Couldn't reach the server` rather than success; after restart, retry created
+    successful activity `1c753672-888a-498c-8260-028e1f31f77c`, and Activity Center showed
+    `System prune completed` for `Local Docker`.
+  - A disposable environment-scoped viewer received HTTP 403 `permission denied: system:prune`
+    with identical before/after Docker hash
+    `fbb44140423ee7c650b0945e1353c51a639069d77f70b12a0635b6d1ea84125a`; the current Android build
+    exposed neither the dashboard toolbar prune control nor the environment-card action. All
+    disposable users, containers, images, volumes, and networks were removed afterward; the AVD
+    app data and temporary trust configuration were also removed.
+  - Focused prune/default/result/permission tests passed 10 tests. The CI-equivalent
+    `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline and `git diff --check` passed;
+    the complete diff received an independent self-review because automated reviews were inactive.
 
 - [x] **PAR-102 — Match per-environment Upgrade Arcane capability gating**
 
@@ -1022,6 +1070,15 @@ The standard checks are:
   - After refreshing the branch onto Android `26efa46809a24074417d5d42c06639e4287a4b8d`,
     the focused dashboard count/mapping tests and the CI-equivalent
     `./gradlew :app:testDebugUnitTest :app:assembleDebug` baseline passed on 2026-09-09.
+  - Single-environment live regression preflight on 2026-09-10 used Android base
+    `9b16902dde5c96fac0c55fd5360288d6c3ac544f`, current iOS
+    `6088fcc0ef04dc906ce74e9129dffa96894a6da5`, libarcane-kotlin
+    `7787bff82973302062d1d0c8db4c12f09547c5b0`, and Arcane
+    `a50ab984528cf443c07e1a58052a09af2632dd63`. A disposable `alpine:latest` image deliberately
+    pinned to the older 3.18 digest produced one server-reported outdated image. Dashboard Updates,
+    Needs Attention, and the opened Updates screen each displayed `1`; a subsequent streamed image
+    check (`5450cdfc-f27b-4c01-893c-390624b1a461`) did not revert any count. The fixture was removed.
+    Multi-environment live confirmation remains pending, so status and its final criterion stay open.
 
 - [ ] **PAR-502 — Multi-server profiles**
 

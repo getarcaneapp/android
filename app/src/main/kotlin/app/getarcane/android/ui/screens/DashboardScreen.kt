@@ -99,6 +99,7 @@ import app.getarcane.sdk.models.activity.ActivityStatus
 import app.getarcane.sdk.models.base.SortOrder
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentOverview
 import app.getarcane.sdk.models.environment.Environment
+import app.getarcane.sdk.models.role.Permission
 import app.getarcane.sdk.models.system.PruneAllRequest
 import app.getarcane.sdk.models.system.PruneAllResult
 import app.getarcane.sdk.models.system.PruneBuildCacheMode
@@ -111,6 +112,8 @@ import app.getarcane.sdk.models.system.PruneNetworkMode
 import app.getarcane.sdk.models.system.PruneNetworksOptions
 import app.getarcane.sdk.models.system.PruneVolumeMode
 import app.getarcane.sdk.models.system.PruneVolumesOptions
+import app.getarcane.sdk.models.user.User
+import app.getarcane.sdk.models.user.hasPermission
 import app.getarcane.sdk.models.user.isGlobalAdmin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -174,7 +177,9 @@ fun DashboardScreen(
     val envId = manager.activeEnvironmentId
 
     val supportsActivities = manager.capabilities.supportsActivities
-    val isAdmin = manager.currentUser?.isGlobalAdmin ?: false
+    val currentUser = manager.currentUser
+    val isAdmin = currentUser?.isGlobalAdmin ?: false
+    val canPruneActiveEnvironment = currentUser.canPruneEnvironment(envId.rawValue)
 
     var environments by remember { mutableStateOf<List<Environment>>(emptyList()) }
     var overviewByEnvironmentId by remember {
@@ -366,8 +371,10 @@ fun DashboardScreen(
                             ActivityCenterToolbarIcon(failedCount = failedActivityCount ?: 0)
                         }
                     }
-                    IconButton(onClick = { pruneEnvironmentId = envId }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "System Prune", tint = ArcaneRed)
+                    if (canPruneActiveEnvironment) {
+                        IconButton(onClick = { pruneEnvironmentId = envId }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "System Prune", tint = ArcaneRed)
+                        }
                     }
                 },
             )
@@ -482,7 +489,9 @@ fun DashboardScreen(
                         versionInfo = streamState?.snapshot?.versionInfo,
                         refreshToken = refreshKey,
                         onSelect = { manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id) },
-                        actions = environmentCardActions(isAdmin = isAdmin),
+                        actions = environmentCardActions(
+                            canPrune = currentUser.canPruneEnvironment(env.id),
+                        ),
                         onAction = { action ->
                             when (action) {
                                 EnvironmentCardAction.UseEnvironment -> {
@@ -560,6 +569,13 @@ fun DashboardScreen(
         SystemPruneSheet(
             envId = pruneEnvId,
             onDismiss = { pruneEnvironmentId = null },
+            onActivityAccepted = {
+                pruneEnvironmentId = null
+                refreshKey++
+                scope.launch {
+                    snackbar.showSnackbar("System prune started. Track progress in Activity Center.")
+                }
+            },
             onComplete = { refreshKey++ },
         )
     }
@@ -970,22 +986,57 @@ private fun DashboardTile(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComplete: () -> Unit) {
+private fun SystemPruneSheet(
+    envId: EnvironmentId,
+    onDismiss: () -> Unit,
+    onActivityAccepted: () -> Unit,
+    onComplete: () -> Unit,
+) {
     val manager = LocalArcaneManager.current
     val scope = rememberCoroutineScope()
 
-    var containerMode by remember { mutableStateOf(PruneContainerMode.NONE) }
-    var containerUntil by remember { mutableStateOf("") }
-    var imageMode by remember { mutableStateOf(PruneImageMode.NONE) }
-    var imageUntil by remember { mutableStateOf("") }
-    var volumeMode by remember { mutableStateOf(PruneVolumeMode.NONE) }
-    var networkMode by remember { mutableStateOf(PruneNetworkMode.NONE) }
-    var networkUntil by remember { mutableStateOf("") }
-    var buildCacheMode by remember { mutableStateOf(PruneBuildCacheMode.NONE) }
-    var buildCacheUntil by remember { mutableStateOf("") }
+    var containerMode by remember(envId.rawValue) { mutableStateOf(PruneContainerMode.NONE) }
+    var containerUntil by remember(envId.rawValue) { mutableStateOf(DEFAULT_PRUNE_AGE) }
+    var imageMode by remember(envId.rawValue) { mutableStateOf(PruneImageMode.NONE) }
+    var imageUntil by remember(envId.rawValue) { mutableStateOf(DEFAULT_PRUNE_AGE) }
+    var volumeMode by remember(envId.rawValue) { mutableStateOf(PruneVolumeMode.NONE) }
+    var networkMode by remember(envId.rawValue) { mutableStateOf(PruneNetworkMode.NONE) }
+    var networkUntil by remember(envId.rawValue) { mutableStateOf(DEFAULT_PRUNE_AGE) }
+    var buildCacheMode by remember(envId.rawValue) { mutableStateOf(PruneBuildCacheMode.NONE) }
+    var buildCacheUntil by remember(envId.rawValue) { mutableStateOf(DEFAULT_PRUNE_AGE) }
+    var loadingDefaults by remember(envId.rawValue) { mutableStateOf(manager.client != null) }
     var submitting by remember { mutableStateOf(false) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(manager.client, envId.rawValue) {
+        val client = manager.client
+        if (client == null) {
+            loadingDefaults = false
+            return@LaunchedEffect
+        }
+        loadingDefaults = true
+        try {
+            val defaults = systemPruneDefaults(
+                client.settings.getSettings(envId).associate { it.key to it.value },
+            )
+            containerMode = defaults.containerMode
+            containerUntil = defaults.containerUntil
+            imageMode = defaults.imageMode
+            imageUntil = defaults.imageUntil
+            volumeMode = defaults.volumeMode
+            networkMode = defaults.networkMode
+            networkUntil = defaults.networkUntil
+            buildCacheMode = defaults.buildCacheMode
+            buildCacheUntil = defaults.buildCacheUntil
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            // Server defaults are best-effort for older servers and restricted accounts.
+        } finally {
+            loadingDefaults = false
+        }
+    }
 
     val selectedCount = listOf(
         containerMode != PruneContainerMode.NONE,
@@ -994,8 +1045,15 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
         networkMode != PruneNetworkMode.NONE,
         buildCacheMode != PruneBuildCacheMode.NONE,
     ).count { it }
+    val ageInputsValid =
+        (containerMode != PruneContainerMode.OLDER_THAN || containerUntil.isNotBlank()) &&
+            (imageMode != PruneImageMode.OLDER_THAN || imageUntil.isNotBlank()) &&
+            (networkMode != PruneNetworkMode.OLDER_THAN || networkUntil.isNotBlank()) &&
+            (buildCacheMode != PruneBuildCacheMode.OLDER_THAN || buildCacheUntil.isNotBlank())
+    val canSubmit = selectedCount > 0 && ageInputsValid && !submitting && !loadingDefaults
 
     fun runPrune() {
+        if (selectedCount == 0 || !ageInputsValid || submitting || loadingDefaults) return
         val client = manager.client ?: return
         val request = PruneAllRequest(
             containers = containerMode.takeUnless { it == PruneContainerMode.NONE }?.let {
@@ -1012,13 +1070,29 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
                 PruneBuildCacheOptions(it, buildCacheUntil.takeIf { v -> v.isNotBlank() })
             },
         )
+        submitting = true
         scope.launch {
-            submitting = true
             errorMessage = null
             resultMessage = null
             try {
-                resultMessage = formatPruneResult(client.system.prune(request, envId))
-                onComplete()
+                when (
+                    val presentation = systemPrunePresentation(
+                        result = client.system.prune(request, envId),
+                        supportsActivities = manager.capabilities.supportsActivities,
+                    )
+                ) {
+                    SystemPrunePresentation.ActivityAccepted -> onActivityAccepted()
+                    is SystemPrunePresentation.Completed -> {
+                        if (presentation.isError) {
+                            errorMessage = presentation.message
+                        } else {
+                            resultMessage = presentation.message
+                            onComplete()
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
                 errorMessage = friendlyErrorMessage(e)
             } finally {
@@ -1027,20 +1101,20 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
         }
     }
 
-    Dialog(onDismissRequest = { if (!submitting) onDismiss() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) {
             Scaffold(
                 topBar = {
                     TopAppBar(
                         title = { Text("System Prune") },
                         navigationIcon = {
-                            IconButton(onClick = onDismiss, enabled = !submitting) {
+                            IconButton(onClick = onDismiss) {
                                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel")
                             }
                         },
                         actions = {
-                            TextButton(onClick = { runPrune() }, enabled = selectedCount > 0 && !submitting) {
-                                if (submitting) {
+                            TextButton(onClick = { runPrune() }, enabled = canSubmit) {
+                                if (submitting || loadingDefaults) {
                                     CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                                 } else {
                                     Text(if (selectedCount > 0) "Prune ($selectedCount)" else "Prune")
@@ -1104,10 +1178,14 @@ private fun SystemPruneSheet(envId: EnvironmentId, onDismiss: () -> Unit, onComp
                     item {
                         Button(
                             onClick = { runPrune() },
-                            enabled = selectedCount > 0 && !submitting,
+                            enabled = canSubmit,
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                         ) {
-                            Text(if (selectedCount > 0) "Prune ($selectedCount)" else "Prune")
+                            if (submitting || loadingDefaults) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                            } else {
+                                Text(if (selectedCount > 0) "Prune ($selectedCount)" else "Prune")
+                            }
                         }
                     }
                 }
@@ -1153,15 +1231,94 @@ private val PruneBuildCacheMode.label: String
         PruneBuildCacheMode.OLDER_THAN -> "Older than..."
     }
 
-private fun formatPruneResult(result: PruneAllResult): String {
+private const val DEFAULT_PRUNE_AGE = "24h"
+
+internal fun User?.canPruneEnvironment(environmentId: String): Boolean =
+    this?.hasPermission(Permission.System.PRUNE, environmentId) == true
+
+internal data class SystemPruneDefaults(
+    val containerMode: PruneContainerMode = PruneContainerMode.NONE,
+    val containerUntil: String = DEFAULT_PRUNE_AGE,
+    val imageMode: PruneImageMode = PruneImageMode.NONE,
+    val imageUntil: String = DEFAULT_PRUNE_AGE,
+    val volumeMode: PruneVolumeMode = PruneVolumeMode.NONE,
+    val networkMode: PruneNetworkMode = PruneNetworkMode.NONE,
+    val networkUntil: String = DEFAULT_PRUNE_AGE,
+    val buildCacheMode: PruneBuildCacheMode = PruneBuildCacheMode.NONE,
+    val buildCacheUntil: String = DEFAULT_PRUNE_AGE,
+)
+
+internal fun systemPruneDefaults(settings: Map<String, String>): SystemPruneDefaults =
+    SystemPruneDefaults(
+        containerMode = PruneContainerMode.entries.firstOrNull {
+            it.wire == settings["pruneContainerMode"]
+        } ?: PruneContainerMode.NONE,
+        containerUntil = settings["pruneContainerUntil"].orDefaultPruneAge(),
+        imageMode = PruneImageMode.entries.firstOrNull {
+            it.wire == settings["pruneImageMode"]
+        } ?: PruneImageMode.NONE,
+        imageUntil = settings["pruneImageUntil"].orDefaultPruneAge(),
+        volumeMode = PruneVolumeMode.entries.firstOrNull {
+            it.wire == settings["pruneVolumeMode"]
+        } ?: PruneVolumeMode.NONE,
+        networkMode = PruneNetworkMode.entries.firstOrNull {
+            it.wire == settings["pruneNetworkMode"]
+        } ?: PruneNetworkMode.NONE,
+        networkUntil = settings["pruneNetworkUntil"].orDefaultPruneAge(),
+        buildCacheMode = PruneBuildCacheMode.entries.firstOrNull {
+            it.wire == settings["pruneBuildCacheMode"]
+        } ?: PruneBuildCacheMode.NONE,
+        buildCacheUntil = settings["pruneBuildCacheUntil"].orDefaultPruneAge(),
+    )
+
+private fun String?.orDefaultPruneAge(): String = takeUnless { it.isNullOrBlank() } ?: DEFAULT_PRUNE_AGE
+
+internal sealed interface SystemPrunePresentation {
+    data object ActivityAccepted : SystemPrunePresentation
+
+    data class Completed(val message: String, val isError: Boolean) : SystemPrunePresentation
+}
+
+internal fun systemPrunePresentation(
+    result: PruneAllResult,
+    supportsActivities: Boolean,
+): SystemPrunePresentation {
+    val isError = !result.success || !result.errors.isNullOrEmpty()
+    return if (supportsActivities && !isError) {
+        SystemPrunePresentation.ActivityAccepted
+    } else {
+        SystemPrunePresentation.Completed(
+            message = formatSystemPruneResult(result),
+            isError = isError,
+        )
+    }
+}
+
+internal fun formatSystemPruneResult(result: PruneAllResult): String {
     val parts = buildList {
         result.containersPruned?.size?.takeIf { it > 0 }?.let { add("$it container${if (it == 1) "" else "s"}") }
         result.imagesDeleted?.size?.takeIf { it > 0 }?.let { add("$it image${if (it == 1) "" else "s"}") }
         result.volumesDeleted?.size?.takeIf { it > 0 }?.let { add("$it volume${if (it == 1) "" else "s"}") }
         result.networksDeleted?.size?.takeIf { it > 0 }?.let { add("$it network${if (it == 1) "" else "s"}") }
+        result.buildCacheSpaceReclaimed?.takeIf { it > 0 }?.let { add("build cache") }
     }
-    val summary = if (parts.isEmpty()) "No resources pruned." else "Pruned ${parts.joinToString(", ")}."
-    val reclaimed = result.spaceReclaimed.takeIf { it > 0 }?.let { " Freed ${formatBytes(it)}." }.orEmpty()
+    val reclaimedBytes = result.spaceReclaimed.takeIf { it > 0 }
+        ?: listOfNotNull(
+            result.containerSpaceReclaimed,
+            result.imageSpaceReclaimed,
+            result.volumeSpaceReclaimed,
+            result.buildCacheSpaceReclaimed,
+        ).sum().takeIf { it > 0 }
+    val isError = !result.success || !result.errors.isNullOrEmpty()
+    val summary = when {
+        parts.isNotEmpty() && isError -> "Pruned ${parts.joinToString(", ")} with errors."
+        parts.isNotEmpty() -> "Pruned ${parts.joinToString(", ")}."
+        reclaimedBytes != null && isError -> "System prune reclaimed resources with errors."
+        reclaimedBytes != null -> "Pruned resources."
+        isError -> "System prune failed."
+        else -> "No resources pruned."
+    }
+    val reclaimed = reclaimedBytes?.let { " Freed ${formatBytes(it)}." }.orEmpty()
     val errors = result.errors?.takeIf { it.isNotEmpty() }?.joinToString(prefix = " Errors: ")
     return summary + reclaimed + (errors ?: "")
 }
