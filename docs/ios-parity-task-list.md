@@ -29,8 +29,8 @@ removed the Arcane Assistant.
 
 ## Recommended starting queue
 
-The P0 correctness foundation through **PAR-101** is complete. Continue with the remaining P1
-workflow slices and PAR-501's multi-environment live validation.
+The P0 correctness foundation through **PAR-101** and PAR-501's multi-environment validation are
+complete. Continue with the remaining P1 workflow slices.
 
 The Projects Workspace and Accounts and Administration batches are complete. The remaining
 high-value feature slices are **PAR-105** (image attestations), **PAR-106** (container actions),
@@ -1025,9 +1025,9 @@ The standard checks are:
 
 ## Hold and deferred product tracks
 
-- [ ] **PAR-501 — Arcane Updates counts and navigation**
+- [x] **PAR-501 — Arcane Updates counts and navigation**
 
-- **Status:** Needs validation
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** Explicit product decision to follow current iOS Updates semantics (cleared
   2026-08-27)
@@ -1039,8 +1039,8 @@ The standard checks are:
   - [x] Product decision and target revisions are explicitly recorded before work begins.
   - [x] Counts are defined for permissions, unavailable environments, and server versions.
   - [x] Dashboard entry points open the image-oriented Updates list without losing environment identity.
-  - [ ] Multi-environment live-server tests prove counts and destination consistency.
-- **Implementation and validation evidence (2026-08-27):**
+  - [x] Multi-environment live-server tests prove counts and destination consistency.
+- **Implementation and validation evidence (updated 2026-09-11):**
   - Source pins: Android base `982d8cc844c604a029371ebda0ae12e80d5764bd`, iOS
     `a3440b05238d2620b91d984557c87994ab15fb28`, libarcane-kotlin
     `991dfdc1ee747c171ebf1b5953fe5fb61ceadfb8`, and Arcane
@@ -1078,7 +1078,46 @@ The standard checks are:
     pinned to the older 3.18 digest produced one server-reported outdated image. Dashboard Updates,
     Needs Attention, and the opened Updates screen each displayed `1`; a subsequent streamed image
     check (`5450cdfc-f27b-4c01-893c-390624b1a461`) did not revert any count. The fixture was removed.
-    Multi-environment live confirmation remains pending, so status and its final criterion stay open.
+    At that point multi-environment live confirmation remained pending, so status and its final
+    criterion stayed open.
+  - Completion revalidation on 2026-09-11 compared Android
+    `5525278dc6694984ecacdae92a35e58f646ca151`, iOS
+    `6088fcc0ef04dc906ce74e9129dffa96894a6da5`, libarcane-kotlin
+    `7787bff82973302062d1d0c8db4c12f09547c5b0`, and Arcane source
+    `5df09ed475c4bac4ab6f54e1b9bdde1ac1c55105`. Live validation used two Arcane v2.10.2
+    instances from image revision `670ee2b34ea7b0fb2917643229b6ce9070ee9742` and digest
+    `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`: the existing
+    `arcane-e2e` manager at `https://10.0.2.2:43553` and a disposable Ubuntu 24.04 LXD
+    instance registered as `PAR-501 Isolated Remote`. Their Docker 29.1.3 daemons had distinct IDs
+    (`67215421-d4f4-477b-94ad-29d3d71ff651` and
+    `de81b8e0-7a31-403f-a67d-7c299e5c1712`) and separate `/var/lib/docker` roots.
+  - The deterministic fixture put old `alpine:latest` and `busybox:latest` image IDs in one local
+    Compose-labelled project, `par501-multi-image`, and an old, unused `nginx:latest` image in the
+    isolated environment. Arcane reported image summaries of two plus one, while the resource-oriented
+    Dashboard action items reported one plus zero. Image-list state confirmed the three distinct old
+    digests and their newer registry digests, proving the expected mobile fleet total was three images,
+    not one updateable resource.
+  - The actual Android app (`versionCode=260901`, `versionName=0.1.0`) ran on AVD
+    `arcane_test_api30`, API 30/Android 11 build
+    `RSR1.210722.013.A2/10067904`, with emulator 37.1.11.0. Dashboard Updates, Needs Attention, and
+    Updates details each showed `3`; both Dashboard entry points opened the same image-oriented Updates
+    screen, whose environment cards showed local `2` and remote `1`. Refresh retained `3`. Adding a
+    temporary standalone consumer changed Arcane's streamed resource action count from one to two while
+    the image total and both Dashboard surfaces correctly remained `3`.
+  - Stopping the remote Arcane instance left the local image subtotal at two and made its summary proxy
+    return HTTP 502. Updates details displayed `Update total unavailable`, and a Dashboard reload showed
+    an em dash rather than the misleading partial total `2`. After the instance restarted, refreshing
+    Updates and returning to Dashboard recovered `3` without restarting the app; its process remained
+    PID 2584. Disabling the remote registration while it still directly reported one outdated image
+    produced `2 updates available` across `1 environment`, Dashboard Updates `2`, and Needs Attention
+    `2`, consistently excluding the disabled environment.
+  - Focused `DashboardTotalsTest`, `DashboardNeedsAttentionMapperTest`, and
+    `DashboardOverviewSourceTest` runs passed all 10 tests. The CI-equivalent
+    `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 269 unit tests and assembled the
+    debug APK. The remote registration, disposable LXD instance, all Docker fixtures, the debug-only
+    CA trust override, the installed test APK, and temporary evidence files were removed; the manager
+    returned to its single local environment and zero outdated images. Automated reviews were inactive,
+    so no Greptile evidence is claimed.
 
 - [ ] **PAR-502 — Multi-server profiles**
 
@@ -1181,8 +1220,8 @@ implementation work unless current-source or runtime verification finds a regres
 - **Status:** Done/verify
 - **Priority:** P1 if reopened
 - **Dependencies:** PAR-004, PAR-501
-- **Scope:** Verify complete environment coverage and result reporting, but do not change Arcane
-  Updates counts/navigation while PAR-501 is on hold.
+- **Scope:** Verify complete environment coverage and result reporting while preserving PAR-501's
+  completed Updates counts/navigation decision.
 - **Acceptance criteria:**
   - [ ] More than 20 environments are included exactly once where eligible.
   - [ ] Partial, unsupported, unauthorized, cancel, and error results are accurately attributed.
