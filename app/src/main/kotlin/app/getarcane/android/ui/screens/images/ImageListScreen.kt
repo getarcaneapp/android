@@ -88,7 +88,7 @@ sealed interface ImageUpdateState {
 @Composable
 fun ImageListScreen(
     onLoaded: (List<ImageSummary>) -> Unit,
-    onOpen: (String) -> Unit,
+    onOpen: (ImageSummary) -> Unit,
     onOpenUpdates: () -> Unit,
     onOpenVulnerabilities: () -> Unit,
 ) {
@@ -401,7 +401,7 @@ private fun LazyListScope.imageSection(
     title: String,
     items: List<ImageSummary>,
     updateStateFor: (ImageSummary) -> ImageUpdateState,
-    onOpen: (String) -> Unit,
+    onOpen: (ImageSummary) -> Unit,
     onDelete: (ImageSummary) -> Unit,
 ) {
     if (items.isEmpty()) return
@@ -417,7 +417,7 @@ private fun LazyListScope.imageSection(
         ImageRow(
             image = image,
             updateState = updateStateFor(image),
-            onClick = { onOpen(image.id) },
+            onClick = { onOpen(image) },
             onDelete = { onDelete(image) },
         )
     }

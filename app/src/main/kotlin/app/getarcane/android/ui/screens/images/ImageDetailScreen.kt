@@ -59,11 +59,15 @@ import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
+import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.image.ImageDetailConfig
 import app.getarcane.sdk.models.image.ImageDetailSummary
 import app.getarcane.sdk.models.imageupdate.ImageUpdateResponse
+import app.getarcane.sdk.models.role.Permission
+import app.getarcane.sdk.models.user.hasPermission
 import app.getarcane.sdk.models.vulnerability.VulnerabilityScanSummary
 import app.getarcane.sdk.models.vulnerability.VulnerabilityScannerStatus
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 private fun ImageDetailSummary.displayName(): String =
@@ -72,64 +76,182 @@ private fun ImageDetailSummary.displayName(): String =
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ImageDetailScreen(
-    id: String,
+internal fun ImageDetailScreen(
+    identity: ImageInsightIdentity,
     onBack: () -> Unit,
+    onOpenAttestations: () -> Unit,
+    onOpenHistory: () -> Unit,
     onOpenVulnerabilities: (imageId: String, displayName: String) -> Unit,
 ) {
     val manager = LocalArcaneManager.current
     val client = manager.client
-    val envId = manager.activeEnvironmentId
+    val envId = EnvironmentId(identity.environmentId)
     val scope = rememberCoroutineScope()
 
-    var state by remember { mutableStateOf<Loadable<ImageDetailSummary>>(Loadable.Loading) }
-    var updateInfo by remember { mutableStateOf<ImageUpdateResponse?>(null) }
-    var isCheckingUpdate by remember { mutableStateOf(false) }
-    var vulnSummary by remember { mutableStateOf<VulnerabilityScanSummary?>(null) }
-    var scannerStatus by remember { mutableStateOf<VulnerabilityScannerStatus?>(null) }
-    var confirmDelete by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var state by remember(identity.requestKey) {
+        mutableStateOf<Loadable<ImageDetailSummary>>(Loadable.Loading)
+    }
+    var updateInfo by remember(identity.requestKey) { mutableStateOf<ImageUpdateResponse?>(null) }
+    var isCheckingUpdate by remember(identity.requestKey) { mutableStateOf(false) }
+    var vulnSummary by remember(identity.requestKey) { mutableStateOf<VulnerabilityScanSummary?>(null) }
+    var scannerStatus by remember(identity.requestKey) { mutableStateOf<VulnerabilityScannerStatus?>(null) }
+    var confirmDelete by remember(identity.requestKey) { mutableStateOf(false) }
+    var errorMessage by remember(identity.requestKey) { mutableStateOf<String?>(null) }
+    var staleSelection by remember(identity.requestKey) { mutableStateOf(false) }
 
-    LaunchedEffect(id) {
+    val currentUserId = manager.currentUser?.id.orEmpty()
+    val activeEnvironmentId = manager.activeEnvironmentId.rawValue
+    val selectionCurrent = identity.isCurrent(
+        manager.serverSessionIdentity,
+        currentUserId,
+        activeEnvironmentId,
+    )
+    val canRead = manager.currentUser?.hasPermission(Permission.Images.READ, identity.environmentId) == true
+    val canDelete = manager.currentUser?.hasPermission(Permission.Images.DELETE, identity.environmentId) == true
+
+    LaunchedEffect(
+        identity.requestKey,
+        client,
+        currentUserId,
+        manager.serverSessionIdentity,
+        activeEnvironmentId,
+        canRead,
+    ) {
+        if (!selectionCurrent) {
+            staleSelection = true
+            return@LaunchedEffect
+        }
+        staleSelection = false
         if (client == null) return@LaunchedEffect
+        if (!canRead) {
+            state = Loadable.Error("Your account does not have image-read access for ${identity.environmentName}.")
+            return@LaunchedEffect
+        }
+        val captured = manager.authenticatedClientScope() ?: return@LaunchedEffect
+        state = Loadable.Loading
         state = try {
-            Loadable.Success(client.images.inspect(envId = envId, id = id))
+            val details = captured.client.images.inspect(envId = envId, id = identity.imageId)
+            if (!manager.isCurrent(captured) || !identity.isCurrent(
+                    manager.serverSessionIdentity,
+                    manager.currentUser?.id.orEmpty(),
+                    manager.activeEnvironmentId.rawValue,
+                )
+            ) {
+                staleSelection = true
+                return@LaunchedEffect
+            }
+            Loadable.Success(details)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
+            if (!manager.isCurrent(captured) || !identity.isCurrent(
+                    manager.serverSessionIdentity,
+                    manager.currentUser?.id.orEmpty(),
+                    manager.activeEnvironmentId.rawValue,
+                )
+            ) {
+                staleSelection = true
+                return@LaunchedEffect
+            }
             Loadable.Error(friendlyErrorMessage(e))
         }
         // Vulnerability summary + scanner status (best-effort).
-        scannerStatus =
-            runCatching { client.vulnerabilities.scannerStatus(envId = envId) }.getOrNull()
-        vulnSummary = runCatching {
-            client.vulnerabilities.scanSummary(
+        scannerStatus = try {
+            captured.client.vulnerabilities.scannerStatus(envId = envId).takeIf {
+                manager.isCurrent(captured) && identity.isCurrent(
+                    manager.serverSessionIdentity,
+                    manager.currentUser?.id.orEmpty(),
+                    manager.activeEnvironmentId.rawValue,
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
+        vulnSummary = try {
+            captured.client.vulnerabilities.scanSummary(
                 envId = envId,
-                imageId = id
-            )
-        }.getOrNull()
+                imageId = identity.imageId,
+            ).takeIf {
+                manager.isCurrent(captured) && identity.isCurrent(
+                    manager.serverSessionIdentity,
+                    manager.currentUser?.id.orEmpty(),
+                    manager.activeEnvironmentId.rawValue,
+                )
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
     }
 
     fun checkForUpdate() {
-        if (client == null) return
+        val captured = manager.authenticatedClientScope() ?: return
         isCheckingUpdate = true
         scope.launch {
             try {
-                updateInfo = client.images.checkUpdateByIDPost(envId = envId, imageId = id)
+                val response = captured.client.images.checkUpdateByIDPost(
+                    envId = envId,
+                    imageId = identity.imageId,
+                )
+                if (manager.isCurrent(captured) && identity.isCurrent(
+                        manager.serverSessionIdentity,
+                        manager.currentUser?.id.orEmpty(),
+                        manager.activeEnvironmentId.rawValue,
+                    )
+                ) {
+                    updateInfo = response
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
-                errorMessage = friendlyErrorMessage(e)
+                if (manager.isCurrent(captured) && identity.isCurrent(
+                        manager.serverSessionIdentity,
+                        manager.currentUser?.id.orEmpty(),
+                        manager.activeEnvironmentId.rawValue,
+                    )
+                ) {
+                    errorMessage = friendlyErrorMessage(e)
+                }
             } finally {
-                isCheckingUpdate = false
+                if (manager.isCurrent(captured) && identity.isCurrent(
+                        manager.serverSessionIdentity,
+                        manager.currentUser?.id.orEmpty(),
+                        manager.activeEnvironmentId.rawValue,
+                    )
+                ) {
+                    isCheckingUpdate = false
+                }
             }
         }
     }
 
     fun removeImage() {
-        if (client == null) return
+        val captured = manager.authenticatedClientScope() ?: return
         scope.launch {
             try {
-                client.images.remove(envId = envId, id = id)
-                onBack()
+                captured.client.images.remove(envId = envId, id = identity.imageId)
+                if (manager.isCurrent(captured) && identity.isCurrent(
+                        manager.serverSessionIdentity,
+                        manager.currentUser?.id.orEmpty(),
+                        manager.activeEnvironmentId.rawValue,
+                    )
+                ) {
+                    onBack()
+                }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Throwable) {
-                errorMessage = friendlyErrorMessage(e)
+                if (manager.isCurrent(captured) && identity.isCurrent(
+                        manager.serverSessionIdentity,
+                        manager.currentUser?.id.orEmpty(),
+                        manager.activeEnvironmentId.rawValue,
+                    )
+                ) {
+                    errorMessage = friendlyErrorMessage(e)
+                }
             }
         }
     }
@@ -147,9 +269,11 @@ fun ImageDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        confirmDelete = true
-                    }) { Icon(Icons.Filled.Delete, "Delete", tint = ArcaneRed) }
+                    if (canDelete && selectionCurrent) {
+                        IconButton(onClick = { confirmDelete = true }) {
+                            Icon(Icons.Filled.Delete, "Delete", tint = ArcaneRed)
+                        }
+                    }
                 },
             )
         },
@@ -157,9 +281,29 @@ fun ImageDetailScreen(
         Box(Modifier
             .fillMaxSize()
             .padding(padding)) {
-            when (val s = state) {
+            if (staleSelection) {
+                ContentUnavailable(
+                    "Image selection changed",
+                    Icons.Filled.Warning,
+                    "${identity.imageDisplayName} is tied to ${identity.environmentName}. Go back and select it again.",
+                    "Back",
+                    onBack,
+                )
+            } else when (val s = state) {
                 is Loadable.Loading -> SkeletonListLoadingView()
-                is Loadable.Error -> ContentUnavailable("Error", Icons.Filled.Warning, s.message)
+                is Loadable.Error -> LazyColumn(
+                    Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    item { ImageIdentityHeader(identity) }
+                    item { ContentUnavailable("Couldn't Load Image Details", Icons.Filled.Warning, s.message) }
+                    item {
+                        ImageInsightDestinations(
+                            onOpenAttestations = onOpenAttestations,
+                            onOpenHistory = onOpenHistory,
+                        )
+                    }
+                }
                 is Loadable.Success -> {
                     val d = s.value
                     LazyColumn(
@@ -204,6 +348,13 @@ fun ImageDetailScreen(
                         item { ImageConfigSection(d.config) }
 
                         item {
+                            ImageInsightDestinations(
+                                onOpenAttestations = onOpenAttestations,
+                                onOpenHistory = onOpenHistory,
+                            )
+                        }
+
+                        item {
                             VulnerabilitiesSection(
                                 summary = vulnSummary,
                                 scannerStatus = scannerStatus,
@@ -220,7 +371,12 @@ fun ImageDetailScreen(
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Remove Image") },
-            text = { Text("This will remove the image from the host.") },
+            text = {
+                Text(
+                    "Remove ${identity.imageDisplayName} from ${identity.environmentName}? " +
+                        "This deletes the selected image from that Docker environment.",
+                )
+            },
             confirmButton = {
                 TextButton(onClick = { confirmDelete = false; removeImage() }) {
                     Text(
@@ -276,6 +432,86 @@ private fun ImageHeader(d: ImageDetailSummary) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun ImageIdentityHeader(identity: ImageInsightIdentity) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(56.dp).background(ArcanePurple.copy(alpha = 0.2f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Layers, null, tint = ArcanePurple, modifier = Modifier.size(28.dp))
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(identity.imageDisplayName, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                identity.imageId,
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                identity.environmentName,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImageInsightDestinations(
+    onOpenAttestations: () -> Unit,
+    onOpenHistory: () -> Unit,
+) {
+    DetailSection("Image Insights") {
+        ImageInsightDestinationRow(
+            title = "Layer History",
+            description = "Docker layers, commands, sizes, creation times, and tags",
+            icon = Icons.Filled.Layers,
+            onClick = onOpenHistory,
+        )
+        ImageInsightDestinationRow(
+            title = "Attestations",
+            description = "Attached in-toto statements; presence does not establish trust",
+            icon = Icons.Filled.Security,
+            onClick = onOpenAttestations,
+        )
+    }
+}
+
+@Composable
+private fun ImageInsightDestinationRow(
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 9.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                description,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
