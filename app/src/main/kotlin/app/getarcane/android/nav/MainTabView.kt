@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.LocalOperationStore
+import app.getarcane.android.core.ActivityOpenRequest
 import app.getarcane.android.ui.screens.DashboardScreen
 import app.getarcane.android.ui.screens.PlaceholderScreen
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
@@ -96,6 +98,7 @@ private sealed interface DashboardOpenTarget {
 @Composable
 fun MainTabView() {
     val manager = LocalArcaneManager.current
+    val operationStore = LocalOperationStore.current
     val context = LocalContext.current
     val tabsStore = remember { NavTabsStore(context) }
     val selectionStore = remember { MainTabSelectionStore(context) }
@@ -110,6 +113,11 @@ fun MainTabView() {
     var dashboardOpenTarget by remember { mutableStateOf<DashboardOpenTarget?>(null) }
     var imagesInitialDestination by remember { mutableStateOf(ImagesInitialDestination.List) }
     var settingsInitialDestination by remember { mutableStateOf(SettingsInitialDestination.Root) }
+
+    val activityOpenRequest = operationStore.activityOpenRequest
+    LaunchedEffect(activityOpenRequest?.requestId) {
+        if (activityOpenRequest != null) selected = AppTab.Activities.id
+    }
 
     if (selected == null && selectionStore.hasLoaded) {
         selected = MainTabSelection.restore(
@@ -247,6 +255,8 @@ fun MainTabView() {
                         dashboardOpenTarget = null
                         selected = AppTab.ApiKeys.id
                     },
+                    activityOpenRequest = activityOpenRequest,
+                    onActivityOpenHandled = operationStore::consumeActivityOpenRequest,
                 )
             }
         }
@@ -327,6 +337,8 @@ private fun TabContent(
     onOpenImageVulnerabilities: (String, String) -> Unit,
     onOpenImageUpdates: () -> Unit,
     onOpenApiKeys: () -> Unit,
+    activityOpenRequest: ActivityOpenRequest?,
+    onActivityOpenHandled: (Long) -> Unit,
 ) {
     when (tabId) {
         SETTINGS_ID -> SettingsScreen(
@@ -404,7 +416,11 @@ private fun TabContent(
         AppTab.Ports.id -> PortsScreen(popToRootSignal = popToRootSignal)
         AppTab.Events.id -> EventsScreen(popToRootSignal = popToRootSignal)
         AppTab.Jobs.id -> JobsScreen(popToRootSignal = popToRootSignal)
-        AppTab.Activities.id -> ActivitiesTab(popToRootSignal = popToRootSignal)
+        AppTab.Activities.id -> ActivitiesTab(
+            popToRootSignal = popToRootSignal,
+            initialDetail = activityOpenRequest,
+            onInitialDetailHandled = onActivityOpenHandled,
+        )
         AppTab.Updates.id -> UpdatesScreen(popToRootSignal = popToRootSignal)
         AppTab.Swarm.id -> SwarmScreen()
         AppTab.GitOps.id -> GitOpsScreen()

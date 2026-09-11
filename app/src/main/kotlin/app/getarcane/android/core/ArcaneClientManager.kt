@@ -94,6 +94,7 @@ class ArcaneClientManager(context: Context) {
     private var passkeyBrowserInvocation: PasskeyBrowserInvocation? = null
     private val passkeyBrowserReturnTracker = PasskeyBrowserReturnTracker()
     private var nextPasskeySecurityEventId = 0L
+    private var operationStore: OperationStore? = null
 
     var authStatus by mutableStateOf(AuthStatus.AUTHENTICATING); private set
     var serverUrl by mutableStateOf(""); private set
@@ -189,8 +190,17 @@ class ArcaneClientManager(context: Context) {
                 refreshLoginMethods = ::refreshLoginMethods,
                 updateStatus = { authStatus = it },
             )
-            if (authStatus == AuthStatus.AUTHENTICATED) refreshLoginMethods()
+            if (authStatus == AuthStatus.AUTHENTICATED) {
+                refreshLoginMethods()
+                operationStore?.onAuthenticated()
+            }
         }
+    }
+
+    internal fun attachOperationStore(store: OperationStore) {
+        check(operationStore == null || operationStore === store)
+        operationStore = store
+        if (authStatus == AuthStatus.AUTHENTICATED) store.onAuthenticated()
     }
 
     private fun makeClient(
@@ -328,6 +338,7 @@ class ArcaneClientManager(context: Context) {
         val previousUrl = serverUrl
         val previousIdentity = ServerIdentities.from(previousUrl)
         val previousClient = client
+        operationStore?.onSessionEnding()
         replaceSessionScope()
         if (previousIdentity != null && previousIdentity != nextIdentity) {
             cleanupServer(previousUrl, previousIdentity, previousClient, endDemoSession = isDemoActive)
@@ -628,6 +639,7 @@ class ArcaneClientManager(context: Context) {
                 supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
                 authStatus = AuthStatus.AUTHENTICATED
                 refreshLoginMethods()
+                operationStore?.onAuthenticated()
             }
         }
     }
@@ -636,6 +648,7 @@ class ArcaneClientManager(context: Context) {
         val c = client ?: return
         val generation = clientGeneration
         scope.launch {
+            operationStore?.onSessionEnding()
             try {
                 c.auth.logout()
             } catch (e: CancellationException) {
@@ -713,6 +726,7 @@ class ArcaneClientManager(context: Context) {
         val endingIdentity = ServerIdentities.from(endingUrl)
         val endingClient = client
         val endingDemo = isDemoActive
+        operationStore?.onSessionEnding()
         replaceSessionScope()
         demoExpiryJob?.cancel()
         demoExpiryJob = null
@@ -819,6 +833,7 @@ class ArcaneClientManager(context: Context) {
                     demoEndsAt = session.endsAtMillis
                     authStatus = AuthStatus.AUTHENTICATED
                     refreshLoginMethods()
+                    operationStore?.onAuthenticated()
                     DemoService.startHeartbeat(scope)
                     scheduleDemoExpiry(session.endsAtMillis)
                 } catch (e: CancellationException) {
@@ -850,6 +865,7 @@ class ArcaneClientManager(context: Context) {
         val endingUrl = serverUrl
         val endingIdentity = ServerIdentities.from(endingUrl)
         val endingClient = client
+        operationStore?.onSessionEnding()
         replaceSessionScope()
         clientGeneration++
         currentUser = null

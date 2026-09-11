@@ -15,6 +15,7 @@ import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.nav.MainTabView
 import app.getarcane.android.ui.auth.LoginScreen
 import app.getarcane.android.ui.components.DemoBanner
+import app.getarcane.android.ui.operations.OperationHost
 
 /** Root composable: routes on auth state. Port of iOS `ContentView`. */
 @Composable
@@ -29,13 +30,15 @@ fun ArcaneApp() {
             // and the tab shell below doesn't double-inset. With no demo, leave the inset for
             // MainTabView's own scaffolds (edge-to-edge top bars), so the normal layout is unchanged.
             val demoActive = manager.isDemoActive
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .then(if (demoActive) Modifier.windowInsetsPadding(WindowInsets.statusBars) else Modifier),
-            ) {
-                DemoBanner()
-                Box(Modifier.weight(1f)) { MainTabView() }
+            OperationHost {
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .then(if (demoActive) Modifier.windowInsetsPadding(WindowInsets.statusBars) else Modifier),
+                ) {
+                    DemoBanner()
+                    Box(Modifier.weight(1f)) { MainTabView() }
+                }
             }
         }
     }

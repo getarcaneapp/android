@@ -1,10 +1,12 @@
 package app.getarcane.android.ui.screens.activities
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import app.getarcane.android.nav.PopToRootOnSignal
+import app.getarcane.android.core.ActivityOpenRequest
 
 /**
  * Activities tab entry: a nested back stack (list -> detail). The list is the tab root (no back
@@ -15,9 +17,17 @@ fun ActivitiesTab(
     onClose: (() -> Unit)? = null,
     popToRootSignal: Int = 0,
     onHistoryCleared: () -> Unit = {},
+    initialDetail: ActivityOpenRequest? = null,
+    onInitialDetailHandled: (Long) -> Unit = {},
 ) {
     val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
+    LaunchedEffect(initialDetail?.requestId) {
+        initialDetail?.let { request ->
+            nav.navigate("detail/${request.activityId.encodeArg()}/${request.environmentId.encodeArg()}")
+            onInitialDetailHandled(request.requestId)
+        }
+    }
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {
             ActivitiesScreen(

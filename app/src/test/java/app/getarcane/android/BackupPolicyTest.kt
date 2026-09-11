@@ -84,6 +84,7 @@ class BackupPolicyTest {
         val PROTECTED_LOCATIONS = setOf(
             Rule("file", "datastore/arcane_prefs.preferences_pb"),
             Rule("file", "datastore/arcane_secure_tokens.preferences_pb"),
+            Rule("file", "datastore/arcane_operations.preferences_pb"),
             Rule("sharedpref", "arcane_pinned.xml"),
             Rule("sharedpref", "arcane_project_deploy_options.xml"),
             Rule("sharedpref", "arcane_secure_prefs.xml"),

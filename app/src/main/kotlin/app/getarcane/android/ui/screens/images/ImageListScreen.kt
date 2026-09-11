@@ -52,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,7 +61,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.LocalOperationStore
 import app.getarcane.android.core.CompleteListResponse
+import app.getarcane.android.core.OperationKind
+import app.getarcane.android.core.OperationState
 import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
@@ -72,6 +76,7 @@ import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.sdk.models.image.ImageSummary
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 internal enum class TagsFilter(val label: String) { All("All"), Tagged("Tagged"), Untagged("Untagged") }
@@ -93,6 +98,7 @@ fun ImageListScreen(
     onOpenVulnerabilities: () -> Unit,
 ) {
     val manager = LocalArcaneManager.current
+    val operationStore = LocalOperationStore.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
@@ -150,6 +156,23 @@ fun ImageListScreen(
             Loadable.Error(friendlyErrorMessage(e))
         }
         refreshing = false
+    }
+
+    LaunchedEffect(operationStore, envId.rawValue) {
+        snapshotFlow {
+            operationStore.operations
+                    .filter {
+                        it.kind == OperationKind.IMAGE_PULL &&
+                            it.environmentId == envId.rawValue &&
+                            it.state == OperationState.SUCCESS
+                    }
+                    .maxByOrNull { it.terminalAtEpochMs ?: Long.MIN_VALUE }
+                    ?.operationId
+        }
+            .drop(1)
+            .collect { completedOperationId ->
+                if (completedOperationId != null) refreshKey++
+            }
     }
 
     fun updateStateFor(image: ImageSummary): ImageUpdateState {
@@ -385,7 +408,7 @@ fun ImageListScreen(
     }
 
     if (showPullSheet) {
-        PullImageSheet(onDismiss = { showPullSheet = false }, onComplete = { refreshKey++ })
+        PullImageSheet(onDismiss = { showPullSheet = false })
     }
 
     if (showUploadSheet) {

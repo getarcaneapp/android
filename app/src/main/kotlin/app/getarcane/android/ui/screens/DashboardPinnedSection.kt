@@ -48,6 +48,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.LocalPinnedStore
+import app.getarcane.android.core.LocalOperationStore
+import app.getarcane.android.core.OperationKind
+import app.getarcane.android.core.OperationStartResult
 import app.getarcane.android.core.PinnedItemsStore
 import app.getarcane.android.core.CompleteListResponse
 import app.getarcane.android.core.completeListQuery
@@ -80,6 +83,7 @@ fun DashboardPinnedSection(
 ) {
     val manager = LocalArcaneManager.current
     val pinned = LocalPinnedStore.current
+    val operationStore = LocalOperationStore.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
@@ -211,8 +215,17 @@ fun DashboardPinnedSection(
                                             activeClient.projects.down(envId = envId, projectId = item.value.id)
                                             onMessage("Project stopped")
                                         } else {
-                                            activeClient.projects.deploy(envId = envId, projectId = item.value.id)
-                                            onMessage("Project deployed")
+                                            when (val result = operationStore.startProject(
+                                                kind = OperationKind.PROJECT_DEPLOY,
+                                                environmentId = envId,
+                                                environmentName = manager.activeEnvironmentName,
+                                                projectId = item.value.id,
+                                                projectName = item.value.name,
+                                            )) {
+                                                is OperationStartResult.Started -> operationStore.openOperation(result.operationId)
+                                                is OperationStartResult.Duplicate -> operationStore.openOperation(result.operationId)
+                                                is OperationStartResult.Rejected -> onMessage(result.message)
+                                            }
                                         }
                                     }
                                     is DashboardPinnedItem.Volume -> Unit
