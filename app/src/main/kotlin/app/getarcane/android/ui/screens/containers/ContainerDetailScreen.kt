@@ -77,6 +77,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.LocalOperationStore
+import app.getarcane.android.core.OperationStartResult
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
@@ -125,6 +127,7 @@ fun ContainerDetailScreen(
     onInspect: (String) -> Unit,
 ) {
     val manager = LocalArcaneManager.current
+    val operationStore = LocalOperationStore.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
     val context = LocalContext.current
@@ -189,6 +192,19 @@ fun ContainerDetailScreen(
 
     fun perform(action: ContainerDetailAction) {
         if (client == null) return
+        if (action == ContainerDetailAction.Redeploy) {
+            when (val result = operationStore.startContainerRedeploy(
+                environmentId = envId,
+                environmentName = manager.activeEnvironmentName,
+                containerId = id,
+                containerName = title,
+            )) {
+                is OperationStartResult.Started -> operationStore.openOperation(result.operationId)
+                is OperationStartResult.Duplicate -> operationStore.openOperation(result.operationId)
+                is OperationStartResult.Rejected -> errorMessage = result.message
+            }
+            return
+        }
         scope.launch {
             busy = true
             runningActionId = action.name.lowercase()
@@ -201,7 +217,7 @@ fun ContainerDetailScreen(
                     ContainerDetailAction.Pause -> client.containers.pause(envId = envId, id = id)
                     ContainerDetailAction.Unpause -> client.containers.unpause(envId = envId, id = id)
                     ContainerDetailAction.Kill -> client.containers.kill(envId = envId, id = id)
-                    ContainerDetailAction.Redeploy -> client.containers.redeploy(envId = envId, id = id)
+                    ContainerDetailAction.Redeploy -> error("Handled by OperationStore")
                     ContainerDetailAction.Delete -> client.containers.delete(envId = envId, id = id, force = true)
                     else -> return@launch
                 }

@@ -848,9 +848,9 @@ The standard checks are:
 
 ## Phase 2: Own long-running operations before adding system surfaces
 
-- [ ] **PAR-201 — Specify the app-level operation store**
+- [x] **PAR-201 — Specify the app-level operation store**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-002, PAR-008
 - **Scope:** Write a reviewed design before implementation for deploy, pull, build, update, and other
@@ -858,46 +858,87 @@ The standard checks are:
   cancellation, bounded logs, concurrency, process death, server/user/environment scoping, and
   v1/v2 behavior.
 - **Acceptance criteria:**
-  - [ ] The specification includes state transitions, persistence schema, invalidation, recovery,
+  - [x] The specification includes state transitions, persistence schema, invalidation, recovery,
     retention, concurrency policy, and security boundaries.
-  - [ ] It identifies which operations can reattach server-side and which can only preserve a terminal
+  - [x] It identifies which operations can reattach server-side and which can only preserve a terminal
     or unknown state after process death.
-  - [ ] It assigns one source of truth and explicitly prevents screens, services, and notifications from
+  - [x] It assigns one source of truth and explicitly prevents screens, services, and notifications from
     becoming competing operation owners.
-  - [ ] Test strategy and migration/rollout plan are included before implementation begins.
+  - [x] Test strategy and migration/rollout plan are included before implementation began.
 
-- [ ] **PAR-202 — Implement the app-level operation store and in-app surface**
+  **Validation evidence (2026-09-11):** `docs/durable-operation-store.md` records the reviewed
+  permanent owner, bindings, complete state machine, recovery/cancellation contracts, schema and
+  migrations, bounded retention, cleanup, backup/security policy, Activity Center relationship,
+  exact routes, and the decision not to use WorkManager or a foreground service. An independent
+  design review completed without blocker or high-risk findings before PAR-202 implementation was
+  accepted. Source pins: Android `0e65cbebbf924e7553952f751c32debdbf5b2b57`, iOS
+  `6088fcc0ef04dc906ce74e9129dffa96894a6da5`, libarcane-kotlin
+  `70086644c63624340f9827a056c19edf8ca7e05f`, and Arcane
+  `5df09ed475c4bac4ab6f54e1b9bdde1ac1c55105`.
 
-- **Status:** Deferred
+- [x] **PAR-202 — Implement the app-level operation store and in-app surface**
+
+- **Status:** Complete
 - **Priority:** P1
 - **Dependencies:** PAR-201
 - **Scope:** Implement the approved store and an in-app operation center/floating progress surface.
   Migrate one representative operation first, then the remaining approved operation types. Treat
   configurable activity-start feedback as a bounded projection of this store, not a second owner.
 - **Acceptance criteria:**
-  - [ ] Operations survive screen changes and expose progress, bounded logs, reconnect, cancel, success,
+  - [x] Operations survive screen changes and expose progress, bounded logs, reconnect, cancel, success,
     failure, and indeterminate/unknown states from one owner.
-  - [ ] Server, account, and environment changes cannot cross-contaminate operation state.
-  - [ ] Process-death recovery follows the spec and never fabricates successful completion.
-  - [ ] Optional activity-start feedback distinguishes user/system work, keeps environment context, and
+  - [x] Server, account, and environment changes cannot cross-contaminate operation state.
+  - [x] Process-death recovery follows the spec and never fabricates successful completion.
+  - [x] Optional activity-start feedback distinguishes user/system work, keeps environment context, and
     opens the authoritative operation/activity destination without notification spam.
-  - [ ] State-machine, persistence, concurrent-operation, cancellation, and migration tests pass.
+  - [x] State-machine, persistence, concurrent-operation, cancellation, and migration tests pass.
 
-- [ ] **PAR-203 — Add Android ongoing operation notifications**
+  **Validation evidence (2026-09-11):** libarcane-kotlin PR #10 merged as
+  `af6fa681d1c4c1e1af8a26a774f69a193df02680`, adding the typed Activity lookup, cancellation,
+  stream correlation, and fleet-update contracts used exclusively by Android. The app-level store
+  owns project deploy/redeploy, pull/build, image pull, container update/redeploy, updater, and fleet
+  work. The 322-test Android JVM suite passed with no failures or skips, including focused state,
+  schema/migration, bounded-output, duplicate, stale-binding, cancellation, retry, fleet, image-target,
+  route-recreation, restored-cancellation, row-cap, unsupported-server, actual DataStore round-trip,
+  and backup-policy coverage;
+  `:app:assembleDebug` passed with both the sibling SDK and the merged
+  remote `main` fallback. Live API 35 tests against disposable
+  Arcane 2.10.2 (`sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`)
+  proved success, explicit server failure, repeated cancellation, duplicate suppression, concurrent
+  records, tab/navigation/rotation/background survival, terminal relaunch, process-kill reattachment,
+  server restart truthfulness, exact Activity correlation, and a 2,500-line bounded-output fixture.
+  Capability-denied recovery is covered deterministically and resolves to interrupted/unknown rather
+  than fabricated success.
 
-- **Status:** Deferred
+- [x] **PAR-203 — Add Android ongoing operation notifications**
+
+- **Status:** Complete
 - **Priority:** P2
 - **Dependencies:** PAR-202
 - **Scope:** Project operation-store state into Android notifications. Use foreground execution only
   for eligible user-initiated work that Android policy requires to continue beyond the screen.
 - **Acceptance criteria:**
-  - [ ] Notifications are projections of PAR-202 state and never own or duplicate the operation.
-  - [ ] Progress, cancel/open actions, completion, failure, permission denial, and notification-disabled
+  - [x] Notifications are projections of PAR-202 state and never own or duplicate the operation.
+  - [x] Progress, cancel/open actions, completion, failure, permission denial, and notification-disabled
     behavior are correct.
-  - [ ] Foreground-service types, lifecycle, disclosure, and recent Android background restrictions are
+  - [x] Foreground-service types, lifecycle, disclosure, and recent Android background restrictions are
     satisfied.
-  - [ ] Device tests cover backgrounding, rotation, process pressure/recreation, multiple operations,
+  - [x] Device tests cover backgrounding, rotation, process pressure/recreation, multiple operations,
     server change, and notification taps.
+
+  **Validation evidence (2026-09-11):** API 35 live tests covered permission allow, deny, and revoke;
+  grouped collision-free updates; running, success, failure, and cancelled projections; cancellation;
+  private bounded content; and exact operation plus Activity Center tap routes. Revoking permission
+  during active work killed the process, while the server Activity continued; regrant and relaunch
+  reattached accurately. API 30 (`arcane_test_api30`) launched the actual APK without a runtime
+  notification prompt, confirming pre-Android-13 behavior. Packaged-manifest inspection found only
+  `POST_NOTIFICATIONS`, the non-exported action receiver, no app foreground service, and no foreground-
+  service permission or type. API 35 restrictions therefore do not justify WorkManager or a foreground
+  service for the chosen server-owned, reattachable execution model. Cleanup verification found zero
+  fixture projects, users, environments, containers, images, AVDs, APKs, CA files, redirects, LXD
+  devices, screenshots, exported logs, or other durable-test temporary files; the existing API 30 AVD
+  was retained and the app was uninstalled from it. The independent complete-diff final review passed
+  with no remaining blocker or high-risk findings.
 
 ## Phase 3: Resilient reads and Android-native continuity
 

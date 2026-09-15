@@ -1,3 +1,6 @@
 <resources>
     <string name="app_name">Arcane Mobile</string>
+    <string name="operation_notification_channel">Operations</string>
+    <string name="operation_notification_channel_description">Progress for operations started in Arcane</string>
+    <string name="cancel_operation">Cancel</string>
 </resources>

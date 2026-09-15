@@ -84,10 +84,9 @@ val arcaneFromGit =
     providers.gradleProperty("arcane.remoteSdk").isPresent ||
         !localArcaneSdk.isDirectory ||
         localArcaneSdkAgpVersion != appAgpVersion
-// PAR-112 depends on libarcane-kotlin PR #9. Keep the remote fallback explicit until that PR
-// merges, then return this default to `main` before the Android change is merged.
+// PAR-201–203 durable operation contracts merged in libarcane-kotlin PR #10.
 val arcaneSdkGitBranch = providers.gradleProperty("arcane.sdkBranch")
-    .getOrElse("parity/image-layer-history-contract")
+    .getOrElse("main")
 
 dependencies {
     // Arcane SDK — resolved from the sibling checkout when present, otherwise from Git.

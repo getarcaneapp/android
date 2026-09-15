@@ -19,10 +19,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
 import app.getarcane.android.core.AppearancePreferences
-import app.getarcane.android.core.ArcaneClientManager
 import app.getarcane.android.core.AppThemeMode
 import app.getarcane.android.core.LocalAppearancePreferences
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.LocalOperationStore
+import app.getarcane.android.core.OperationRoute
 import app.getarcane.android.core.LocalPinnedStore
 import app.getarcane.android.core.PinnedItemsStore
 import app.getarcane.android.core.Prefs
@@ -31,11 +32,13 @@ import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneTheme
 
 class MainActivity : ComponentActivity() {
-    private val arcaneManager by lazy { ArcaneClientManager(this) }
+    private val arcaneApplication by lazy { application as ArcaneApplication }
+    private val arcaneManager by lazy { arcaneApplication.arcaneManager }
+    private val operationStore by lazy { arcaneApplication.operationStore }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleAuthenticationRedirectIntent(intent)
+        handleIntent(intent)
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
@@ -60,6 +63,7 @@ class MainActivity : ComponentActivity() {
             }
             CompositionLocalProvider(
                 LocalArcaneManager provides manager,
+                LocalOperationStore provides operationStore,
                 LocalPinnedStore provides pinnedStore,
                 LocalAppearancePreferences provides appearancePreferences,
             ) {
@@ -75,18 +79,24 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleAuthenticationRedirectIntent(intent)
+        handleIntent(intent)
     }
 
     override fun onResume() {
         super.onResume()
         arcaneManager.handlePasskeyBrowserResume()
+        operationStore.refreshNotificationProjection()
     }
 
-    private fun handleAuthenticationRedirectIntent(intent: Intent?) {
+    private fun handleIntent(intent: Intent?) {
         val uri = intent?.data
         if (!arcaneManager.handlePasskeyRedirect(uri)) {
             arcaneManager.handleOidcRedirect(uri)
+        }
+        when (val route = OperationRoute.parse(uri?.toString())) {
+            OperationRoute.Center -> operationStore.openCenter()
+            is OperationRoute.Detail -> operationStore.openOperation(route.operationId)
+            null -> Unit
         }
     }
 }

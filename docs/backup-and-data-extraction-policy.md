@@ -26,6 +26,7 @@ guidance](https://developer.android.com/topic/libraries/architecture/datastore#b
 | `file/datastore/arcane_tabs.preferences_pb` | Included | User-selected bottom-tab IDs and the last selected top-level tab ID. These are app-defined UI identifiers, not server/account identifiers or operation data. |
 | `file/datastore/arcane_prefs.preferences_pb` | Excluded | Server URL, normalized credential-origin binding, active environment ID/name, theme, and accent share one DataStore file. Backup rules are file-granular, so the whole file is protected and appearance falls back to app defaults after restore. |
 | `file/datastore/arcane_secure_tokens.preferences_pb` | Excluded | SDK-owned, origin-scoped access and refresh token ciphertext. The AES key remains in Android Keystore and is not an app backup file, but ciphertext is excluded independently rather than relying on key non-transferability. |
+| `file/datastore/arcane_operations.preferences_pb` | Excluded | Durable-operation recovery descriptors and bounded presentation state, including hashed server/account bindings, environment and Activity identifiers, and terminal outcomes. The data is deliberately bound to one installation's authenticated server context and must never transfer or restore onto another device. |
 | `sharedpref/arcane_pinned.xml` | Excluded | Server-derived container, project, and volume IDs keyed by environment ID. |
 | `sharedpref/arcane_project_deploy_options.xml` | Excluded | Pull policy and force-recreate defaults keyed by a hash of normalized server, account, environment, and project identity. Hashing the scope does not make these server-bound operation preferences portable. |
 | `sharedpref/arcane_secure_prefs.xml` | Excluded | Historical/deprecated SDK encrypted-token location, protected in case data from an older build remains installed. |
@@ -49,6 +50,10 @@ authentication token or server-derived record into portable user preference data
   `files/datastore/arcane_secure_tokens.preferences_pb`; the token file is excluded. The Android app
   does not instantiate the SDK's deprecated `arcane_secure_prefs.xml` store, but the allowlist also
   excludes any residue from older integrations.
+- `OperationStore` uses `files/datastore/arcane_operations.preferences_pb` for its versioned,
+  bounded recovery ledger. It contains no credential, authorization header, server URL, raw image
+  reference, project content, or persisted log line. The allowlist excludes the entire ledger from
+  both cloud backup and device transfer; `BackupPolicyTest` names it as a protected location.
 - `ArcaneCookieJar`, including hosted-demo session cookies, is memory-only and cleared on session,
   server, and lifecycle boundaries. Ktor has no configured persistent cookie or HTTP response store.
 - Projects workspace files, unsaved Compose/`.env` edits, variable values and sync state,
