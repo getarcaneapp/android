@@ -30,11 +30,18 @@ import app.getarcane.android.core.Prefs
 import app.getarcane.android.ui.ArcaneApp
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneTheme
+import app.getarcane.android.nav.AuthenticatedRouteCodec
+import app.getarcane.android.nav.LocalAuthenticatedRouteCoordinator
+import app.getarcane.android.nav.RouteParseResult
+import app.getarcane.android.nav.AuthenticatedRoute
+import app.getarcane.android.nav.RouteDestination
+import app.getarcane.android.core.sha256
 
 class MainActivity : ComponentActivity() {
     private val arcaneApplication by lazy { application as ArcaneApplication }
     private val arcaneManager by lazy { arcaneApplication.arcaneManager }
     private val operationStore by lazy { arcaneApplication.operationStore }
+    private val routeCoordinator by lazy { arcaneApplication.routeCoordinator }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,6 +73,7 @@ class MainActivity : ComponentActivity() {
                 LocalOperationStore provides operationStore,
                 LocalPinnedStore provides pinnedStore,
                 LocalAppearancePreferences provides appearancePreferences,
+                LocalAuthenticatedRouteCoordinator provides routeCoordinator,
             ) {
                 ArcaneTheme(darkTheme = darkTheme, accent = accent) {
                     Surface(modifier = Modifier.fillMaxSize()) {
@@ -94,9 +102,28 @@ class MainActivity : ComponentActivity() {
             arcaneManager.handleOidcRedirect(uri)
         }
         when (val route = OperationRoute.parse(uri?.toString())) {
-            OperationRoute.Center -> operationStore.openCenter()
-            is OperationRoute.Detail -> operationStore.openOperation(route.operationId)
-            null -> Unit
+            OperationRoute.Center -> routeCoordinator.submit(
+                AuthenticatedRoute(null, RouteDestination.OPERATIONS),
+            )
+            is OperationRoute.Detail -> {
+                val serverIdentity = arcaneManager.serverSessionIdentity
+                if (serverIdentity.isBlank()) {
+                    routeCoordinator.reject("Sign in before opening this older operation notification.")
+                } else {
+                    routeCoordinator.submit(
+                        AuthenticatedRoute(
+                            serverBindingHash = sha256(serverIdentity),
+                            destination = RouteDestination.OPERATION,
+                            resourceId = route.operationId,
+                        ),
+                    )
+                }
+            }
+            null -> when (val parsed = AuthenticatedRouteCodec.parse(uri?.toString())) {
+                is RouteParseResult.Valid -> routeCoordinator.submit(parsed.route)
+                is RouteParseResult.Invalid -> routeCoordinator.reject(parsed.message)
+                RouteParseResult.NotOwned -> Unit
+            }
         }
     }
 }

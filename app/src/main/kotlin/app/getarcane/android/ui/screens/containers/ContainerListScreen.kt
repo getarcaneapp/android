@@ -55,21 +55,29 @@ import app.getarcane.android.core.LocalPinnedStore
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.PinnedItemsStore
 import app.getarcane.android.core.ResourceUpdateFilter
+import app.getarcane.android.core.ReadCachePolicy
+import app.getarcane.android.core.ReadCacheRequest
+import app.getarcane.android.core.ReadResource
+import app.getarcane.android.core.ResilientRead
 import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.hasAvailableUpdate
 import app.getarcane.android.core.iconUrl
 import app.getarcane.android.core.isRunning
+import app.getarcane.android.core.sanitizedForReadCache
 import app.getarcane.android.ui.components.CachedAsyncImage
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
+import app.getarcane.android.ui.components.StaleDataBanner
+import app.getarcane.android.ui.components.StaleDataInfo
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.StatusRunning
 import app.getarcane.android.ui.theme.StatusUnknown
 import app.getarcane.sdk.models.container.ContainerSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
 
 private val ContainerStateFilter.label: String
     get() = when (this) {
@@ -86,8 +94,9 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
     val client = manager.client
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
+    val cacheScope = manager.currentReadCacheScope()
 
-    var loadState by remember {
+    var loadState by remember(cacheScope, envId.rawValue) {
         mutableStateOf(ContainerListLoadState<List<ContainerSummary>>())
     }
     var search by remember { mutableStateOf("") }
@@ -96,12 +105,23 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
     var updateFilter by remember { mutableStateOf(ResourceUpdateFilter.ALL) }
     var refreshKey by remember { mutableStateOf(0) }
     var menuOpen by remember { mutableStateOf(false) }
+    var staleInfo by remember(cacheScope, envId.rawValue) { mutableStateOf<StaleDataInfo?>(null) }
 
-    LaunchedEffect(envId.rawValue, refreshKey) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(client, cacheScope, manager.offlineReadSessionActive, envId.rawValue, refreshKey) {
+        if (client == null || cacheScope == null) return@LaunchedEffect
         loadState = beginContainerReload(loadState)
-        loadState = try {
-            completeContainerLoad(
+        manager.readCache.observe(
+            scope = cacheScope,
+            request = ReadCacheRequest(
+                resource = ReadResource.CONTAINERS,
+                environmentId = envId.rawValue,
+                requestIdentity = "containers?start=0&limit=-1",
+                policy = ReadCachePolicy.Containers,
+            ),
+            serializer = ListSerializer(ContainerSummary.serializer()),
+            forceRefresh = refreshKey > 0,
+        ) {
+                manager.awaitAuthoritativeReadScope()
                 loadCompleteContainerCollection(
                     idOf = { it.id },
                     loadAll = {
@@ -115,18 +135,36 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
                             success = response.success,
                         )
                     },
-                ),
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            failContainerLoad(friendlyErrorMessage(e))
+                ).map(ContainerSummary::sanitizedForReadCache)
+        }.collect { read ->
+            when (read) {
+                is ResilientRead.Stale -> {
+                    loadState = completeContainerLoad(read.value)
+                    staleInfo = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                }
+                is ResilientRead.Fresh -> {
+                    loadState = completeContainerLoad(read.value)
+                    staleInfo = null
+                }
+                is ResilientRead.Failure -> loadState = failContainerLoad(read.message)
+            }
         }
     }
 
     fun act(block: suspend () -> Unit) {
         if (client == null) return
-        scope.launch { runCatching { block() }; refreshKey++ }
+        scope.launch {
+            runCatching { block() }.onSuccess {
+                cacheScope?.let {
+                    manager.readCache.invalidate(
+                        scope = it,
+                        resources = setOf(ReadResource.CONTAINERS, ReadResource.DASHBOARD),
+                        environmentId = envId.rawValue,
+                    )
+                }
+            }
+            refreshKey++
+        }
     }
 
     Scaffold(
@@ -157,6 +195,7 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            staleInfo?.let { StaleDataBanner(it) }
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },

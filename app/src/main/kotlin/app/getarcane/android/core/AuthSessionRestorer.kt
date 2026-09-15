@@ -1,6 +1,8 @@
 package app.getarcane.android.core
 
+import app.getarcane.sdk.errors.ArcaneError
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal data class SavedAuthState(
     val serverUrl: String?,
@@ -8,6 +10,17 @@ internal data class SavedAuthState(
     val activeEnvironmentName: String?,
     val credentialOrigin: String? = null,
 )
+
+internal suspend fun validateSavedSessionWithin(
+    timeoutMs: Long,
+    validate: suspend () -> Unit,
+) {
+    val completed = withTimeoutOrNull(timeoutMs) {
+        validate()
+        true
+    }
+    if (completed == null) throw ArcaneError.Transport("Saved-session validation timed out.")
+}
 
 /**
  * Restores the persisted server and session without exposing the login screen before validation.
@@ -22,6 +35,7 @@ internal suspend fun restoreAuthenticationSession(
     validateSavedSession: suspend () -> Unit,
     refreshLoginMethods: suspend () -> Unit,
     updateStatus: (AuthStatus) -> Unit,
+    recoverOfflineSession: suspend (Throwable) -> Boolean = { false },
 ) {
     try {
         val savedState = loadSavedState()
@@ -41,14 +55,18 @@ internal suspend fun restoreAuthenticationSession(
             updateStatus(AuthStatus.AUTHENTICATED)
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Throwable) {
-            updateStatus(AuthStatus.LOGIN)
-            try {
-                refreshLoginMethods()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Throwable) {
-                // Login remains available even when optional OIDC discovery fails.
+        } catch (error: Throwable) {
+            if (recoverOfflineSession(error)) {
+                updateStatus(AuthStatus.AUTHENTICATED)
+            } else {
+                updateStatus(AuthStatus.LOGIN)
+                try {
+                    refreshLoginMethods()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Throwable) {
+                    // Login remains available even when optional OIDC discovery fails.
+                }
             }
         }
     } catch (e: CancellationException) {

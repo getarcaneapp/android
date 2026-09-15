@@ -44,17 +44,27 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
+import app.getarcane.android.core.ReadCachePolicy
+import app.getarcane.android.core.ReadCacheRequest
+import app.getarcane.android.core.ReadResource
+import app.getarcane.android.core.ResilientRead
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.loadCompleteEnvironments
+import app.getarcane.android.core.sanitizedForReadCache
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.components.StatusBadge
+import app.getarcane.android.ui.components.StaleDataBanner
+import app.getarcane.android.ui.components.StaleDataInfo
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGray
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.environment.Environment
+import app.getarcane.sdk.models.role.Permission
+import app.getarcane.sdk.models.user.hasPermission
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.builtins.ListSerializer
 
 /** Online when the status reads "online"/"up". Mirrors iOS `Environment.isOnline`. */
 internal val Environment.isOnline: Boolean
@@ -69,22 +79,51 @@ internal val Environment.label: String
 fun EnvironmentListScreen(onOpen: (String) -> Unit) {
     val manager = LocalArcaneManager.current
     val client = manager.client
+    val cacheScope = manager.currentReadCacheScope()
 
-    var state by remember { mutableStateOf<Loadable<List<Environment>>>(Loadable.Loading) }
+    var state by remember(cacheScope) { mutableStateOf<Loadable<List<Environment>>>(Loadable.Loading) }
     var sortAsc by remember { mutableStateOf(true) }
     var refreshKey by remember { mutableStateOf(0) }
     var refreshing by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var staleInfo by remember(cacheScope) { mutableStateOf<StaleDataInfo?>(null) }
 
-    LaunchedEffect(refreshKey) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(client, cacheScope, manager.offlineReadSessionActive, refreshKey) {
+        if (client == null || cacheScope == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
-        state = try {
-            Loadable.Success(loadCompleteEnvironments { query -> client.environments.list(query) })
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Loadable.Error(friendlyErrorMessage(e))
+        manager.readCache.observe(
+            scope = cacheScope,
+            request = ReadCacheRequest(
+                resource = ReadResource.ENVIRONMENTS,
+                environmentId = "_global_",
+                requestIdentity = "environments?start=0&limit=-1&sort=id:asc",
+                policy = ReadCachePolicy.Environments,
+            ),
+            serializer = ListSerializer(Environment.serializer()),
+            forceRefresh = refreshKey > 0,
+        ) {
+            manager.awaitAuthoritativeReadScope()
+            loadCompleteEnvironments { query -> client.environments.list(query) }
+                .map(Environment::sanitizedForReadCache)
+        }.collect { read ->
+            when (read) {
+                is ResilientRead.Stale -> {
+                    state = Loadable.Success(read.value)
+                    staleInfo = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                    manager.shortcutPublisher.removeDynamicShortcuts()
+                }
+                is ResilientRead.Fresh -> {
+                    state = Loadable.Success(read.value)
+                    staleInfo = null
+                    manager.shortcutPublisher.publishEnvironments(
+                        cacheScope,
+                        read.value.filter { environment ->
+                            manager.currentUser?.hasPermission(Permission.Environments.READ, environment.id) == true
+                        },
+                    )
+                }
+                is ResilientRead.Failure -> state = Loadable.Error(read.message)
+            }
         }
         refreshing = false
     }
@@ -105,10 +144,12 @@ fun EnvironmentListScreen(onOpen: (String) -> Unit) {
             )
         },
     ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+        staleInfo?.let { StaleDataBanner(it) }
         PullToRefreshBox(
             isRefreshing = refreshing,
             onRefresh = { refreshing = true; refreshKey++ },
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize(),
         ) {
             when (val s = state) {
                 is Loadable.Loading -> SkeletonListLoadingView()
@@ -133,6 +174,7 @@ fun EnvironmentListScreen(onOpen: (String) -> Unit) {
                     }
                 }
             }
+        }
         }
     }
 }

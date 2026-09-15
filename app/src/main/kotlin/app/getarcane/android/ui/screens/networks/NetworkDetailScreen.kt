@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ErrorBanner
@@ -184,7 +185,10 @@ fun NetworkDetailScreen(networkId: String, onBack: () -> Unit, onTopology: () ->
                     confirmDelete = false
                     if (client != null) scope.launch {
                         runCatching { client.networks.delete(envId = envId, networkId = networkId) }
-                            .onSuccess { onBack() }
+                            .onSuccess {
+                                manager.invalidateReadCache(envId, ReadResource.NETWORKS)
+                                onBack()
+                            }
                             .onFailure { errorMessage = friendlyErrorMessage(it) }
                     }
                 }) { Text("Delete") }

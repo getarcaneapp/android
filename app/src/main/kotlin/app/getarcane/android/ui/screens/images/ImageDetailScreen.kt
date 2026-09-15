@@ -51,6 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ContentUnavailable
@@ -233,6 +234,7 @@ internal fun ImageDetailScreen(
         scope.launch {
             try {
                 captured.client.images.remove(envId = envId, id = identity.imageId)
+                manager.invalidateReadCache(envId, ReadResource.IMAGES)
                 if (manager.isCurrent(captured) && identity.isCurrent(
                         manager.serverSessionIdentity,
                         manager.currentUser?.id.orEmpty(),

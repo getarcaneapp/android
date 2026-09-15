@@ -942,35 +942,103 @@ The standard checks are:
 
 ## Phase 3: Resilient reads and Android-native continuity
 
-- [ ] **PAR-301 — Design and implement a scoped API response cache**
+- [x] **PAR-301 — Design and implement a scoped API response cache**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P2
 - **Dependencies:** PAR-002, PAR-004
 - **Scope:** Add bounded stale-read caching for dashboard and selected high-value resource lists.
   Scope entries by normalized server, user, environment, request identity, and relevant permissions.
   Do not queue mutations.
 - **Acceptance criteria:**
-  - [ ] The design defines expiry, LRU/size bounds, request coalescing, invalidation, schema migration,
+  - [x] The design defines expiry, LRU/size bounds, request coalescing, invalidation, schema migration,
     stale markers, and sensitive-data treatment.
-  - [ ] Initial screens render last-known data offline and visibly distinguish stale from current state.
-  - [ ] Auth/server/environment changes and successful destructive mutations invalidate affected entries.
-  - [ ] Corrupt cache, permission change, refresh race, no-network, and storage-bound tests pass.
+  - [x] Initial screens render last-known data offline and visibly distinguish stale from current state.
+  - [x] Auth/server/environment changes and successful destructive mutations invalidate affected entries.
+  - [x] Corrupt cache, permission change, refresh race, no-network, and storage-bound tests pass.
 
-- [ ] **PAR-302 — Establish a durable sanitized snapshot pipeline**
+  **Design and source evidence (2026-09-15):** The pre-implementation fetch/revalidation used Android
+  `ed03850f3c378cefd2824aacc64dba1f896bd03f`, iOS
+  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+  `af6fa681d1c4c1e1af8a26a774f69a193df02680`, and Arcane
+  `9e5bfea2f213a63f11c83f63f77e3c8499f23aba`; PR #57 was present on fetched Android `origin/main`.
+  The permanent [resilient-read design](resilient-reads-foundation.md) records the version-1 key and
+  envelope schemas, seven per-resource TTL/stale policies, 4 MiB/64-entry memory LRU, 24 MiB/256-entry
+  disk LRU, 2 MiB entry cap, atomic replacement, fail-closed schema handling, request coalescing,
+  generation fencing, targeted invalidation, manual clearing, and the sanitizer boundary. The cache
+  lives in app-private `cacheDir`; backup and device-transfer allowlists admit none of it. SDK models
+  and services remain the only API boundary and `ArcaneClientManager` remains the only authenticated
+  client owner. Detail reads, mutations, streams, credentials, raw logs, operation payloads, and
+  secret-bearing fields are intentional exclusions.
 
-- **Status:** Deferred
+  **Automated and live evidence (2026-09-15):** `./gradlew :app:testDebugUnitTest
+  :app:assembleDebug` passed with 354 JVM tests, zero failures/errors/skips. Focused coverage passed for
+  TTL/expiry, explicit stale/fresh/error state, force-refresh fallback, corruption and old schema,
+  disk/memory bounds, coalescing, late-result/invalidation races, account/permission isolation,
+  authorization eviction, sanitization, process restoration, and backup placement; `git diff
+  --check` and packaged manifest/resource inspection also passed. The real debug APK 0.1.0 (260901)
+  ran on the existing Android 11/API 30 `arcane_test_api30` AVD against disposable local Arcane 2.10.2
+  (`sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`). Fresh Dashboard and all
+  selected list families were loaded, then force-stop plus network/server disconnection produced
+  visibly marked cached data after cold process start. Reconnection replaced it with a single
+  current row and stable ordering. Live checks also covered expired/corrupt/old-schema files, bounds,
+  manual Clear Cache (9.1 KiB to zero), permission grant/revoke without administrator-data exposure,
+  logout, Change Server, account change, process death, and environment disable/delete.
+
+  A confirmed container deletion rewrote only the current-scope container entry, removed the current
+  Dashboard aggregate, and left Projects plus another permission scope untouched. A completed durable
+  image-pull operation rewrote Images and invalidated Dashboard while leaving Containers, Projects,
+  and the other permission scope untouched. Server/Docker inspection confirmed both outcomes. All
+  disposable users, environment, container, image, APK installation, shortcut state, cache evidence,
+  trust material, screenshots, and the temporary LXD AVD clone were removed; `arcane-e2e`, the original
+  API 30 AVD, and existing environments were preserved. No API 35 AVD was created. Remaining scope is
+  deliberate: detail responses and arbitrary endpoints are not cached, and Android may reclaim
+  `cacheDir`; neither is an unmet PAR-301 criterion.
+
+- [x] **PAR-302 — Establish a durable sanitized snapshot pipeline**
+
+- **Status:** Complete
 - **Priority:** P2
 - **Dependencies:** PAR-301
 - **Scope:** Derive small, versioned, credential-free snapshots for external surfaces from the
   authoritative app/cache state. Keep the snapshot writer separate from widget presentation.
 - **Acceptance criteria:**
-  - [ ] The schema contains only reviewed at-a-glance fields and no tokens, cookies, secrets, raw logs,
+  - [x] The schema contains only reviewed at-a-glance fields and no tokens, cookies, secrets, raw logs,
     or mutation capability.
-  - [ ] Snapshots are atomically written, size-bounded, versioned, scoped, and invalidated on logout or
+  - [x] Snapshots are atomically written, size-bounded, versioned, scoped, and invalidated on logout or
     server/account change.
-  - [ ] Freshness and error metadata let consumers avoid implying live status.
-  - [ ] Process-death, corrupt/old schema, account switch, and offline update tests pass.
+  - [x] Freshness and error metadata let consumers avoid implying live status.
+  - [x] Process-death, corrupt/old schema, account switch, and offline update tests pass.
+
+  **Design and source evidence (2026-09-15):** The compared source pins are Android
+  `ed03850f3c378cefd2824aacc64dba1f896bd03f`, iOS
+  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+  `af6fa681d1c4c1e1af8a26a774f69a193df02680`, and Arcane
+  `9e5bfea2f213a63f11c83f63f77e3c8499f23aba`. The strict version-1 schema and security boundary are
+  documented in [Resilient Reads foundation](resilient-reads-foundation.md). Its 64 KiB app-private
+  `noBackupFilesDir` file contains source/generation timestamps, fresh/stale/error/signed-out state,
+  a closed error code, opaque one-way scope/environment keys, bounded aggregate counts, and at most
+  ten bounded environment summaries. It contains no URL, username, account/environment ID,
+  credential, cookie, token, secret, log, resource detail, operation data, or mutation capability.
+  The storage-only writer has no SDK/client dependency; an explicit active-scope fence plus monotonic
+  generation checks reject delayed writers across logout or account/server transitions. Glance and
+  widget presentation remain intentionally outside this batch.
+
+  **Automated and live evidence (2026-09-15):** The 354-test green Android baseline includes focused
+  snapshot tests for atomic round-trip/process restart, strict corruption/unknown-schema/oversize
+  rejection, count/name/row bounds, scope mismatch, active-writer fencing, delayed/concurrent writers,
+  same-tick session activation, and immediate signed-out replacement. The live API 30/Arcane 2.10.2
+  run inspected the app-private file without printing its contents: it was 645 bytes, used only the
+  strict reviewed keys, and a forbidden-term scan for URL/username/password/token/cookie/API
+  key/secret/credential/mutation material returned zero. Fresh online Dashboard state produced
+  `FRESH`; disconnected cached state produced `STALE`; refused live refresh produced `ERROR` with
+  `NETWORK_UNAVAILABLE`; reconnect returned to `FRESH`; logout and Change Server synchronously wrote
+  `SIGNED_OUT`. Process death, corrupt/old cache input, offline refresh, permission/account change,
+  and environment change were exercised in the same run. The snapshot remained a separate file from
+  the read cache and durable-operation DataStore, and only one `ArcaneClient` construction site exists
+  in the app. Cleanup removed the snapshot evidence and APK installation with the rest of the
+  disposable fixtures. Remaining limitation is intentional: there is no widget consumer in this
+  batch, so future PAR-303 work must preserve this schema and authenticated-route boundary.
 
 - [ ] **PAR-303 — Add privacy-reviewed Glance widgets**
 
@@ -998,20 +1066,55 @@ The standard checks are:
   - [ ] Large screens do not merely stretch phone layouts where list-detail presentation is appropriate.
   - [ ] Foldable/tablet emulator tests and accessibility navigation checks are recorded.
 
-- [ ] **PAR-305 — Define authenticated resource routes and Android shortcuts**
+- [x] **PAR-305 — Define authenticated resource routes and Android shortcuts**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P2
 - **Dependencies:** PAR-002, PAR-005
 - **Scope:** Define stable internal routes for tabs, environments, containers, and projects, then add
   a small set of static/dynamic app shortcuts. This is the Android-native counterpart to iOS deep
   links, quick actions, and selected App Intents—not a promise of Siri-equivalent behavior.
 - **Acceptance criteria:**
-  - [ ] Route identity includes server/environment/resource context and validates authentication,
+  - [x] Route identity includes server/environment/resource context and validates authentication,
     authorization, existence, and unsupported destinations.
-  - [ ] Cold start, warm start, login-required, stale shortcut, and wrong-server paths fail safely.
-  - [ ] Shortcut publication removes stale or unauthorized entities.
-  - [ ] Navigation and device tests cover external intents and back-stack construction.
+  - [x] Cold start, warm start, login-required, stale shortcut, and wrong-server paths fail safely.
+  - [x] Shortcut publication removes stale or unauthorized entities.
+  - [x] Navigation and device tests cover external intents and back-stack construction.
+
+  **Design and source evidence (2026-09-15):** The compared source pins are Android
+  `ed03850f3c378cefd2824aacc64dba1f896bd03f`, iOS
+  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+  `af6fa681d1c4c1e1af8a26a774f69a193df02680`, and Arcane
+  `9e5bfea2f213a63f11c83f63f77e3c8499f23aba`. One versioned `AuthenticatedRoute` codec now covers
+  Dashboard/tabs, environments, containers, projects, Activities, durable operations, shortcuts,
+  and future snapshot/widget consumers. Its stable payload binds resource routes to the canonical
+  server hash and hex-encodes bounded UTF-8 environment/resource arguments. Parsing rejects payloads
+  over 4 KiB, arguments over 512 bytes, bad shape/version/encoding, queries/fragments/user info/ports,
+  and unsupported destinations. Resolution occurs after login and checks server, user permission,
+  capability, enabled/existing environment, existing resource/operation, and destination support
+  through the existing manager and typed SDK. Existing operation notifications use the same model;
+  no mutation route or shortcut was added.
+
+  **Automated and live evidence (2026-09-15):** The 354-test green Android baseline includes focused
+  codec round-trip, server/environment/resource identity, malformed/oversized/untrusted payload,
+  current-binding restriction, login-continuation coordinator, shortcut XML, manifest, and backup
+  tests. Final AAPT2/APK inspection found exactly the Dashboard, Containers, and Projects static
+  shortcuts plus the typed VIEW intent filter. On the real API 30 debug APK, `adb shell am start`
+  covered cold Containers, warm Projects, authenticated environment/resource routes, login-required
+  continuation through logout/login, wrong server, deleted resource, disabled then deleted
+  environment, unauthorized restricted user, malformed 5 KiB payload, and unsupported/stale targets.
+  Every rejection showed a recovery explanation rather than opening a same-ID target. An external
+  detail stack returned to its intended root and the task contained one `MainActivity`.
+
+  Fresh authorized data published one reviewed dynamic environment shortcut alongside the three
+  static read-only shortcuts; invocation opened the typed environment route. Offline/stale state,
+  permission restriction, logout, and Change Server removed every dynamic shortcut immediately, and
+  fresh reconnect/authorization republished it. Static shortcuts remained and no mutation shortcut
+  appeared. Packaged and live shortcut state were both inspected. Cleanup removed the disposable
+  dynamic shortcut and APK by uninstalling the app, then deleted the temporary AVD clone while
+  preserving the existing API 30 AVD. No API 35 AVD was created. Remaining scope is intentional:
+  dynamic publication is limited to three enabled, permission-reviewed environments; resource-level
+  dynamic shortcuts and widget presentation await a separately reviewed use case.
 
 - [ ] **PAR-505 — Add interactive network topology visualization**
 

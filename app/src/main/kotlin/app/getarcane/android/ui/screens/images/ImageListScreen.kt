@@ -65,12 +65,19 @@ import app.getarcane.android.core.LocalOperationStore
 import app.getarcane.android.core.CompleteListResponse
 import app.getarcane.android.core.OperationKind
 import app.getarcane.android.core.OperationState
+import app.getarcane.android.core.ReadCachePolicy
+import app.getarcane.android.core.ReadCacheRequest
+import app.getarcane.android.core.ReadResource
+import app.getarcane.android.core.ResilientRead
 import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.loadCompleteCollection
+import app.getarcane.android.core.sanitizedForReadCache
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
+import app.getarcane.android.ui.components.StaleDataBanner
+import app.getarcane.android.ui.components.StaleDataInfo
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
@@ -78,6 +85,7 @@ import app.getarcane.sdk.models.image.ImageSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
 
 internal enum class TagsFilter(val label: String) { All("All"), Tagged("Tagged"), Untagged("Untagged") }
 
@@ -103,9 +111,10 @@ fun ImageListScreen(
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    val cacheScope = manager.currentReadCacheScope()
 
-    var state by remember { mutableStateOf<Loadable<List<ImageSummary>>>(Loadable.Loading) }
-    var updateInfo by remember { mutableStateOf<Map<String, ImageUpdateState>>(emptyMap()) }
+    var state by remember(cacheScope, envId.rawValue) { mutableStateOf<Loadable<List<ImageSummary>>>(Loadable.Loading) }
+    var updateInfo by remember(cacheScope, envId.rawValue) { mutableStateOf<Map<String, ImageUpdateState>>(emptyMap()) }
     var search by remember { mutableStateOf("") }
     var tagsFilter by remember { mutableStateOf(TagsFilter.All) }
     var sortAsc by remember { mutableStateOf(true) }
@@ -119,15 +128,43 @@ fun ImageListScreen(
     var showUploadSheet by remember { mutableStateOf(false) }
     var showPruneSheet by remember { mutableStateOf(false) }
     var confirmDanglingPrune by remember { mutableStateOf(false) }
+    var staleInfo by remember(cacheScope, envId.rawValue) { mutableStateOf<StaleDataInfo?>(null) }
 
-    LaunchedEffect(envId.rawValue, refreshKey) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(client, cacheScope, manager.offlineReadSessionActive, envId.rawValue, refreshKey) {
+        if (client == null || cacheScope == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
-        state = try {
-            val images = loadCompleteCollection("Image", ImageSummary::id) {
+        manager.readCache.observe(
+            scope = cacheScope,
+            request = ReadCacheRequest(
+                resource = ReadResource.IMAGES,
+                environmentId = envId.rawValue,
+                requestIdentity = "images?start=0&limit=-1",
+                policy = ReadCachePolicy.Images,
+            ),
+            serializer = ListSerializer(ImageSummary.serializer()),
+            forceRefresh = refreshKey > 0,
+        ) {
+            manager.awaitAuthoritativeReadScope()
+            loadCompleteCollection("Image", ImageSummary::id) {
                 val response = client.images.list(envId = envId, query = completeListQuery())
                 CompleteListResponse(response.data, response.pagination.totalItems, response.success)
+            }.map(ImageSummary::sanitizedForReadCache)
+        }.collect { read ->
+            val images = when (read) {
+                is ResilientRead.Stale -> {
+                    staleInfo = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                    read.value
+                }
+                is ResilientRead.Fresh -> {
+                    staleInfo = null
+                    read.value
+                }
+                is ResilientRead.Failure -> {
+                    state = Loadable.Error(read.message)
+                    return@collect
+                }
             }
+            state = Loadable.Success(images)
             onLoaded(images)
             // Best-effort update decoration via the persisted by-refs map.
             val refs = images.flatMap { it.repoTags }.filter { it != "<none>:<none>" }
@@ -149,11 +186,6 @@ fun ImageListScreen(
                     }
                 }
             }
-            Loadable.Success(images)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Loadable.Error(friendlyErrorMessage(e))
         }
         refreshing = false
     }
@@ -192,6 +224,13 @@ fun ImageListScreen(
         scope.launch {
             try {
                 client.images.remove(envId = envId, id = image.id)
+                cacheScope?.let {
+                    manager.readCache.invalidate(
+                        it,
+                        setOf(ReadResource.IMAGES, ReadResource.DASHBOARD),
+                        envId.rawValue,
+                    )
+                }
                 refreshKey++
             } catch (e: Throwable) {
                 reportError(friendlyErrorMessage(e))
@@ -204,6 +243,13 @@ fun ImageListScreen(
         scope.launch {
             try {
                 client.images.prune(envId = envId, mode = "dangling")
+                cacheScope?.let {
+                    manager.readCache.invalidate(
+                        it,
+                        setOf(ReadResource.IMAGES, ReadResource.DASHBOARD),
+                        envId.rawValue,
+                    )
+                }
                 refreshKey++
             } catch (e: Throwable) {
                 reportError(friendlyErrorMessage(e))
@@ -309,6 +355,7 @@ fun ImageListScreen(
         Column(Modifier
             .fillMaxSize()
             .padding(padding)) {
+            staleInfo?.let { StaleDataBanner(it) }
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },

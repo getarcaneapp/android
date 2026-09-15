@@ -238,6 +238,12 @@ must name it as a protected location. Operation state must not follow a user to 
 
 ## Recovery and invalidation boundaries
 
+Successful terminal completion projects only a scoped invalidation into `ResilientReadCache` for
+the operation's bound environment and affected resource kinds. The operation ledger remains the
+sole owner of operation recovery and status: no descriptor, request, payload, log, error body, or
+result is copied into the cache or status snapshot, and neither resilient-read store may replay or
+control an operation. This one-way edge was added by the PAR-301/PAR-302 foundation.
+
 After the manager restores an authenticated session, the store computes the current binding hashes
 and considers only matching rows actionable:
 

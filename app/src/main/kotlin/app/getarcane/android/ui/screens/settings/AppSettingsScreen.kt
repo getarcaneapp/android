@@ -18,15 +18,24 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.ReportProblem
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -38,11 +47,15 @@ import app.getarcane.android.ui.theme.ArcanePink
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneYellow
 import androidx.core.net.toUri
+import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.formatBytes
+import app.getarcane.android.ui.theme.ArcaneRed
+import kotlinx.coroutines.launch
 
 /**
  * App-level settings: appearance entry plus an About section of external links, What's New, and
- * version/build. Port of iOS `AppSettingsView` (the iOS-only cache-size/clear-cache controls are
- * omitted since the Android client has no exposed response/image cache to size or clear).
+ * version/build. Port of iOS `AppSettingsView`, including explicit size and clearing controls for
+ * the bounded resilient-read cache. The cache remains separate from image loading caches.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,9 +65,15 @@ fun AppSettingsScreen(
     onWhatsNew: () -> Unit,
 ) {
     val context = LocalContext.current
+    val manager = LocalArcaneManager.current
+    val scope = rememberCoroutineScope()
     val appVersion = remember { installedAppVersion() }
     val versionName = appVersion.name
     val versionCode = appVersion.code.toString()
+    var cacheBytes by remember { mutableStateOf(0L) }
+    var confirmClearCache by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { cacheBytes = manager.readCache.diskBytes() }
 
     fun openUrl(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) }
@@ -93,6 +112,28 @@ fun AppSettingsScreen(
                 iconColor = ArcanePink,
                 onClick = onAppearance,
                 trailing = { ChevronTrailing() },
+            )
+
+            SettingsSectionHeader("Storage")
+            SettingsRow(
+                title = "Cached data",
+                subtitle = "Stale read fallback; excluded from backup and device transfer",
+                icon = Icons.Filled.Storage,
+                iconColor = ArcaneBlue,
+                trailing = {
+                    Text(
+                        formatBytes(cacheBytes),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+            )
+            SettingsRow(
+                title = "Clear Cache",
+                icon = Icons.Filled.DeleteForever,
+                iconColor = ArcaneRed,
+                titleColor = ArcaneRed,
+                onClick = { confirmClearCache = true },
             )
 
             SettingsSectionHeader("About")
@@ -170,5 +211,23 @@ fun AppSettingsScreen(
                 },
             )
         }
+    }
+
+    if (confirmClearCache) {
+        AlertDialog(
+            onDismissRequest = { confirmClearCache = false },
+            title = { Text("Clear cached data?") },
+            text = { Text("Offline Dashboard and resource-list data will be removed. You can reload it while connected.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmClearCache = false
+                    scope.launch {
+                        manager.readCache.clear()
+                        cacheBytes = manager.readCache.diskBytes()
+                    }
+                }) { Text("Clear") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClearCache = false }) { Text("Cancel") } },
+        )
     }
 }

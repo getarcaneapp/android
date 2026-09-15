@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
+import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.CachedAsyncImage
 import app.getarcane.android.ui.components.ContentUnavailable
@@ -119,7 +120,10 @@ fun ArchivedProjectsScreen(
         if (client == null) return
         scope.launch {
             runCatching { client.projects.unarchive(envId = envId, projectId = project.id) }
-                .onSuccess { projects.removeAll { it.id == project.id } }
+                .onSuccess {
+                    manager.invalidateReadCache(envId, ReadResource.PROJECTS)
+                    projects.removeAll { it.id == project.id }
+                }
         }
     }
 

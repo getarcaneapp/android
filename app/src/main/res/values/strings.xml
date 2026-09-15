@@ -3,4 +3,7 @@
     <string name="operation_notification_channel">Operations</string>
     <string name="operation_notification_channel_description">Progress for operations started in Arcane</string>
     <string name="cancel_operation">Cancel</string>
+    <string name="shortcut_dashboard">Dashboard</string>
+    <string name="shortcut_containers">Containers</string>
+    <string name="shortcut_projects">Projects</string>
 </resources>
