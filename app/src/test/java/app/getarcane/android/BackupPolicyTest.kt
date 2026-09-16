@@ -51,6 +51,19 @@ class BackupPolicyTest {
         assertEquals(0, currentDocument.getElementsByTagName("exclude").length)
     }
 
+    @Test
+    fun `resilient read persistence uses only non backed up app private locations`() {
+        val manager = File("src/main/kotlin/app/getarcane/android/core/ArcaneClientManager.kt").readText()
+        assertTrue(manager.contains("java.io.File(appContext.cacheDir, ResilientReadCache.CACHE_DIRECTORY)"))
+        assertTrue(manager.contains("java.io.File(appContext.cacheDir, OfflineReadSessionStore.DIRECTORY)"))
+        assertTrue(manager.contains("java.io.File(appContext.noBackupFilesDir, StatusSnapshotStore.SNAPSHOT_DIRECTORY)"))
+
+        val admittedPaths = EXPECTED_ALLOWLIST.map { it.path }
+        assertTrue(admittedPaths.none { it.contains("arcane_read_cache") })
+        assertTrue(admittedPaths.none { it.contains("arcane_offline_read_session") })
+        assertTrue(admittedPaths.none { it.contains("arcane_status_snapshots") })
+    }
+
     private fun document(relativePath: String) =
         DocumentBuilderFactory.newInstance()
             .apply { isNamespaceAware = true }

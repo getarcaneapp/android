@@ -65,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.sdk.errors.ArcaneError
@@ -256,6 +257,7 @@ fun ComposeFileScreen(
                     session = working
                     baseline = working
                 }
+                manager.invalidateReadCache(envId, ReadResource.PROJECTS)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: ArcaneError.Conflict) {

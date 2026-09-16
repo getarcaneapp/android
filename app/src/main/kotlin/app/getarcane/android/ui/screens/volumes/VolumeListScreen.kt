@@ -59,8 +59,15 @@ import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.loadCompletePaginatedCollection
+import app.getarcane.android.core.ReadCachePolicy
+import app.getarcane.android.core.ReadCacheRequest
+import app.getarcane.android.core.ReadResource
+import app.getarcane.android.core.ResilientRead
+import app.getarcane.android.core.sanitizedForReadCache
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
+import app.getarcane.android.ui.components.StaleDataBanner
+import app.getarcane.android.ui.components.StaleDataInfo
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneTeal
 import app.getarcane.android.ui.theme.ArcaneYellow
@@ -68,6 +75,7 @@ import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.volume.Volume
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
 
 private enum class ScopeFilter(val label: String) { All("All"), Local("Local"), Global("Global") }
 
@@ -79,9 +87,10 @@ fun VolumeListScreen(onOpen: (String) -> Unit) {
     val client = manager.client
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
+    val cacheScope = manager.currentReadCacheScope()
 
-    var state by remember { mutableStateOf<Loadable<List<Volume>>>(Loadable.Loading) }
-    var sizes by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+    var state by remember(cacheScope, envId.rawValue) { mutableStateOf<Loadable<List<Volume>>>(Loadable.Loading) }
+    var sizes by remember(cacheScope, envId.rawValue) { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var search by remember { mutableStateOf("") }
     var sortAsc by remember { mutableStateOf(true) }
     var scopeFilter by remember { mutableStateOf(ScopeFilter.All) }
@@ -91,20 +100,38 @@ fun VolumeListScreen(onOpen: (String) -> Unit) {
     var showCreate by remember { mutableStateOf(false) }
     var showPrune by remember { mutableStateOf(false) }
     var actionError by remember { mutableStateOf<String?>(null) }
+    var staleInfo by remember(cacheScope, envId.rawValue) { mutableStateOf<StaleDataInfo?>(null) }
 
-    LaunchedEffect(envId.rawValue, refreshKey) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(client, cacheScope, manager.offlineReadSessionActive, envId.rawValue, refreshKey) {
+        if (client == null || cacheScope == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
-        state = try {
-            Loadable.Success(
+        manager.readCache.observe(
+            scope = cacheScope,
+            request = ReadCacheRequest(
+                resource = ReadResource.VOLUMES,
+                environmentId = envId.rawValue,
+                requestIdentity = "volumes?start=0&limit=-1",
+                policy = ReadCachePolicy.Volumes,
+            ),
+            serializer = ListSerializer(Volume.serializer()),
+            forceRefresh = refreshKey > 0,
+        ) {
+                manager.awaitAuthoritativeReadScope()
                 loadCompletePaginatedCollection("Volume", Volume::id) {
                     client.volumes.list(envId = envId, query = completeListQuery())
-                },
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Loadable.Error(friendlyErrorMessage(e))
+                }.map(Volume::sanitizedForReadCache)
+        }.collect { read ->
+            when (read) {
+                is ResilientRead.Stale -> {
+                    state = Loadable.Success(read.value)
+                    staleInfo = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                }
+                is ResilientRead.Fresh -> {
+                    state = Loadable.Success(read.value)
+                    staleInfo = null
+                }
+                is ResilientRead.Failure -> state = Loadable.Error(read.message)
+            }
         }
         // Sizes are slow / optional — load them silently and ignore failures.
         sizes = runCatching {
@@ -116,7 +143,17 @@ fun VolumeListScreen(onOpen: (String) -> Unit) {
     fun act(block: suspend () -> Unit) {
         if (client == null) return
         scope.launch {
-            runCatching { block() }.onFailure { actionError = friendlyErrorMessage(it) }
+            runCatching { block() }
+                .onSuccess {
+                    cacheScope?.let {
+                        manager.readCache.invalidate(
+                            it,
+                            setOf(ReadResource.VOLUMES, ReadResource.DASHBOARD),
+                            envId.rawValue,
+                        )
+                    }
+                }
+                .onFailure { actionError = friendlyErrorMessage(it) }
             refreshKey++
         }
     }
@@ -146,6 +183,7 @@ fun VolumeListScreen(onOpen: (String) -> Unit) {
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            staleInfo?.let { StaleDataBanner(it) }
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },

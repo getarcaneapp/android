@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.LocalOperationStore
 import app.getarcane.android.core.OperationStartResult
+import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.displayName
 import app.getarcane.android.core.friendlyErrorMessage
@@ -221,6 +222,7 @@ fun ContainerDetailScreen(
                     ContainerDetailAction.Delete -> client.containers.delete(envId = envId, id = id, force = true)
                     else -> return@launch
                 }
+                manager.invalidateReadCache(envId, ReadResource.CONTAINERS)
                 Toast.makeText(context, action.successMessage, Toast.LENGTH_SHORT).show()
                 if (action == ContainerDetailAction.Delete) onBack() else refreshKey++
             } catch (e: CancellationException) {

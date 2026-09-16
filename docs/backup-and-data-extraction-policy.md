@@ -10,6 +10,13 @@ This policy was audited for PAR-007 against Android
 `7787bff82973302062d1d0c8db4c12f09547c5b0`, and Arcane
 `6a9ff7aa64fbec74e379b5dc9622699189093d73`. No SDK or server contract change is required.
 
+The policy was re-audited for PAR-301/PAR-302 on 2026-09-15 against Android
+`ed03850f3c378cefd2824aacc64dba1f896bd03f`, iOS
+`8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+`af6fa681d1c4c1e1af8a26a774f69a193df02680`, and Arcane
+`9e5bfea2f213a63f11c83f63f77e3c8499f23aba`. The resilient-read cache and sanitized status
+snapshot are both app-private but deliberately live outside every backed-up domain.
+
 ## Protected data boundary
 
 Android backs up app-private files, databases, shared preferences, and app-specific external files
@@ -30,6 +37,9 @@ guidance](https://developer.android.com/topic/libraries/architecture/datastore#b
 | `sharedpref/arcane_pinned.xml` | Excluded | Server-derived container, project, and volume IDs keyed by environment ID. |
 | `sharedpref/arcane_project_deploy_options.xml` | Excluded | Pull policy and force-recreate defaults keyed by a hash of normalized server, account, environment, and project identity. Hashing the scope does not make these server-bound operation preferences portable. |
 | `sharedpref/arcane_secure_prefs.xml` | Excluded | Historical/deprecated SDK encrypted-token location, protected in case data from an older build remains installed. |
+| `cache/arcane_read_cache_v1/*.arc` | Excluded | Bounded, sanitized server-derived list and Dashboard responses. Android never backs up the app cache domain; the explicit allowlist admits no cache path. Cache placement also allows ordinary OS storage reclamation without treating cached reads as durable user data. |
+| `cache/arcane_offline_read_session_v1/session-v1.json` | Excluded | Opaque server/credential/account/permission binding plus bounded read-only permissions used to locate the correct cache after an offline process restart. It contains no URL, username, account ID, token, or mutation permission and is deleted on every session boundary. |
+| `no_backup/arcane_status_snapshots/status-v1.json` | Excluded | Credential-free future-system-surface projection. `noBackupFilesDir` is structurally outside Auto Backup and device transfer, and the file allowlist does not admit it. Persistent no-backup storage is used because a future widget process must survive ordinary cache eviction while still never transferring devices. |
 | Every database, other private/shared-preference file, and app-specific external file | Excluded | The allowlist does not admit these domains. Future caches, snapshots, exports, or operation stores stay protected until all policy formats and tests explicitly classify them. |
 
 The exact policy is intentional even where data is encrypted at rest. Encryption does not turn an
@@ -54,6 +64,20 @@ authentication token or server-derived record into portable user preference data
   bounded recovery ledger. It contains no credential, authorization header, server URL, raw image
   reference, project content, or persisted log line. The allowlist excludes the entire ledger from
   both cloud backup and device transfer; `BackupPolicyTest` names it as a protected location.
+- `ResilientReadCache` uses `cache/arcane_read_cache_v1`. It stores only approved sanitized
+  Dashboard/environment/container/project/image/volume/network projections, is size/age bounded,
+  and is cleared on session boundaries. The cache directory is app-private and excluded from both
+  backup and transfer independently of the XML allowlist.
+- `OfflineReadSessionStore` uses `cache/arcane_offline_read_session_v1`. Its strict, seven-day
+  descriptor contains only one-way scope hashes, feature modes, and bounded read/list permissions;
+  it lets a process restarted without network select the already scoped cache while withholding
+  mutation permissions. It is cleared with the cache on logout, Change Server, account/credential
+  invalidation, and authoritative authentication rejection.
+- `StatusSnapshotStore` uses
+  `no_backup/arcane_status_snapshots/status-v1.json`. The strict, 64 KiB credential-free projection
+  contains opaque scope/environment correlations and bounded counts only. It is synchronously
+  replaced by a signed-out snapshot at logout/server/account boundaries. `noBackupFilesDir` keeps
+  it out of cloud backup and device transfer while allowing it to persist across process death.
 - `ArcaneCookieJar`, including hosted-demo session cookies, is memory-only and cleared on session,
   server, and lifecycle boundaries. Ktor has no configured persistent cookie or HTTP response store.
 - Projects workspace files, unsaved Compose/`.env` edits, variable values and sync state,
@@ -62,9 +86,10 @@ authentication token or server-derived record into portable user preference data
   None is written to DataStore, SharedPreferences, a database, or an app-private file. The passkey
   browser bridge keeps its active transaction only in memory, while Credential Manager owns any
   enrolled platform credential outside Arcane's app-private backup domains.
-- Loaded server responses, current-user/capability/environment objects, avatars, templates,
-  activity/stream state, process-port lookups, and operation request/result payloads are held in
-  memory. Login URL, username, password-form visibility, and navigation selection can participate
+- Apart from the explicitly sanitized resilient-read cache and status snapshot above, loaded server
+  responses, current-user/capability/environment objects, avatars, templates, activity/stream
+  state, process-port lookups, and operation request/result payloads are held in memory. Login URL,
+  username, password-form visibility, and navigation selection can participate
   in Android saved-instance-state recreation; passwords and other sensitive forms deliberately use
   non-saveable state. Saved-instance state is transient system state outside the Auto Backup file
   domains and is discarded when the app is uninstalled.
@@ -86,8 +111,9 @@ all three allowlists and to `BackupPolicyTest` in the same change.
 `BackupPolicyTest` parses the source manifest and both XML formats. It asserts that backup remains
 enabled only through the two declared resources, that legacy cloud and Android 12+ cloud/device
 transfer have the exact same allowlist, that no broad directory is included, and that known
-protected persistence locations are absent. Android resource processing and APK assembly provide
-schema and manifest-merge validation.
+protected persistence locations are absent. It also pins the read cache and offline binding to `cacheDir`, the snapshot
+to `noBackupFilesDir`, and proves neither name is admitted by the allowlist. Android resource
+processing and APK assembly provide schema and manifest-merge validation.
 
 ## PAR-007 validation evidence
 

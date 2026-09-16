@@ -13,6 +13,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import app.getarcane.android.MainActivity
+import app.getarcane.android.nav.AuthenticatedRoute
+import app.getarcane.android.nav.AuthenticatedRouteCodec
+import app.getarcane.android.nav.RouteDestination
 import app.getarcane.android.OperationActionReceiver
 import app.getarcane.android.R
 import app.getarcane.sdk.models.user.hasPermission
@@ -125,7 +128,15 @@ internal class OperationNotificationProjector(
 
     private fun operationIntent(operationId: String, requestCode: Int): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
-            data = Uri.parse("arcane-mobile://operations/$operationId")
+            data = Uri.parse(
+                AuthenticatedRouteCodec.encode(
+                    AuthenticatedRoute(
+                        serverBindingHash = sha256(manager.serverSessionIdentity),
+                        destination = RouteDestination.OPERATION,
+                        resourceId = operationId,
+                    ),
+                ),
+            )
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         return PendingIntent.getActivity(
@@ -138,7 +149,14 @@ internal class OperationNotificationProjector(
 
     private fun centerIntent(): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
-            data = Uri.parse("arcane-mobile://operations")
+            data = Uri.parse(
+                AuthenticatedRouteCodec.encode(
+                    AuthenticatedRoute(
+                        serverBindingHash = null,
+                        destination = RouteDestination.OPERATIONS,
+                    ),
+                ),
+            )
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         return PendingIntent.getActivity(

@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.sdk.models.image.ImagePruneReport
@@ -81,6 +82,7 @@ internal fun ImagePruneSheet(onDismiss: () -> Unit, onComplete: () -> Unit) {
                     mode = mode.apiValue,
                     until = if (mode == PruneMode.OlderThan) until else null,
                 )
+                manager.invalidateReadCache(envId, ReadResource.IMAGES)
                 resultMessage = formatResult(report)
                 onComplete()
             } catch (e: Throwable) {

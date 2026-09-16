@@ -47,6 +47,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,10 +66,17 @@ import app.getarcane.android.core.PinnedItemsStore
 import app.getarcane.android.core.ResourceUpdateFilter
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.hasAvailableUpdate
+import app.getarcane.android.core.ReadCachePolicy
+import app.getarcane.android.core.ReadCacheRequest
+import app.getarcane.android.core.ReadResource
+import app.getarcane.android.core.ResilientRead
+import app.getarcane.android.core.sanitizedForReadCache
 import app.getarcane.android.ui.components.CachedAsyncImage
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.components.StatusBadge
+import app.getarcane.android.ui.components.StaleDataBanner
+import app.getarcane.android.ui.components.StaleDataInfo
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneYellow
 import app.getarcane.sdk.EnvironmentId
@@ -77,6 +85,7 @@ import app.getarcane.sdk.models.project.DestroyProject
 import app.getarcane.sdk.models.project.ProjectDetails
 import app.getarcane.sdk.models.user.isAdmin
 import kotlinx.coroutines.launch
+import app.getarcane.sdk.pagination.PaginatedResponse
 
 private const val PAGE_SIZE = 50
 
@@ -98,9 +107,10 @@ fun ProjectListScreen(
     val envId = manager.activeEnvironmentId
     val isAdmin = manager.currentUser?.isAdmin ?: false
     val scope = rememberCoroutineScope()
+    val cacheScope = manager.currentReadCacheScope()
 
-    var state by remember { mutableStateOf<Loadable<Unit>>(Loadable.Loading) }
-    val projects = remember { mutableStateListOf<ProjectDetails>() }
+    var state by remember(cacheScope, envId.rawValue) { mutableStateOf<Loadable<Unit>>(Loadable.Loading) }
+    val projects = remember(cacheScope, envId.rawValue) { mutableStateListOf<ProjectDetails>() }
     var search by remember { mutableStateOf("") }
     var sortAsc by remember { mutableStateOf(true) }
     var filter by remember { mutableStateOf(ProjectStatusFilter.All) }
@@ -110,38 +120,71 @@ fun ProjectListScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<ProjectDetails?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
+    val stalePages = remember(cacheScope, envId.rawValue) { mutableStateMapOf<Int, StaleDataInfo>() }
+    val staleInfo = stalePages.values.minByOrNull(StaleDataInfo::storedAtEpochMs)
 
     // Pagination state.
-    var currentPage by remember { mutableIntStateOf(1) }
-    var hasMore by remember { mutableStateOf(false) }
-    var loadingMore by remember { mutableStateOf(false) }
+    var currentPage by remember(cacheScope, envId.rawValue) { mutableIntStateOf(1) }
+    var hasMore by remember(cacheScope, envId.rawValue) { mutableStateOf(false) }
+    var loadingMore by remember(cacheScope, envId.rawValue) { mutableStateOf(false) }
 
-    suspend fun loadPage(page: Int, reset: Boolean) {
-        if (client == null) return
+    suspend fun loadPage(page: Int, reset: Boolean, forceRefresh: Boolean = false) {
+        if (client == null || cacheScope == null) return
+        if (reset) stalePages.clear()
         val start = ((page - 1) * PAGE_SIZE).coerceAtLeast(0)
-        val response = client.projects.list(
-            envId = envId,
-            query = SearchPaginationSort(start = start, limit = PAGE_SIZE),
-        )
-        if (reset) {
-            projects.clear()
-            projects.addAll(response.data)
-        } else {
-            val existing = projects.mapTo(HashSet()) { it.id }
-            projects.addAll(response.data.filter { it.id !in existing })
+        manager.readCache.observe(
+            scope = cacheScope,
+            request = ReadCacheRequest(
+                resource = ReadResource.PROJECTS,
+                environmentId = envId.rawValue,
+                requestIdentity = "projects?start=$start&limit=$PAGE_SIZE",
+                policy = ReadCachePolicy.Projects,
+            ),
+            serializer = PaginatedResponse.serializer(ProjectDetails.serializer()),
+            forceRefresh = forceRefresh,
+        ) {
+            manager.awaitAuthoritativeReadScope()
+            client.projects.list(
+                envId = envId,
+                query = SearchPaginationSort(start = start, limit = PAGE_SIZE),
+            ).let { response -> response.copy(data = response.data.map(ProjectDetails::sanitizedForReadCache)) }
+        }.collect { read ->
+            val response = when (read) {
+                is ResilientRead.Stale -> {
+                    stalePages[page] = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                    read.value
+                }
+                is ResilientRead.Fresh -> {
+                    stalePages.remove(page)
+                    read.value
+                }
+                is ResilientRead.Failure -> {
+                    state = Loadable.Error(read.message)
+                    return@collect
+                }
+            }
+            if (reset) {
+                projects.clear()
+                projects.addAll(response.data)
+            } else {
+                val existing = projects.mapTo(HashSet()) { it.id }
+                projects.addAll(response.data.filter { it.id !in existing })
+            }
+            currentPage = response.pagination.currentPage.coerceAtLeast(1)
+            hasMore = response.pagination.currentPage < response.pagination.totalPages
+            state = Loadable.Success(Unit)
         }
-        currentPage = response.pagination.currentPage.coerceAtLeast(1)
-        hasMore = response.pagination.currentPage < response.pagination.totalPages
     }
 
-    LaunchedEffect(envId.rawValue, refreshKey) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(client, cacheScope, manager.offlineReadSessionActive, envId.rawValue, refreshKey) {
+        if (client == null || cacheScope == null) return@LaunchedEffect
         if (projects.isEmpty()) state = Loadable.Loading
-        state = try {
-            loadPage(1, reset = true)
-            Loadable.Success(Unit)
+        try {
+            loadPage(1, reset = true, forceRefresh = refreshKey > 0)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Throwable) {
-            Loadable.Error(friendlyErrorMessage(e))
+            state = Loadable.Error(friendlyErrorMessage(e))
         }
         refreshing = false
     }
@@ -165,6 +208,20 @@ fun ProjectListScreen(
                     projectId = project.id,
                     options = DestroyProject(removeFiles = removeFiles, removeVolumes = false),
                 )
+                cacheScope?.let {
+                    manager.readCache.invalidate(
+                        it,
+                        setOf(
+                            ReadResource.DASHBOARD,
+                            ReadResource.PROJECTS,
+                            ReadResource.CONTAINERS,
+                            ReadResource.IMAGES,
+                            ReadResource.VOLUMES,
+                            ReadResource.NETWORKS,
+                        ),
+                        envId.rawValue,
+                    )
+                }
                 projects.removeAll { it.id == project.id }
             } catch (e: Throwable) {
                 actionError = friendlyErrorMessage(e)
@@ -222,6 +279,7 @@ fun ProjectListScreen(
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            staleInfo?.let { StaleDataBanner(it) }
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },

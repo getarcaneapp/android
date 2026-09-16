@@ -71,6 +71,7 @@ import androidx.lifecycle.Lifecycle
 import app.getarcane.android.core.loadCompleteEnvironments
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.getarcane.android.BuildConfig
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.ArcaneDashboardStreamClient
 import app.getarcane.android.core.DashboardActionItemKind
@@ -79,10 +80,23 @@ import app.getarcane.android.core.DashboardEnvironmentStreamState
 import app.getarcane.android.core.DashboardStreamAggregateCounts
 import app.getarcane.android.core.DashboardStreamStore
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.ReadCachePolicy
+import app.getarcane.android.core.ReadCacheRequest
+import app.getarcane.android.core.ReadResource
+import app.getarcane.android.core.ResilientRead
+import app.getarcane.android.core.SnapshotErrorCode
+import app.getarcane.android.core.SnapshotFreshness
+import app.getarcane.android.core.StatusEnvironmentSnapshot
+import app.getarcane.android.core.StatusSnapshot
+import app.getarcane.android.core.opaqueEnvironmentKey
+import app.getarcane.android.core.sanitizedForReadCache
+import app.getarcane.android.core.statusSnapshotScopeId
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.runSuspendCatching
 import app.getarcane.android.nav.AppTab
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
+import app.getarcane.android.ui.components.StaleDataBanner
+import app.getarcane.android.ui.components.StaleDataInfo
 import app.getarcane.android.ui.screens.settings.FormErrorRow
 import app.getarcane.android.ui.screens.settings.FormSuccessRow
 import app.getarcane.android.ui.screens.settings.LabeledPicker
@@ -121,11 +135,13 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /** Cross-environment totals for the overview tiles. */
+@Serializable
 internal data class DashTotals(
     val running: Int,
     val total: Int,
@@ -133,6 +149,21 @@ internal data class DashTotals(
     val volumes: Int?,
     val updates: Int?,
     val stopped: Int,
+)
+
+@Serializable
+private data class DashboardCachePayload(
+    val environments: List<Environment>,
+    val overviewCounts: Map<String, DashboardEnvironmentCardOverviewCounts>,
+    val totals: DashTotals?,
+    val failedActivityCount: Int?,
+)
+
+private val DASHBOARD_CACHE_REQUEST = ReadCacheRequest(
+    resource = ReadResource.DASHBOARD,
+    environmentId = "_fleet_",
+    requestIdentity = "dashboard-foundation-v1",
+    policy = ReadCachePolicy.Dashboard,
 )
 
 internal fun displayedDashboardTotals(
@@ -181,12 +212,13 @@ fun DashboardScreen(
     val isAdmin = currentUser?.isGlobalAdmin ?: false
     val canPruneActiveEnvironment = currentUser.canPruneEnvironment(envId.rawValue)
 
-    var environments by remember { mutableStateOf<List<Environment>>(emptyList()) }
-    var overviewByEnvironmentId by remember {
-        mutableStateOf<Map<String, DashboardEnvironmentOverview>>(emptyMap())
+    val cacheScope = manager.currentReadCacheScope()
+    var environments by remember(cacheScope) { mutableStateOf<List<Environment>>(emptyList()) }
+    var overviewByEnvironmentId by remember(cacheScope) {
+        mutableStateOf<Map<String, DashboardEnvironmentCardOverviewCounts>>(emptyMap())
     }
-    var totals by remember { mutableStateOf<DashTotals?>(null) }
-    var failedActivityCount by remember { mutableStateOf<Int?>(null) }
+    var totals by remember(cacheScope) { mutableStateOf<DashTotals?>(null) }
+    var failedActivityCount by remember(cacheScope) { mutableStateOf<Int?>(null) }
     var loading by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableStateOf(0) }
     var statsRestartKey by remember { mutableStateOf(0) }
@@ -204,6 +236,50 @@ fun DashboardScreen(
         .filter { it.enabled }
         .map { it.id }
     val snackbar = remember { SnackbarHostState() }
+    var staleInfo by remember(cacheScope) { mutableStateOf<StaleDataInfo?>(null) }
+
+    fun publishStatusSnapshot(
+        payload: DashboardCachePayload,
+        freshness: SnapshotFreshness,
+        sourceUpdatedAtEpochMs: Long,
+        refreshError: String?,
+    ) {
+        val activeScope = cacheScope ?: return
+        if (manager.currentReadCacheScope() != activeScope) return
+        val scopeId = statusSnapshotScopeId(activeScope)
+        val perEnvironment = payload.environments.take(10).map { environment ->
+            val counts = payload.overviewCounts[environment.id]
+            StatusEnvironmentSnapshot(
+                environmentKey = opaqueEnvironmentKey(scopeId, environment.id),
+                displayName = environment.name ?: environment.id,
+                online = environment.status.equals("online", true) || environment.status.equals("up", true),
+                runningContainers = counts?.running ?: 0,
+                totalContainers = (counts?.running ?: 0) + (counts?.stopped ?: 0),
+                images = counts?.images ?: 0,
+                updatesAvailable = 0,
+            )
+        }
+        val dashboardTotals = payload.totals
+        manager.statusSnapshotStore.publish(
+            StatusSnapshot(
+                sourceVersion = BuildConfig.VERSION_CODE,
+                generatedAtEpochMs = System.currentTimeMillis(),
+                sourceUpdatedAtEpochMs = sourceUpdatedAtEpochMs,
+                freshness = freshness,
+                errorCode = if (refreshError == null) SnapshotErrorCode.NONE else SnapshotErrorCode.NETWORK_UNAVAILABLE,
+                scopeId = scopeId,
+                activeEnvironmentKey = opaqueEnvironmentKey(scopeId, envId.rawValue),
+                totalRunningContainers = dashboardTotals?.running ?: 0,
+                totalContainers = dashboardTotals?.total ?: 0,
+                totalImages = dashboardTotals?.images ?: 0,
+                totalUpdates = dashboardTotals?.updates ?: 0,
+                onlineEnvironments = payload.environments.count {
+                    it.status.equals("online", true) || it.status.equals("up", true)
+                },
+                environments = perEnvironment,
+            ),
+        )
+    }
 
     LaunchedEffect(client, enabledEnvironmentIds, refreshKey, statsRestartKey) {
         val generation = ++statsGeneration
@@ -272,91 +348,111 @@ fun DashboardScreen(
         streamStore.reconcile(environments)
     }
 
-    LaunchedEffect(client, refreshKey) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(client, cacheScope, manager.offlineReadSessionActive, refreshKey) {
+        if (client == null || cacheScope == null) return@LaunchedEffect
         loading = true
-        val overview = try {
-            client.dashboard.environmentsOverview()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Throwable) {
-            null
-        }
-        val overviewEnvironments = overview?.environmentsForDashboard().orEmpty()
-        var environmentLoadSucceeded = true
-        val envs = if (overviewEnvironments.isNotEmpty()) {
-            overviewEnvironments
-        } else {
-            try {
-                loadCompleteEnvironments { query -> client.environments.list(query) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Throwable) {
-                environmentLoadSucceeded = false
-                // Fall back to the active environment so the dashboard still shows a card.
-                listOf(Environment(id = envId.rawValue, name = manager.activeEnvironmentName, apiUrl = "", status = "active"))
-            }
-        }
-        environments = envs
-        val loadableEnvironments = envs.filter { it.enabled }
-        overviewByEnvironmentId = overview?.environments.orEmpty()
-            .associateBy { it.environmentForDashboard()?.id }
-            .filterKeys { it != null }
-            .mapKeys { it.key!! }
-        val overviewTotals = overview?.toDashTotals()
-        totals = overviewTotals
-
-        // Aggregate the slow overview tiles across every environment. A partial fleet result is not
-        // displayed as a complete total.
-        val volumesByEnvironment = if (!environmentLoadSucceeded) {
-            null
-        } else try {
-            coroutineScope {
-                loadableEnvironments.map { env ->
-                    val e = EnvironmentId(env.id)
-                    async {
-                        client.volumes.counts(envId = e).total
-                    }
-                }.awaitAll()
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Throwable) {
-            null
-        }
-        val volumes = volumesByEnvironment?.sum()
-        val updates = if (environmentLoadSucceeded) {
-            loadDashboardImageUpdateCount(client, loadableEnvironments)
-        } else {
-            null
-        }
-        totals = overviewTotals?.copy(volumes = volumes, updates = updates)
-            ?: loadLegacyDashboardTotals(client, loadableEnvironments, volumes = volumes, updates = updates)
-
-        // Count failed background work across every environment. Do not publish a partial count when
-        // one environment fails, because the toolbar badge and attention row imply a fleet total.
-        failedActivityCount = if (supportsActivities && environmentLoadSucceeded) {
-            try {
-                coroutineScope {
-                    loadableEnvironments.map { env ->
-                        async {
-                            client.activities.listPaginated(
-                                envId = EnvironmentId(env.id),
-                                order = SortOrder.DESCENDING,
-                                start = 0,
-                                limit = 1,
-                                status = ActivityStatus.FAILED,
-                            ).pagination.totalItems
-                        }
-                    }.awaitAll().sum()
-                }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        manager.readCache.observe(
+            scope = cacheScope,
+            request = DASHBOARD_CACHE_REQUEST,
+            serializer = DashboardCachePayload.serializer(),
+            forceRefresh = refreshKey > 0,
+        ) {
+            manager.awaitAuthoritativeReadScope()
+            val overview = try {
+                client.dashboard.environmentsOverview()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Throwable) {
                 null
             }
-        } else {
-            0
+            val overviewEnvironments = overview?.environmentsForDashboard().orEmpty()
+            val loadedEnvironments = if (overviewEnvironments.isNotEmpty()) {
+                overviewEnvironments
+            } else {
+                loadCompleteEnvironments { query -> client.environments.list(query) }
+            }.map(Environment::sanitizedForReadCache)
+            val loadableEnvironments = loadedEnvironments.filter { it.enabled }
+            val overviewTotals = overview?.toDashTotals()
+            val volumes = try {
+                coroutineScope {
+                    loadableEnvironments.map { environment ->
+                        async { client.volumes.counts(EnvironmentId(environment.id)).total }
+                    }.awaitAll().sum()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                null
+            }
+            val updates = loadDashboardImageUpdateCount(client, loadableEnvironments)
+            val loadedTotals = overviewTotals?.copy(volumes = volumes, updates = updates)
+                ?: loadLegacyDashboardTotals(client, loadableEnvironments, volumes = volumes, updates = updates)
+            val failures = if (supportsActivities) {
+                try {
+                    coroutineScope {
+                        loadableEnvironments.map { environment ->
+                            async {
+                                client.activities.listPaginated(
+                                    envId = EnvironmentId(environment.id),
+                                    order = SortOrder.DESCENDING,
+                                    start = 0,
+                                    limit = 1,
+                                    status = ActivityStatus.FAILED,
+                                ).pagination.totalItems
+                            }
+                        }.awaitAll().sum()
+                    }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Throwable) {
+                    null
+                }
+            } else {
+                0
+            }
+            DashboardCachePayload(
+                environments = loadedEnvironments,
+                overviewCounts = overview?.environments.orEmpty().mapNotNull { item ->
+                    item.environmentForDashboard()?.id?.let { it to item.cardOverviewCounts() }
+                }.toMap(),
+                totals = loadedTotals,
+                failedActivityCount = failures,
+            )
+        }.collect { read ->
+            val payload = when (read) {
+                is ResilientRead.Stale -> {
+                    staleInfo = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                    manager.shortcutPublisher.removeDynamicShortcuts()
+                    publishStatusSnapshot(
+                        read.value,
+                        if (read.refreshError == null) SnapshotFreshness.STALE else SnapshotFreshness.ERROR,
+                        read.storedAtEpochMs,
+                        read.refreshError,
+                    )
+                    read.value
+                }
+                is ResilientRead.Fresh -> {
+                    staleInfo = null
+                    manager.shortcutPublisher.publishEnvironments(
+                        cacheScope,
+                        read.value.environments.filter { environment ->
+                            environment.enabled &&
+                                manager.currentUser?.hasPermission(Permission.Environments.READ, environment.id) == true
+                        },
+                    )
+                    publishStatusSnapshot(read.value, SnapshotFreshness.FRESH, read.receivedAtEpochMs, null)
+                    read.value
+                }
+                is ResilientRead.Failure -> {
+                    manager.shortcutPublisher.removeDynamicShortcuts()
+                    scope.launch { snackbar.showSnackbar(read.message) }
+                    return@collect
+                }
+            }
+            environments = payload.environments
+            overviewByEnvironmentId = payload.overviewCounts
+            totals = payload.totals
+            failedActivityCount = payload.failedActivityCount
         }
         loading = false
     }
@@ -394,6 +490,9 @@ fun DashboardScreen(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                staleInfo?.let { info ->
+                    item(key = "stale-data") { StaleDataBanner(info) }
+                }
                 item {
                     Text(
                         SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date()),
@@ -483,7 +582,7 @@ fun DashboardScreen(
                     val streamState = streamStore.statesByEnvironmentId[env.id]
                     EnvironmentDashboardCard(
                         env = env,
-                        overviewCounts = overviewByEnvironmentId[env.id]?.cardOverviewCounts(),
+                        overviewCounts = overviewByEnvironmentId[env.id],
                         actionItems = streamState.loadedActionItems,
                         statsSeries = statsHistory[env.id],
                         versionInfo = streamState?.snapshot?.versionInfo,

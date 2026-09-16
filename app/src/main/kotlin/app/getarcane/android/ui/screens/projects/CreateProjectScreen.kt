@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.components.highlightEnv
@@ -131,6 +132,7 @@ fun CreateProjectScreen(
                     ),
                     useWorkspaceContract = manager.supportsProjectWorkspaceContract,
                 )
+                manager.invalidateReadCache(manager.activeEnvironmentId, ReadResource.PROJECTS)
                 onSuccess(created.id, created.name)
             } catch (e: Throwable) {
                 error = friendlyErrorMessage(e)

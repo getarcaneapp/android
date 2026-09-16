@@ -52,6 +52,7 @@ import app.getarcane.android.core.LocalOperationStore
 import app.getarcane.android.core.OperationKind
 import app.getarcane.android.core.OperationStartResult
 import app.getarcane.android.core.PinnedItemsStore
+import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.CompleteListResponse
 import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.displayName
@@ -209,10 +210,16 @@ fun DashboardPinnedSection(
                                             activeClient.containers.start(envId = envId, id = item.value.id)
                                             onMessage("Container started")
                                         }
+                                        manager.invalidateReadCache(envId, ReadResource.CONTAINERS)
                                     }
                                     is DashboardPinnedItem.Project -> {
                                         if (item.value.isDashboardRunning) {
                                             activeClient.projects.down(envId = envId, projectId = item.value.id)
+                                            manager.invalidateReadCache(
+                                                envId,
+                                                ReadResource.PROJECTS,
+                                                ReadResource.CONTAINERS,
+                                            )
                                             onMessage("Project stopped")
                                         } else {
                                             when (val result = operationStore.startProject(

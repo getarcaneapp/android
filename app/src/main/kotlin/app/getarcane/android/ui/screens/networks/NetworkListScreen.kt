@@ -55,14 +55,22 @@ import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.friendlyErrorMessage
 import app.getarcane.android.core.completeListQuery
 import app.getarcane.android.core.loadCompletePaginatedCollection
+import app.getarcane.android.core.ReadCachePolicy
+import app.getarcane.android.core.ReadCacheRequest
+import app.getarcane.android.core.ReadResource
+import app.getarcane.android.core.ResilientRead
+import app.getarcane.android.core.sanitizedForReadCache
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
+import app.getarcane.android.ui.components.StaleDataBanner
+import app.getarcane.android.ui.components.StaleDataInfo
 import app.getarcane.android.ui.theme.ArcaneTeal
 import app.getarcane.sdk.models.network.NetworkCreateOptions
 import app.getarcane.sdk.models.network.NetworkCreateRequest
 import app.getarcane.sdk.models.network.NetworkSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
 
 /** Docker built-in networks that can't be deleted. Mirrors iOS `systemNetworkNames`. */
 private val SYSTEM_NETWORKS = setOf("host", "bridge", "none")
@@ -78,8 +86,9 @@ fun NetworkListScreen(onOpen: (String) -> Unit) {
     val client = manager.client
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
+    val cacheScope = manager.currentReadCacheScope()
 
-    var state by remember { mutableStateOf<Loadable<List<NetworkSummary>>>(Loadable.Loading) }
+    var state by remember(cacheScope, envId.rawValue) { mutableStateOf<Loadable<List<NetworkSummary>>>(Loadable.Loading) }
     var search by remember { mutableStateOf("") }
     var sortAsc by remember { mutableStateOf(true) }
     var typeFilter by remember { mutableStateOf(TypeFilter.All) }
@@ -89,20 +98,38 @@ fun NetworkListScreen(onOpen: (String) -> Unit) {
     var showCreate by remember { mutableStateOf(false) }
     var showPrune by remember { mutableStateOf(false) }
     var actionError by remember { mutableStateOf<String?>(null) }
+    var staleInfo by remember(cacheScope, envId.rawValue) { mutableStateOf<StaleDataInfo?>(null) }
 
-    LaunchedEffect(envId.rawValue, refreshKey) {
-        if (client == null) return@LaunchedEffect
+    LaunchedEffect(client, cacheScope, manager.offlineReadSessionActive, envId.rawValue, refreshKey) {
+        if (client == null || cacheScope == null) return@LaunchedEffect
         if (state !is Loadable.Success) state = Loadable.Loading
-        state = try {
-            Loadable.Success(
+        manager.readCache.observe(
+            scope = cacheScope,
+            request = ReadCacheRequest(
+                resource = ReadResource.NETWORKS,
+                environmentId = envId.rawValue,
+                requestIdentity = "networks?start=0&limit=-1",
+                policy = ReadCachePolicy.Networks,
+            ),
+            serializer = ListSerializer(NetworkSummary.serializer()),
+            forceRefresh = refreshKey > 0,
+        ) {
+                manager.awaitAuthoritativeReadScope()
                 loadCompletePaginatedCollection("Network", NetworkSummary::id) {
                     client.networks.list(envId = envId, query = completeListQuery())
-                },
-            )
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            Loadable.Error(friendlyErrorMessage(e))
+                }.map(NetworkSummary::sanitizedForReadCache)
+        }.collect { read ->
+            when (read) {
+                is ResilientRead.Stale -> {
+                    state = Loadable.Success(read.value)
+                    staleInfo = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                }
+                is ResilientRead.Fresh -> {
+                    state = Loadable.Success(read.value)
+                    staleInfo = null
+                }
+                is ResilientRead.Failure -> state = Loadable.Error(read.message)
+            }
         }
         refreshing = false
     }
@@ -110,7 +137,17 @@ fun NetworkListScreen(onOpen: (String) -> Unit) {
     fun act(block: suspend () -> Unit) {
         if (client == null) return
         scope.launch {
-            runCatching { block() }.onFailure { actionError = friendlyErrorMessage(it) }
+            runCatching { block() }
+                .onSuccess {
+                    cacheScope?.let {
+                        manager.readCache.invalidate(
+                            it,
+                            setOf(ReadResource.NETWORKS, ReadResource.DASHBOARD),
+                            envId.rawValue,
+                        )
+                    }
+                }
+                .onFailure { actionError = friendlyErrorMessage(it) }
             refreshKey++
         }
     }
@@ -140,6 +177,7 @@ fun NetworkListScreen(onOpen: (String) -> Unit) {
         },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            staleInfo?.let { StaleDataBanner(it) }
             OutlinedTextField(
                 value = search,
                 onValueChange = { search = it },

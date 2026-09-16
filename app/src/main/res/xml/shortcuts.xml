@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="dashboard"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_dashboard"
+        android:shortcutShortLabel="@string/shortcut_dashboard">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.getarcane.android"
+            android:targetClass="app.getarcane.android.MainActivity"
+            android:data="arcane-mobile://route/v1/current/dashboard/-/-" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="containers"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_containers"
+        android:shortcutShortLabel="@string/shortcut_containers">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.getarcane.android"
+            android:targetClass="app.getarcane.android.MainActivity"
+            android:data="arcane-mobile://route/v1/current/containers/-/-" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="projects"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_projects"
+        android:shortcutShortLabel="@string/shortcut_projects">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.getarcane.android"
+            android:targetClass="app.getarcane.android.MainActivity"
+            android:data="arcane-mobile://route/v1/current/projects/-/-" />
+    </shortcut>
+</shortcuts>

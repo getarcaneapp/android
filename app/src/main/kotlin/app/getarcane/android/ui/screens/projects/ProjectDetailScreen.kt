@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.ProjectDeployPreferenceScope
 import app.getarcane.android.core.ProjectDeployPreferenceValues
@@ -141,6 +142,11 @@ internal fun ProjectDetailScreen(
             errorMessage = null
             try {
                 block()
+                manager.invalidateReadCache(
+                    envId,
+                    ReadResource.PROJECTS,
+                    ReadResource.CONTAINERS,
+                )
                 actionStatus = "Done."
                 refreshKey++
             } catch (e: Throwable) {
@@ -161,6 +167,7 @@ internal fun ProjectDetailScreen(
             try {
                 if (unarchive) client.projects.unarchive(envId = envId, projectId = projectId)
                 else client.projects.archive(envId = envId, projectId = projectId)
+                manager.invalidateReadCache(envId, ReadResource.PROJECTS)
                 onBack()
             } catch (e: Throwable) {
                 errorMessage = friendlyErrorMessage(e)
@@ -186,6 +193,14 @@ internal fun ProjectDetailScreen(
                         removeFiles = removeFiles,
                         removeVolumes = false,
                     ),
+                )
+                manager.invalidateReadCache(
+                    envId,
+                    ReadResource.PROJECTS,
+                    ReadResource.CONTAINERS,
+                    ReadResource.IMAGES,
+                    ReadResource.VOLUMES,
+                    ReadResource.NETWORKS,
                 )
                 onBack()
             } catch (e: Throwable) {

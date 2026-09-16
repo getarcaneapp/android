@@ -8,7 +8,9 @@ import app.getarcane.sdk.models.base.stringValue
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentOverview
 import app.getarcane.sdk.models.dashboard.DashboardEnvironmentsOverview
 import app.getarcane.sdk.models.environment.Environment
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class DashboardEnvironmentCardOverviewCounts(
     val running: Int,
     val stopped: Int,

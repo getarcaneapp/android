@@ -7,10 +7,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.getarcane.android.nav.MainTabSelectionStore
+import app.getarcane.android.nav.ArcaneShortcutPublisher
+import app.getarcane.android.BuildConfig
 import app.getarcane.sdk.ArcaneClient
 import app.getarcane.sdk.ArcaneConfiguration
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.ServerCapabilities
+import app.getarcane.sdk.errors.ArcaneError
 import app.getarcane.sdk.android.AndroidSecureTokenStore
 import app.getarcane.sdk.android.oidc.OidcAuthenticator
 import app.getarcane.sdk.android.passkey.AndroidPasskeyBrowserBridge
@@ -32,6 +35,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -82,6 +87,17 @@ internal data class AuthenticatedClientScope(
  */
 class ArcaneClientManager(context: Context) {
     private val appContext = context.applicationContext
+    internal val readCache = ResilientReadCache(
+        java.io.File(appContext.cacheDir, ResilientReadCache.CACHE_DIRECTORY),
+    )
+    internal val statusSnapshotStore = StatusSnapshotStore(
+        directory = java.io.File(appContext.noBackupFilesDir, StatusSnapshotStore.SNAPSHOT_DIRECTORY),
+        sourceVersion = BuildConfig.VERSION_CODE,
+    )
+    private val offlineReadSessionStore = OfflineReadSessionStore(
+        java.io.File(appContext.cacheDir, OfflineReadSessionStore.DIRECTORY),
+    )
+    internal val shortcutPublisher = ArcaneShortcutPublisher(appContext)
     private val prefs = Prefs(appContext)
     private val mainTabSelectionStore = MainTabSelectionStore(appContext)
     private var sessionJob = SupervisorJob()
@@ -95,10 +111,13 @@ class ArcaneClientManager(context: Context) {
     private val passkeyBrowserReturnTracker = PasskeyBrowserReturnTracker()
     private var nextPasskeySecurityEventId = 0L
     private var operationStore: OperationStore? = null
+    private var offlineReadScopeOverride: ReadCacheScope? = null
+    private val offlineRevalidationMutex = Mutex()
 
     var authStatus by mutableStateOf(AuthStatus.AUTHENTICATING); private set
     var serverUrl by mutableStateOf(""); private set
     var currentUser by mutableStateOf<User?>(null); private set
+    internal var offlineReadSessionActive by mutableStateOf(false); private set
     var capabilities by mutableStateOf(ServerCapabilities.UNKNOWN); private set
     var supportsPost26MobileFeatures by mutableStateOf(false); private set
     var supportsProjectWorkspaceContract by mutableStateOf(false); private set
@@ -126,6 +145,7 @@ class ArcaneClientManager(context: Context) {
     private val oidcRedirectUri = OIDC_REDIRECT_URI
 
     companion object {
+        internal const val RESTORE_VALIDATION_TIMEOUT_MS = 8_000L
         const val OIDC_REDIRECT_URI = "arcane-mobile://oidc-callback"
         const val OIDC_REDIRECT_SCHEME = "arcane-mobile"
         const val OIDC_REDIRECT_HOST = "oidc-callback"
@@ -145,6 +165,9 @@ class ArcaneClientManager(context: Context) {
         ServerIdentities.from(serverUrl)?.canonicalOrigin.orEmpty()
 
     init {
+        // Persisted dynamic shortcuts are valid only after a fresh authorized environment read in
+        // this process/session. Static read-only shortcuts remain available.
+        shortcutPublisher.removeDynamicShortcuts()
         scope.launch {
             var allowsLegacyTokenMigration = false
             restoreAuthenticationSession(
@@ -177,21 +200,31 @@ class ArcaneClientManager(context: Context) {
                     clientGeneration++
                 },
                 validateSavedSession = {
-                    val c = requireNotNull(client)
-                    val restoredUser = c.auth.me()
-                    val detectedCapabilities = c.serverCapabilities()
-                    val mobileFeatures = detectMobileFeatures(c)
-                    currentUser = restoredUser
-                    capabilities = detectedCapabilities
-                    supportsPost26MobileFeatures = mobileFeatures.post26
-                    supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
-                    supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
+                    validateSavedSessionWithin(RESTORE_VALIDATION_TIMEOUT_MS) {
+                        val c = requireNotNull(client)
+                        val restoredUser = c.auth.me()
+                        val detectedCapabilities = c.serverCapabilities()
+                        val mobileFeatures = detectMobileFeatures(c)
+                        currentUser = restoredUser
+                        capabilities = detectedCapabilities
+                        supportsPost26MobileFeatures = mobileFeatures.post26
+                        supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
+                        supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
+                    }
                 },
                 refreshLoginMethods = ::refreshLoginMethods,
-                updateStatus = { authStatus = it },
+                updateStatus = {
+                    authStatus = it
+                    if (it == AuthStatus.SETUP || it == AuthStatus.LOGIN) {
+                        statusSnapshotStore.publishSignedOut()
+                        shortcutPublisher.removeDynamicShortcuts()
+                    }
+                },
+                recoverOfflineSession = { error -> restoreOfflineReadSession(error) },
             )
             if (authStatus == AuthStatus.AUTHENTICATED) {
                 refreshLoginMethods()
+                validateResilientSession()
                 operationStore?.onAuthenticated()
             }
         }
@@ -279,15 +312,150 @@ class ArcaneClientManager(context: Context) {
         )
     }
 
+    internal fun currentReadCacheScope(): ReadCacheScope? {
+        val user = currentUser ?: return null
+        offlineReadScopeOverride?.let { return it }
+        val serverIdentity = serverSessionIdentity.takeIf { it.isNotBlank() } ?: return null
+        return resilientReadScope(
+            serverIdentity = serverIdentity,
+            user = user,
+            capabilities = capabilities,
+            supportsPost26MobileFeatures = supportsPost26MobileFeatures,
+            supportsProjectWorkspaceContract = supportsProjectWorkspaceContract,
+            supportsContainerReliabilityActions = supportsContainerReliabilityActions,
+        )
+    }
+
+    /** Invalidate only data affected by a completed direct mutation in the current session. */
+    internal suspend fun invalidateReadCache(
+        environmentId: EnvironmentId,
+        vararg resources: ReadResource,
+    ) {
+        val scope = currentReadCacheScope() ?: return
+        readCache.invalidate(
+            scope = scope,
+            resources = resources.toSet() + ReadResource.DASHBOARD,
+            environmentId = environmentId.rawValue,
+        )
+    }
+
+    private fun validateResilientSession() {
+        val scope = currentReadCacheScope() ?: return
+        statusSnapshotStore.activateScope(statusSnapshotScopeId(scope))
+        if (offlineReadScopeOverride == null) {
+            currentUser?.let { user ->
+                offlineReadSessionStore.publish(
+                    scope = scope,
+                    user = user,
+                    capabilities = capabilities,
+                    supportsPost26MobileFeatures = supportsPost26MobileFeatures,
+                    supportsProjectWorkspaceContract = supportsProjectWorkspaceContract,
+                    supportsContainerReliabilityActions = supportsContainerReliabilityActions,
+                )
+            }
+        }
+        // Dynamic routes are re-published only from a fresh authorized environment read.
+        shortcutPublisher.removeDynamicShortcuts()
+    }
+
+    private fun endResilientSession() {
+        offlineReadScopeOverride = null
+        offlineReadSessionActive = false
+        offlineReadSessionStore.clear()
+        readCache.clearForSessionEnd()
+        statusSnapshotStore.publishSignedOut()
+        shortcutPublisher.removeDynamicShortcuts()
+    }
+
     internal fun isCurrent(session: AuthenticatedClientScope): Boolean =
         isCurrentClient(session.generation, session.client) &&
             serverSessionIdentity == session.serverIdentity &&
             currentUser?.id == session.userId
 
+    internal suspend fun canOpenOperationRoute(operationId: String): Boolean =
+        operationStore?.canOpenExternalOperation(operationId) == true
+
+    /**
+     * A process restored offline may show scoped stale reads but no mutation permissions. Before a
+     * network refresh, replace that projection with the authoritative user/capability context.
+     */
+    internal suspend fun revalidateOfflineSession(): Boolean = offlineRevalidationMutex.withLock {
+        if (offlineReadScopeOverride == null) return false
+        val activeClient = client ?: return false
+        return try {
+            val user = activeClient.auth.me()
+            val detectedCapabilities = activeClient.serverCapabilities()
+            val mobileFeatures = detectMobileFeatures(activeClient)
+            currentUser = user
+            capabilities = detectedCapabilities
+            supportsPost26MobileFeatures = mobileFeatures.post26
+            supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
+            supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
+            offlineReadScopeOverride = null
+            offlineReadSessionActive = false
+            validateResilientSession()
+            operationStore?.onAuthenticated()
+            true
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: ArcaneError.Unauthorized) {
+            endResilientSession()
+            currentUser = null
+            authStatus = AuthStatus.LOGIN
+            true
+        } catch (error: ArcaneError.Forbidden) {
+            endResilientSession()
+            currentUser = null
+            authStatus = AuthStatus.LOGIN
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    internal suspend fun awaitAuthoritativeReadScope() {
+        if (offlineReadScopeOverride == null) return
+        if (revalidateOfflineSession()) {
+            throw CancellationException("Authenticated read scope changed")
+        }
+        throw ArcaneError.Transport("Live data is unavailable while offline.")
+    }
+
+    private suspend fun restoreOfflineReadSession(error: Throwable): Boolean {
+        if (error is ArcaneError.Unauthorized || error is ArcaneError.Forbidden) {
+            endResilientSession()
+            return false
+        }
+        val serverIdentity = serverSessionIdentity.takeIf(String::isNotBlank) ?: return false
+        val saved = offlineReadSessionStore.load(serverIdentity, prefs.credentialOrigin.first()) ?: return false
+        offlineReadScopeOverride = saved.cacheScope
+        offlineReadSessionActive = true
+        currentUser = saved.asReadOnlyUser()
+        capabilities = ServerCapabilities(
+            ServerCapabilities.Mode.entries.firstOrNull { it.name == saved.capabilityMode }
+                ?: return false,
+        )
+        supportsPost26MobileFeatures = saved.supportsPost26MobileFeatures
+        supportsProjectWorkspaceContract = saved.supportsProjectWorkspaceContract
+        supportsContainerReliabilityActions = saved.supportsContainerReliabilityActions
+        statusSnapshotStore.activateScope(statusSnapshotScopeId(saved.cacheScope))
+        shortcutPublisher.removeDynamicShortcuts()
+        return true
+    }
+
     /** Publish a self-profile mutation only when it still belongs to the captured account. */
     internal fun acceptCurrentUserUpdate(session: AuthenticatedClientScope, updated: User): Boolean {
         if (updated.id != session.userId || !isCurrent(session)) return false
+        val previousScope = currentReadCacheScope()
         currentUser = updated
+        offlineReadScopeOverride = null
+        offlineReadSessionActive = false
+        if (previousScope != currentReadCacheScope()) {
+            readCache.clearForSessionEnd()
+            statusSnapshotStore.publishSignedOut()
+            shortcutPublisher.removeDynamicShortcuts()
+        }
+        validateResilientSession()
         return true
     }
 
@@ -339,6 +507,7 @@ class ArcaneClientManager(context: Context) {
         val previousIdentity = ServerIdentities.from(previousUrl)
         val previousClient = client
         operationStore?.onSessionEnding()
+        endResilientSession()
         replaceSessionScope()
         if (previousIdentity != null && previousIdentity != nextIdentity) {
             cleanupServer(previousUrl, previousIdentity, previousClient, endDemoSession = isDemoActive)
@@ -640,6 +809,7 @@ class ArcaneClientManager(context: Context) {
                 authStatus = AuthStatus.AUTHENTICATED
                 refreshLoginMethods()
                 operationStore?.onAuthenticated()
+                validateResilientSession()
             }
         }
     }
@@ -649,6 +819,7 @@ class ArcaneClientManager(context: Context) {
         val generation = clientGeneration
         scope.launch {
             operationStore?.onSessionEnding()
+            endResilientSession()
             try {
                 c.auth.logout()
             } catch (e: CancellationException) {
@@ -727,6 +898,7 @@ class ArcaneClientManager(context: Context) {
         val endingClient = client
         val endingDemo = isDemoActive
         operationStore?.onSessionEnding()
+        endResilientSession()
         replaceSessionScope()
         demoExpiryJob?.cancel()
         demoExpiryJob = null
@@ -834,6 +1006,7 @@ class ArcaneClientManager(context: Context) {
                     authStatus = AuthStatus.AUTHENTICATED
                     refreshLoginMethods()
                     operationStore?.onAuthenticated()
+                    validateResilientSession()
                     DemoService.startHeartbeat(scope)
                     scheduleDemoExpiry(session.endsAtMillis)
                 } catch (e: CancellationException) {
@@ -866,6 +1039,7 @@ class ArcaneClientManager(context: Context) {
         val endingIdentity = ServerIdentities.from(endingUrl)
         val endingClient = client
         operationStore?.onSessionEnding()
+        endResilientSession()
         replaceSessionScope()
         clientGeneration++
         currentUser = null

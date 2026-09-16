@@ -734,6 +734,13 @@ class OperationStore internal constructor(
         }
     }
 
+    /** External routes may open only a row bound to the current authenticated server/account. */
+    internal suspend fun canOpenExternalOperation(operationId: String): Boolean {
+        loaded.await()
+        val binding = currentBinding() ?: return false
+        return operation(operationId)?.matchesBinding(binding) == true
+    }
+
     fun closeCenter() {
         isCenterOpen = false
         selectedOperationId = null
@@ -754,6 +761,10 @@ class OperationStore internal constructor(
         val activityId = record.serverActivityId ?: return
         activityOpenRequest = ActivityOpenRequest(++nextActivityOpenRequestId, activityId, record.environmentId)
         closeCenter()
+    }
+
+    fun openExternalActivity(activityId: String, environmentId: String) {
+        activityOpenRequest = ActivityOpenRequest(++nextActivityOpenRequestId, activityId, environmentId)
     }
 
     fun consumeActivityOpenRequest(requestId: Long) {
@@ -1026,6 +1037,21 @@ class OperationStore internal constructor(
         }
         operations = retain(operations)
         projectNotifications()
+        if (state == OperationState.SUCCESS) {
+            val record = operation(operationId)
+            val cacheScope = manager.currentReadCacheScope()
+            if (record != null && cacheScope != null) {
+                scope.launch {
+                    manager.readCache.invalidate(
+                        scope = cacheScope,
+                        resources = record.kind.affectedReadResources,
+                        environmentId = record.environmentId.takeUnless {
+                            record.kind == OperationKind.FLEET_UPDATE
+                        },
+                    )
+                }
+            }
+        }
     }
 
     private fun update(
@@ -1124,6 +1150,37 @@ class OperationStore internal constructor(
         )
     }
 }
+
+private val OperationKind.affectedReadResources: Set<ReadResource>
+    get() = when (this) {
+        OperationKind.PROJECT_DEPLOY,
+        OperationKind.PROJECT_REDEPLOY,
+        OperationKind.PROJECT_PULL,
+        OperationKind.PROJECT_BUILD,
+        -> setOf(
+            ReadResource.DASHBOARD,
+            ReadResource.PROJECTS,
+            ReadResource.CONTAINERS,
+            ReadResource.IMAGES,
+            ReadResource.VOLUMES,
+            ReadResource.NETWORKS,
+        )
+        OperationKind.IMAGE_PULL -> setOf(ReadResource.DASHBOARD, ReadResource.IMAGES)
+        OperationKind.CONTAINER_REDEPLOY -> setOf(
+            ReadResource.DASHBOARD,
+            ReadResource.CONTAINERS,
+            ReadResource.IMAGES,
+        )
+        OperationKind.UPDATER_RUN,
+        OperationKind.FLEET_UPDATE,
+        -> setOf(
+            ReadResource.DASHBOARD,
+            ReadResource.CONTAINERS,
+            ReadResource.PROJECTS,
+            ReadResource.IMAGES,
+        )
+        OperationKind.UNKNOWN -> emptySet()
+    }
 
 val LocalOperationStore = androidx.compose.runtime.staticCompositionLocalOf<OperationStore> {
     error("OperationStore not provided")

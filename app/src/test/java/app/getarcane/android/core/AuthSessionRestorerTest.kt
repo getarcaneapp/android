@@ -3,6 +3,7 @@ package app.getarcane.android.core
 import app.getarcane.sdk.errors.ArcaneError
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -12,6 +13,15 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AuthSessionRestorerTest {
+    @Test
+    fun `saved session validation timeout becomes an offline-recoverable transport failure`() = runBlocking {
+        val error = runCatching {
+            validateSavedSessionWithin(timeoutMs = 1) { delay(100) }
+        }.exceptionOrNull()
+
+        assertTrue(error is ArcaneError.Transport)
+    }
+
     @Test
     fun `fresh install routes from authentication gate to setup`() = runBlocking {
         val statuses = mutableListOf(AuthStatus.AUTHENTICATING)
@@ -74,6 +84,26 @@ class AuthSessionRestorerTest {
             statuses,
         )
         assertEquals(1, refreshCount)
+    }
+
+    @Test
+    fun `transport failure may restore a scoped offline read session without flashing login`() = runBlocking {
+        val statuses = mutableListOf(AuthStatus.AUTHENTICATING)
+        var recoveredError: Throwable? = null
+
+        restoreAuthenticationSession(
+            loadSavedState = { SavedAuthState("https://arcane.example.com", "0", "Local") },
+            applySavedState = {},
+            openSavedServer = {},
+            validateSavedSession = { throw ArcaneError.Transport("offline") },
+            refreshLoginMethods = { error("offline recovery must not enter login") },
+            updateStatus = statuses::add,
+            recoverOfflineSession = { error -> recoveredError = error; true },
+        )
+
+        assertTrue(recoveredError is ArcaneError.Transport)
+        assertEquals(AuthStatus.AUTHENTICATED, statuses.last())
+        assertTrue(AuthStatus.LOGIN !in statuses)
     }
 
     @Test

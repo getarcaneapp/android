@@ -21,6 +21,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -99,9 +101,11 @@ private sealed interface DashboardOpenTarget {
 fun MainTabView() {
     val manager = LocalArcaneManager.current
     val operationStore = LocalOperationStore.current
+    val routeCoordinator = LocalAuthenticatedRouteCoordinator.current
     val context = LocalContext.current
     val tabsStore = remember { NavTabsStore(context) }
     val selectionStore = remember { MainTabSelectionStore(context) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val isAdmin = manager.currentUser?.isGlobalAdmin ?: false
     val supportsV2 = manager.capabilities.mode == ServerCapabilities.Mode.RBAC
@@ -111,12 +115,79 @@ fun MainTabView() {
     val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
     var swapTarget by remember { mutableStateOf<AppTab?>(null) }
     var dashboardOpenTarget by remember { mutableStateOf<DashboardOpenTarget?>(null) }
+    var externalRouteBackTabId by remember { mutableStateOf<String?>(null) }
     var imagesInitialDestination by remember { mutableStateOf(ImagesInitialDestination.List) }
     var settingsInitialDestination by remember { mutableStateOf(SettingsInitialDestination.Root) }
 
     val activityOpenRequest = operationStore.activityOpenRequest
     LaunchedEffect(activityOpenRequest?.requestId) {
         if (activityOpenRequest != null) selected = AppTab.Activities.id
+    }
+
+    LaunchedEffect(routeCoordinator.issueMessage) {
+        routeCoordinator.issueMessage?.let { message ->
+            snackbarHostState.showSnackbar(message)
+            routeCoordinator.consumeIssue()
+        }
+    }
+
+    LaunchedEffect(routeCoordinator.pendingRoute) {
+        val pending = routeCoordinator.pendingRoute ?: return@LaunchedEffect
+        when (val resolution = resolveAuthenticatedRoute(pending, manager)) {
+            AuthenticatedRouteResolution.LoginRequired -> Unit
+            is AuthenticatedRouteResolution.Rejected -> routeCoordinator.reject(resolution.message)
+            is AuthenticatedRouteResolution.Ready -> {
+                val route = resolution.route
+                route.environmentId?.let { environmentId ->
+                    manager.setActiveEnvironment(EnvironmentId(environmentId), environmentId)
+                }
+                when (route.destination) {
+                    RouteDestination.DASHBOARD -> {
+                        dashboardOpenTarget = null
+                        externalRouteBackTabId = null
+                        selected = AppTab.Dashboard.id
+                    }
+                    RouteDestination.CONTAINERS -> {
+                        dashboardOpenTarget = null
+                        externalRouteBackTabId = null
+                        selected = AppTab.Containers.id
+                        popToRootSignals[AppTab.Containers.id] = (popToRootSignals[AppTab.Containers.id] ?: 0) + 1
+                    }
+                    RouteDestination.PROJECTS -> {
+                        dashboardOpenTarget = null
+                        externalRouteBackTabId = null
+                        selected = AppTab.Projects.id
+                        popToRootSignals[AppTab.Projects.id] = (popToRootSignals[AppTab.Projects.id] ?: 0) + 1
+                    }
+                    RouteDestination.ENVIRONMENT -> {
+                        selected = AppTab.Dashboard.id
+                        externalRouteBackTabId = AppTab.Dashboard.id
+                        dashboardOpenTarget = DashboardOpenTarget.Environment(requireNotNull(route.environmentId))
+                    }
+                    RouteDestination.CONTAINER -> {
+                        selected = AppTab.Dashboard.id
+                        externalRouteBackTabId = AppTab.Containers.id
+                        dashboardOpenTarget = DashboardOpenTarget.Container(requireNotNull(route.resourceId))
+                    }
+                    RouteDestination.PROJECT -> {
+                        selected = AppTab.Dashboard.id
+                        externalRouteBackTabId = AppTab.Projects.id
+                        dashboardOpenTarget = DashboardOpenTarget.Project(requireNotNull(route.resourceId))
+                    }
+                    RouteDestination.ACTIVITIES -> {
+                        dashboardOpenTarget = null
+                        selected = AppTab.Activities.id
+                    }
+                    RouteDestination.ACTIVITY -> operationStore.openExternalActivity(
+                        activityId = requireNotNull(route.resourceId),
+                        environmentId = requireNotNull(route.environmentId),
+                    )
+                    RouteDestination.OPERATIONS -> operationStore.openCenter()
+                    RouteDestination.OPERATION -> operationStore.openOperation(requireNotNull(route.resourceId))
+                }
+                routeCoordinator.consume(route)
+            }
+        }
     }
 
     if (selected == null && selectionStore.hasLoaded) {
@@ -168,6 +239,8 @@ fun MainTabView() {
         // tab roots return home instead of exiting the Activity from a resource/settings tab dead end.
         if (dashboardOpenTarget != null) {
             dashboardOpenTarget = null
+            selected = externalRouteBackTabId ?: AppTab.Dashboard.id
+            externalRouteBackTabId = null
         } else {
             selected = AppTab.Dashboard.id
         }
@@ -176,16 +249,20 @@ fun MainTabView() {
     fun selectOrPopToRoot(tabId: String) {
         if (dashboardOpenTarget != null && normalizedSelection == AppTab.Dashboard.id && tabId == AppTab.Dashboard.id) {
             dashboardOpenTarget = null
+            externalRouteBackTabId = null
         } else if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
             dashboardOpenTarget = null
+            externalRouteBackTabId = null
             popToRootSignals[tabId] = (popToRootSignals[tabId] ?: 0) + 1
         } else {
             dashboardOpenTarget = null
+            externalRouteBackTabId = null
             selected = tabId
         }
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             NavigationBar {
                 visible.forEach { tab ->
@@ -223,19 +300,24 @@ fun MainTabView() {
                     onSelectTab = { selected = it },
                     dashboardOpenTarget = dashboardOpenTarget,
                     onOpenContainer = { id ->
+                        externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.Container(id = id)
                     },
                     onOpenProject = { id ->
+                        externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.Project(id = id)
                     },
                     onOpenVolume = { name ->
+                        externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.Volume(id = name)
                     },
                     onOpenEnvironment = { id ->
+                        externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.Environment(id = id)
                     },
                     onDashboardBack = {
                         dashboardOpenTarget = null
+                        externalRouteBackTabId = null
                     },
                     settingsInitialDestination = settingsInitialDestination,
                     onSettingsInitialDestinationHandled = {
@@ -246,13 +328,16 @@ fun MainTabView() {
                         imagesInitialDestination = ImagesInitialDestination.List
                     },
                     onOpenImageVulnerabilities = { id, name ->
+                        externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.ImageVulnerabilities(id = id, name = name)
                     },
                     onOpenImageUpdates = {
+                        externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.ImageUpdates
                     },
                     onOpenApiKeys = {
                         dashboardOpenTarget = null
+                        externalRouteBackTabId = null
                         selected = AppTab.ApiKeys.id
                     },
                     activityOpenRequest = activityOpenRequest,
