@@ -2,6 +2,7 @@ package app.getarcane.android.ui.screens.activities
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -19,8 +20,8 @@ fun ActivitiesTab(
     onHistoryCleared: () -> Unit = {},
     initialDetail: ActivityOpenRequest? = null,
     onInitialDetailHandled: (Long) -> Unit = {},
+    nav: NavHostController = rememberNavController(),
 ) {
-    val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     LaunchedEffect(initialDetail?.requestId) {
         initialDetail?.let { request ->

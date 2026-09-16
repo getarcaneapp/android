@@ -6,4 +6,7 @@
     <string name="shortcut_dashboard">Dashboard</string>
     <string name="shortcut_containers">Containers</string>
     <string name="shortcut_projects">Projects</string>
+    <string name="fleet_widget_name">Fleet Status</string>
+    <string name="fleet_widget_description">Sanitized container, image, environment, and update status from Arcane</string>
+    <string name="fleet_widget_loading">Loading Arcane status…</string>
 </resources>

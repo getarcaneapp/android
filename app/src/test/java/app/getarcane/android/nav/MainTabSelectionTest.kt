@@ -86,6 +86,18 @@ class MainTabSelectionTest {
     }
 
     @Test
+    fun tappingDashboardFromVolumesIsATopLevelSwitch() {
+        assertFalse(
+            MainTabSelection.shouldPopToRootOnTap(
+                selectedTabId = AppTab.Volumes.id,
+                tappedTabId = AppTab.Dashboard.id,
+            ),
+        )
+        assertTrue(AppTab.Dashboard.canPinToBottomBar)
+        assertFalse(AdaptiveNavigation.usesSettingsHost(AppTab.Dashboard))
+    }
+
+    @Test
     fun bottomBarHighlightsHostedResourceTabWhenVisible() {
         assertEquals(
             AppTab.Containers.id,

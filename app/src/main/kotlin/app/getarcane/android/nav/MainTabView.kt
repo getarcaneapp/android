@@ -1,45 +1,25 @@
 package app.getarcane.android.nav
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.LocalOperationStore
 import app.getarcane.android.core.ActivityOpenRequest
@@ -76,6 +56,8 @@ import app.getarcane.android.ui.screens.updates.UpdatesScreen
 import app.getarcane.android.ui.screens.volumes.VolumesScreen
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.ServerCapabilities
+import app.getarcane.sdk.models.role.Permission
+import app.getarcane.sdk.models.user.hasPermission
 import app.getarcane.sdk.models.user.isGlobalAdmin
 
 private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
@@ -110,6 +92,8 @@ fun MainTabView() {
     val isAdmin = manager.currentUser?.isGlobalAdmin ?: false
     val supportsV2 = manager.capabilities.mode == ServerCapabilities.Mode.RBAC
     val visible = tabsStore.visibleTabs(isAdmin, supportsV2)
+    val canReadVariables = manager.currentUser?.hasPermission(Permission.Variables.READ) == true
+    val available = AdaptiveNavigation.availableTabs(isAdmin, supportsV2, canReadVariables)
 
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
@@ -117,7 +101,41 @@ fun MainTabView() {
     var dashboardOpenTarget by remember { mutableStateOf<DashboardOpenTarget?>(null) }
     var externalRouteBackTabId by remember { mutableStateOf<String?>(null) }
     var imagesInitialDestination by remember { mutableStateOf(ImagesInitialDestination.List) }
-    var settingsInitialDestination by remember { mutableStateOf(SettingsInitialDestination.Root) }
+    var settingsInitialDestination by remember {
+        mutableStateOf<SettingsInitialDestination>(SettingsInitialDestination.Root)
+    }
+    var settingsTabRequestId by rememberSaveable { mutableLongStateOf(0) }
+    var containerRouteRequestId by rememberSaveable { mutableLongStateOf(0) }
+    var containerRouteResourceId by rememberSaveable { mutableStateOf<String?>(null) }
+    var projectRouteRequestId by rememberSaveable { mutableLongStateOf(0) }
+    var projectRouteResourceId by rememberSaveable { mutableStateOf<String?>(null) }
+    val tabStateHolder = rememberSaveableStateHolder()
+    var previousEnvironmentId by remember { mutableStateOf(manager.activeEnvironmentId.rawValue) }
+    val tabNavigationOwners = key("tab-navigation@${manager.activeEnvironmentId.rawValue}") {
+        mapOf(
+            SETTINGS_ID to rememberNavController(),
+            AppTab.Containers.id to rememberNavController(),
+            AppTab.Images.id to rememberNavController(),
+            AppTab.Projects.id to rememberNavController(),
+            AppTab.Volumes.id to rememberNavController(),
+            AppTab.Networks.id to rememberNavController(),
+            AppTab.Ports.id to rememberNavController(),
+            AppTab.Events.id to rememberNavController(),
+            AppTab.Jobs.id to rememberNavController(),
+            AppTab.Activities.id to rememberNavController(),
+            AppTab.Updates.id to rememberNavController(),
+        )
+    }
+
+    LaunchedEffect(manager.activeEnvironmentId.rawValue) {
+        val nextEnvironmentId = manager.activeEnvironmentId.rawValue
+        if (nextEnvironmentId != previousEnvironmentId) {
+            AppTab.entries.filter(AppTab::isEnvironmentScoped).forEach { tab ->
+                tabStateHolder.removeState("${tab.id}@$previousEnvironmentId")
+            }
+            previousEnvironmentId = nextEnvironmentId
+        }
+    }
 
     val activityOpenRequest = operationStore.activityOpenRequest
     LaunchedEffect(activityOpenRequest?.requestId) {
@@ -166,13 +184,18 @@ fun MainTabView() {
                     }
                     RouteDestination.CONTAINER -> {
                         selected = AppTab.Dashboard.id
-                        externalRouteBackTabId = AppTab.Containers.id
-                        dashboardOpenTarget = DashboardOpenTarget.Container(requireNotNull(route.resourceId))
+                        dashboardOpenTarget = null
+                        externalRouteBackTabId = null
+                        containerRouteResourceId = requireNotNull(route.resourceId)
+                        containerRouteRequestId += 1
+                        selected = AppTab.Containers.id
                     }
                     RouteDestination.PROJECT -> {
-                        selected = AppTab.Dashboard.id
-                        externalRouteBackTabId = AppTab.Projects.id
-                        dashboardOpenTarget = DashboardOpenTarget.Project(requireNotNull(route.resourceId))
+                        dashboardOpenTarget = null
+                        externalRouteBackTabId = null
+                        projectRouteResourceId = requireNotNull(route.resourceId)
+                        projectRouteRequestId += 1
+                        selected = AppTab.Projects.id
                     }
                     RouteDestination.ACTIVITIES -> {
                         dashboardOpenTarget = null
@@ -228,11 +251,17 @@ fun MainTabView() {
         hostedResourceTabId = hostedResourceTabId,
         visibleTabs = visible,
     )
+    val latestNormalizedSelection by rememberUpdatedState(normalizedSelection)
 
     val rootBackAction = MainBackNavigation.resolve(
         selectedTabId = normalizedSelection,
         hasDashboardOpenTarget = dashboardOpenTarget != null,
     )
+    fun returnToDashboard() {
+        dashboardOpenTarget = null
+        externalRouteBackTabId = null
+        selected = AppTab.Dashboard.id
+    }
     BackHandler(enabled = rootBackAction == MainBackNavigation.Action.SwitchToDashboard) {
         // Register this before child content so nested NavHosts and transient UI get first chance to
         // consume Back. Dashboard-hosted details clear back to the Dashboard, and non-Dashboard
@@ -242,15 +271,27 @@ fun MainTabView() {
             selected = externalRouteBackTabId ?: AppTab.Dashboard.id
             externalRouteBackTabId = null
         } else {
-            selected = AppTab.Dashboard.id
+            returnToDashboard()
         }
     }
 
     fun selectOrPopToRoot(tabId: String) {
-        if (dashboardOpenTarget != null && normalizedSelection == AppTab.Dashboard.id && tabId == AppTab.Dashboard.id) {
+        val selectedTab = AppTab.byId(tabId)
+        if (tabId == AppTab.Dashboard.id &&
+            (latestNormalizedSelection != AppTab.Dashboard.id || dashboardOpenTarget != null)
+        ) {
+            // The Dashboard item and system Back intentionally use the same state transition.
+            returnToDashboard()
+        } else if (selectedTab != null && AdaptiveNavigation.usesSettingsHost(selectedTab)) {
             dashboardOpenTarget = null
             externalRouteBackTabId = null
-        } else if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
+            settingsTabRequestId += 1
+            settingsInitialDestination = SettingsInitialDestination.Tab(tabId, settingsTabRequestId)
+            selected = SETTINGS_ID
+        } else if (dashboardOpenTarget != null && latestNormalizedSelection == AppTab.Dashboard.id && tabId == AppTab.Dashboard.id) {
+            dashboardOpenTarget = null
+            externalRouteBackTabId = null
+        } else if (MainTabSelection.shouldPopToRootOnTap(latestNormalizedSelection, tabId)) {
             dashboardOpenTarget = null
             externalRouteBackTabId = null
             popToRootSignals[tabId] = (popToRootSignals[tabId] ?: 0) + 1
@@ -261,39 +302,19 @@ fun MainTabView() {
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        bottomBar = {
-            NavigationBar {
-                visible.forEach { tab ->
-                    NavBarItem(
-                        icon = tab.icon,
-                        label = tab.tabBarTitle,
-                        selected = bottomBarSelectedTabId == tab.id,
-                        onClick = { selectOrPopToRoot(tab.id) },
-                        onLongClick = { swapTarget = tab },
-                    )
-                }
-                NavBarItem(
-                    icon = Icons.Filled.Settings,
-                    label = "Settings",
-                    selected = bottomBarSelectedTabId == SETTINGS_ID,
-                    onClick = { selectOrPopToRoot(SETTINGS_ID) },
-                    onLongClick = null,
-                )
-            }
-        },
-    ) { padding ->
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .consumeWindowInsets(padding)
-        ) {
+    AdaptiveNavigationShell(
+        pinnedTabs = visible,
+        availableTabs = available,
+        selectedTabId = bottomBarSelectedTabId,
+        snackbarHostState = snackbarHostState,
+        onSelect = ::selectOrPopToRoot,
+        onCompactLongClick = { swapTarget = it },
+    ) {
+        Box(Modifier.fillMaxSize()) {
             val tab = AppTab.byId(normalizedSelection)
             val envKey = if (tab?.isEnvironmentScoped == true) manager.activeEnvironmentId.rawValue else ""
             val popToRootSignal = popToRootSignals[normalizedSelection] ?: 0
-            key(normalizedSelection, envKey) {
+            tabStateHolder.SaveableStateProvider("$normalizedSelection@$envKey") {
                 TabContent(
                     normalizedSelection,
                     popToRootSignal = popToRootSignal,
@@ -342,6 +363,17 @@ fun MainTabView() {
                     },
                     activityOpenRequest = activityOpenRequest,
                     onActivityOpenHandled = operationStore::consumeActivityOpenRequest,
+                    containerRouteResourceId = containerRouteResourceId,
+                    containerRouteRequestId = containerRouteRequestId,
+                    onContainerRouteHandled = { requestId ->
+                        if (containerRouteRequestId == requestId) containerRouteResourceId = null
+                    },
+                    projectRouteResourceId = projectRouteResourceId,
+                    projectRouteRequestId = projectRouteRequestId,
+                    onProjectRouteHandled = { requestId ->
+                        if (projectRouteRequestId == requestId) projectRouteResourceId = null
+                    },
+                    nav = tabNavigationOwners[normalizedSelection],
                 )
             }
         }
@@ -367,43 +399,6 @@ fun MainTabView() {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun RowScope.NavBarItem(
-    icon: ImageVector,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onLongClick: (() -> Unit)?,
-) {
-    val tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-    Column(
-        modifier = Modifier
-            .weight(1f)
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-                onLongClick = onLongClick,
-            )
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(50))
-                .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-                .padding(horizontal = 18.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = label, tint = tint)
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, color = tint)
-    }
-}
-
 @Composable
 private fun TabContent(
     tabId: String,
@@ -424,12 +419,20 @@ private fun TabContent(
     onOpenApiKeys: () -> Unit,
     activityOpenRequest: ActivityOpenRequest?,
     onActivityOpenHandled: (Long) -> Unit,
+    containerRouteResourceId: String?,
+    containerRouteRequestId: Long,
+    onContainerRouteHandled: (Long) -> Unit,
+    projectRouteResourceId: String?,
+    projectRouteRequestId: Long,
+    onProjectRouteHandled: (Long) -> Unit,
+    nav: NavHostController?,
 ) {
     when (tabId) {
         SETTINGS_ID -> SettingsScreen(
             popToRootSignal = popToRootSignal,
             initialDestination = settingsInitialDestination,
             onInitialDestinationHandled = onSettingsInitialDestinationHandled,
+            nav = requireNotNull(nav),
         )
         AppTab.Dashboard.id -> {
             when (val target = dashboardOpenTarget) {
@@ -484,29 +487,39 @@ private fun TabContent(
         AppTab.Containers.id -> {
             ContainersScreen(
                 popToRootSignal = popToRootSignal,
+                initialContainerId = containerRouteResourceId,
+                initialRequestId = containerRouteRequestId,
+                onInitialDetailHandled = onContainerRouteHandled,
+                nav = requireNotNull(nav),
             )
         }
         AppTab.Images.id -> ImagesScreen(
             popToRootSignal = popToRootSignal,
             initialDestination = imagesInitialDestination,
             onInitialDestinationHandled = onImagesInitialDestinationHandled,
+            nav = requireNotNull(nav),
         )
         AppTab.Projects.id -> {
             ProjectsScreen(
                 popToRootSignal = popToRootSignal,
+                initialProjectId = projectRouteResourceId,
+                initialRequestId = projectRouteRequestId,
+                onInitialDetailHandled = onProjectRouteHandled,
+                nav = requireNotNull(nav),
             )
         }
-        AppTab.Volumes.id -> VolumesScreen(popToRootSignal = popToRootSignal)
-        AppTab.Networks.id -> NetworksScreen(popToRootSignal = popToRootSignal)
-        AppTab.Ports.id -> PortsScreen(popToRootSignal = popToRootSignal)
-        AppTab.Events.id -> EventsScreen(popToRootSignal = popToRootSignal)
-        AppTab.Jobs.id -> JobsScreen(popToRootSignal = popToRootSignal)
+        AppTab.Volumes.id -> VolumesScreen(popToRootSignal = popToRootSignal, nav = requireNotNull(nav))
+        AppTab.Networks.id -> NetworksScreen(popToRootSignal = popToRootSignal, nav = requireNotNull(nav))
+        AppTab.Ports.id -> PortsScreen(popToRootSignal = popToRootSignal, nav = requireNotNull(nav))
+        AppTab.Events.id -> EventsScreen(popToRootSignal = popToRootSignal, nav = requireNotNull(nav))
+        AppTab.Jobs.id -> JobsScreen(popToRootSignal = popToRootSignal, nav = requireNotNull(nav))
         AppTab.Activities.id -> ActivitiesTab(
             popToRootSignal = popToRootSignal,
             initialDetail = activityOpenRequest,
             onInitialDetailHandled = onActivityOpenHandled,
+            nav = requireNotNull(nav),
         )
-        AppTab.Updates.id -> UpdatesScreen(popToRootSignal = popToRootSignal)
+        AppTab.Updates.id -> UpdatesScreen(popToRootSignal = popToRootSignal, nav = requireNotNull(nav))
         AppTab.Swarm.id -> SwarmScreen()
         AppTab.GitOps.id -> GitOpsScreen()
         AppTab.GitRepositories.id -> GitRepositoriesScreen()

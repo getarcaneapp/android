@@ -97,6 +97,7 @@ import app.getarcane.android.nav.AppTab
 import app.getarcane.android.ui.screens.activities.ActivitiesTab
 import app.getarcane.android.ui.components.StaleDataBanner
 import app.getarcane.android.ui.components.StaleDataInfo
+import app.getarcane.android.ui.components.staleDataInfoAfterRefreshFailure
 import app.getarcane.android.ui.screens.settings.FormErrorRow
 import app.getarcane.android.ui.screens.settings.FormSuccessRow
 import app.getarcane.android.ui.screens.settings.LabeledPicker
@@ -267,6 +268,7 @@ fun DashboardScreen(
                 sourceUpdatedAtEpochMs = sourceUpdatedAtEpochMs,
                 freshness = freshness,
                 errorCode = if (refreshError == null) SnapshotErrorCode.NONE else SnapshotErrorCode.NETWORK_UNAVAILABLE,
+                serverBindingHash = activeScope.serverBindingHash,
                 scopeId = scopeId,
                 activeEnvironmentKey = opaqueEnvironmentKey(scopeId, envId.rawValue),
                 totalRunningContainers = dashboardTotals?.running ?: 0,
@@ -421,7 +423,7 @@ fun DashboardScreen(
         }.collect { read ->
             val payload = when (read) {
                 is ResilientRead.Stale -> {
-                    staleInfo = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                    staleInfo = staleDataInfoAfterRefreshFailure(read.storedAtEpochMs, read.refreshError)
                     manager.shortcutPublisher.removeDynamicShortcuts()
                     publishStatusSnapshot(
                         read.value,

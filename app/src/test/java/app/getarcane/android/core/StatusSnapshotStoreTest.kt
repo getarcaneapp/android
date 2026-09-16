@@ -8,6 +8,27 @@ import java.nio.file.Files
 
 class StatusSnapshotStoreTest {
     @Test
+    fun `widget update callback spends refresh only on material presentation changes`() {
+        var updates = 0
+        val store = StatusSnapshotStore(
+            Files.createTempDirectory("arcane-snapshot-callback").toFile(),
+            sourceVersion = 42,
+            now = { 20 },
+            onMaterialChange = { updates++ },
+        )
+        store.activateScope("a".repeat(64))
+
+        assertTrue(store.publish(snapshot(generated = 10)))
+        assertEquals(1, updates)
+        assertTrue(store.publish(snapshot(generated = 11).copy(sourceUpdatedAtEpochMs = 10)))
+        assertEquals(1, updates)
+        assertTrue(store.publish(snapshot(generated = 12).copy(totalUpdates = 9)))
+        assertEquals(2, updates)
+        assertTrue(store.publishSignedOut())
+        assertEquals(3, updates)
+    }
+
+    @Test
     fun `snapshot survives process restart and contains only opaque scope metadata`() {
         val directory = Files.createTempDirectory("arcane-snapshot").toFile()
         val store = StatusSnapshotStore(directory, sourceVersion = 42, now = { 20 })
@@ -21,6 +42,7 @@ class StatusSnapshotStoreTest {
         assertFalse(bytes.contains("token"))
         val restarted = StatusSnapshotStore(directory, sourceVersion = 42, now = { 30 })
         assertEquals(StatusSnapshotRead.Available(snapshot), restarted.load("a".repeat(64)))
+        assertEquals(StatusSnapshotRead.Available(snapshot), restarted.loadForExternalConsumer())
     }
 
     @Test
@@ -43,6 +65,24 @@ class StatusSnapshotStoreTest {
         val read = store.load() as StatusSnapshotRead.Available
         assertEquals(SnapshotFreshness.SIGNED_OUT, read.snapshot.freshness)
         assertEquals(null, read.snapshot.scopeId)
+    }
+
+    @Test
+    fun `unconfigured boundary deletes prior projection and refreshes widget`() {
+        var updates = 0
+        val store = StatusSnapshotStore(
+            Files.createTempDirectory("arcane-snapshot-unconfigured").toFile(),
+            sourceVersion = 42,
+            onMaterialChange = { updates++ },
+        )
+        store.activateScope("a".repeat(64))
+        assertTrue(store.publish(snapshot()))
+
+        assertTrue(store.clearForUnconfigured())
+        assertEquals(StatusSnapshotRead.Missing, store.loadForExternalConsumer())
+        assertEquals(2, updates)
+        assertFalse(store.clearForUnconfigured())
+        assertEquals(3, updates)
     }
 
     @Test
@@ -86,7 +126,7 @@ class StatusSnapshotStoreTest {
         store.activateScope("a".repeat(64))
         store.publish(snapshot())
         val file = store.fileForDebugInspection()
-        file.writeText(file.readText().replace("\"schemaVersion\":1", "\"schemaVersion\":0"))
+        file.writeText(file.readText().replace("\"schemaVersion\":2", "\"schemaVersion\":0"))
         assertEquals(StatusSnapshotRead.CorruptOrUnsupported, store.load())
 
         file.writeText("x".repeat(2_049))
@@ -117,6 +157,15 @@ class StatusSnapshotStoreTest {
         assertTrue(loaded.environments.all { it.displayName.encodeToByteArray().size <= StatusSnapshotStore.MAXIMUM_NAME_BYTES })
         assertEquals(StatusSnapshotStore.MAXIMUM_COUNT, loaded.totalContainers)
         assertTrue(loaded.environments.all { it.images == 0 })
+    }
+
+    @Test
+    fun `authenticated snapshot without valid route binding fails closed before writing`() {
+        val store = store()
+        store.activateScope("a".repeat(64))
+
+        assertFalse(store.publish(snapshot().copy(serverBindingHash = "not-a-hash")))
+        assertFalse(store.fileForDebugInspection().exists())
     }
 
     @Test
@@ -158,6 +207,7 @@ class StatusSnapshotStoreTest {
         generatedAtEpochMs = generated,
         sourceUpdatedAtEpochMs = 9,
         freshness = SnapshotFreshness.FRESH,
+        serverBindingHash = "c".repeat(64),
         scopeId = "a".repeat(64),
         activeEnvironmentKey = "b".repeat(64),
         totalRunningContainers = 1,

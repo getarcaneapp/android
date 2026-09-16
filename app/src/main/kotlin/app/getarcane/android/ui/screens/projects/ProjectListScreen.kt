@@ -77,6 +77,7 @@ import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.components.StatusBadge
 import app.getarcane.android.ui.components.StaleDataBanner
 import app.getarcane.android.ui.components.StaleDataInfo
+import app.getarcane.android.ui.components.staleDataInfoAfterRefreshFailure
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneYellow
 import app.getarcane.sdk.EnvironmentId
@@ -151,7 +152,8 @@ fun ProjectListScreen(
         }.collect { read ->
             val response = when (read) {
                 is ResilientRead.Stale -> {
-                    stalePages[page] = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                    val warning = staleDataInfoAfterRefreshFailure(read.storedAtEpochMs, read.refreshError)
+                    if (warning == null) stalePages.remove(page) else stalePages[page] = warning
                     read.value
                 }
                 is ResilientRead.Fresh -> {

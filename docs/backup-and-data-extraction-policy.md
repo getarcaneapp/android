@@ -17,6 +17,16 @@ The policy was re-audited for PAR-301/PAR-302 on 2026-09-15 against Android
 `9e5bfea2f213a63f11c83f63f77e3c8499f23aba`. The resilient-read cache and sanitized status
 snapshot are both app-private but deliberately live outside every backed-up domain.
 
+The policy was re-audited for PAR-303/PAR-304/PAR-505 on 2026-09-16 against Android
+`0f353eaaa53eff7d9c7720ec2e131db96ba59253`, iOS
+`8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+`b29695d547b78389ed7230b35cd133f7046b4b52`, and Arcane
+`9fa57c867b1085a7142d7e755f87ddd9318b1a1d`. The widget reads the existing no-backup snapshot and
+adds no app-defined configuration or Glance state. Glance's own app-widget-manager bookkeeping is
+an implementation-owned DataStore and remains excluded by the deny-by-default allowlist. Adaptive
+nested stacks and topology selection/viewport are saved-instance state only. The allowlist remains
+unchanged.
+
 ## Protected data boundary
 
 Android backs up app-private files, databases, shared preferences, and app-specific external files
@@ -39,7 +49,8 @@ guidance](https://developer.android.com/topic/libraries/architecture/datastore#b
 | `sharedpref/arcane_secure_prefs.xml` | Excluded | Historical/deprecated SDK encrypted-token location, protected in case data from an older build remains installed. |
 | `cache/arcane_read_cache_v1/*.arc` | Excluded | Bounded, sanitized server-derived list and Dashboard responses. Android never backs up the app cache domain; the explicit allowlist admits no cache path. Cache placement also allows ordinary OS storage reclamation without treating cached reads as durable user data. |
 | `cache/arcane_offline_read_session_v1/session-v1.json` | Excluded | Opaque server/credential/account/permission binding plus bounded read-only permissions used to locate the correct cache after an offline process restart. It contains no URL, username, account ID, token, or mutation permission and is deleted on every session boundary. |
-| `no_backup/arcane_status_snapshots/status-v1.json` | Excluded | Credential-free future-system-surface projection. `noBackupFilesDir` is structurally outside Auto Backup and device transfer, and the file allowlist does not admit it. Persistent no-backup storage is used because a future widget process must survive ordinary cache eviction while still never transferring devices. |
+| `no_backup/arcane_status_snapshots/status-v1.json` | Excluded | Credential-free Fleet Status widget projection. Schema 2 contains bounded counts/names plus one-way server/scope/environment bindings. `noBackupFilesDir` is structurally outside Auto Backup and device transfer, and the file allowlist does not admit it. Persistent no-backup storage lets the widget survive process death while never transferring devices. |
+| `files/datastore/GlanceAppWidgetManager-app.getarcane.android.preferences_pb` | Excluded | Glance-owned launcher/widget bookkeeping, not app-defined configuration or server data. The file allowlist does not admit it. |
 | Every database, other private/shared-preference file, and app-specific external file | Excluded | The allowlist does not admit these domains. Future caches, snapshots, exports, or operation stores stay protected until all policy formats and tests explicitly classify them. |
 
 The exact policy is intentional even where data is encrypted at rest. Encryption does not turn an
@@ -75,9 +86,16 @@ authentication token or server-derived record into portable user preference data
   invalidation, and authoritative authentication rejection.
 - `StatusSnapshotStore` uses
   `no_backup/arcane_status_snapshots/status-v1.json`. The strict, 64 KiB credential-free projection
-  contains opaque scope/environment correlations and bounded counts only. It is synchronously
+  contains opaque server/scope/environment correlations, bounded names, and bounded counts only. It
+  is synchronously
   replaced by a signed-out snapshot at logout/server/account boundaries. `noBackupFilesDir` keeps
-  it out of cloud backup and device transfer while allowing it to persist across process death.
+  it out of cloud backup and device transfer while allowing it to persist across process death. The
+  Fleet Status widget reads that projection directly and defines no app-specific Glance state,
+  configuration, database, DataStore, or SharedPreferences. Glance's internal app-widget-manager
+  DataStore is launcher bookkeeping and remains outside the backup allowlist.
+- Adaptive tab navigation continues to use only the existing included
+  `arcane_tabs.preferences_pb`. Per-tab nested stacks, list-detail selection, topology selection, and
+  pan/zoom viewport use Android saved-instance state; no graph or adaptive-state file is created.
 - `ArcaneCookieJar`, including hosted-demo session cookies, is memory-only and cleared on session,
   server, and lifecycle boundaries. Ktor has no configured persistent cookie or HTTP response store.
 - Projects workspace files, unsaved Compose/`.env` edits, variable values and sync state,

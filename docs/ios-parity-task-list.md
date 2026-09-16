@@ -1040,31 +1040,88 @@ The standard checks are:
   disposable fixtures. Remaining limitation is intentional: there is no widget consumer in this
   batch, so future PAR-303 work must preserve this schema and authenticated-route boundary.
 
-- [ ] **PAR-303 — Add privacy-reviewed Glance widgets**
+- [x] **PAR-303 — Add privacy-reviewed Glance widgets**
 
-- **Status:** Deferred
+- **Status:** Complete
 - **Priority:** P2
 - **Dependencies:** PAR-302, PAR-305
 - **Scope:** Add one or two focused Android widgets for outcomes such as fleet status or environments,
   backed only by the snapshot pipeline.
 - **Acceptance criteria:**
-  - [ ] Widgets never instantiate a second authenticated API client or expose secrets.
-  - [ ] Stale, signed-out, unavailable, and loading states are explicit.
-  - [ ] Taps use authenticated internal routes and cannot open the wrong server/environment.
-  - [ ] Widget resize, refresh limits, reboot, logout, and process-death behavior is device-tested.
+  - [x] Widgets never instantiate a second authenticated API client or expose secrets.
+  - [x] Stale, signed-out, unavailable, and loading states are explicit.
+  - [x] Taps use authenticated internal routes and cannot open the wrong server/environment.
+  - [x] Widget resize, refresh limits, reboot, logout, and process-death behavior is device-tested.
 
-- [ ] **PAR-304 — Add adaptive navigation and list-detail layouts**
+  **Design and source evidence (2026-09-16):** Compared pins are Android
+  `0f353eaaa53eff7d9c7720ec2e131db96ba59253`, iOS
+  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+  `b29695d547b78389ed7230b35cd133f7046b4b52`, and Arcane
+  `9fa57c867b1085a7142d7e755f87ddd9318b1a1d`. One responsive Fleet Status Glance widget reads only
+  strict schema-2 data from `noBackupFilesDir`; the schema adds a one-way server binding solely for
+  the existing authenticated Dashboard route. The widget has no manager/client/token/network/work
+  scheduler/mutation dependency, no periodic provider refresh, and no app-defined configuration or
+  Glance state. Fresh, stale, unavailable, signed-out, and unconfigured states are textual as well as
+  colored; 120 x 100, 240 x 120, and 300 x 200 dp presentations progressively disclose only bounded
+  privacy-reviewed aggregates and display names. The receiver is non-exported. Glance's internal
+  widget-manager bookkeeping and the snapshot remain excluded by the unchanged backup allowlist.
 
-- **Status:** Ready
+  **Automated and live evidence (2026-09-16):** The green 377-test baseline and 63-test focused
+  presentation run cover snapshot privacy/schema/bounds/session fencing, material refresh decisions,
+  safe route encoding, responsive model states, provider manifest, and backup policy. On the API 35
+  compact phone the widget was added, resized, removed, reinstalled/re-added, and observed fresh
+  (9/9), 35-minute stale, server-unavailable, signed-out, and unconfigured across app process death,
+  app-data clear, cold/warm taps, Change Server, logout, and device/launcher restart. Private-file
+  and APK/source inspection proved it consumed only the sanitized projection and introduced no
+  second authenticated client. The aggregate widget intentionally has no per-environment action, so
+  deleted/disabled environment resource routes are not representable; wrong-server, permission,
+  stale, and signed-out taps remain fenced by the existing route resolver. Full AVD matrix, Arcane
+  image, cleanup, privacy fields, and intentional exclusions are recorded in
+  [Android-native presentation batch](native-presentation.md).
+
+- [x] **PAR-304 — Add adaptive navigation and list-detail layouts**
+
+- **Status:** Complete
 - **Priority:** P2
 - **Dependencies:** PAR-005
 - **Scope:** Map iOS sidebar outcomes to Android's adaptive rail/drawer/list-detail patterns while
   preserving configurable tabs, back behavior, and compact-phone usability.
 - **Acceptance criteria:**
-  - [ ] Compact, medium, and expanded widths have deliberate navigation behavior.
-  - [ ] Tab selection and independent route state survive resizing, rotation, and process recreation.
-  - [ ] Large screens do not merely stretch phone layouts where list-detail presentation is appropriate.
-  - [ ] Foldable/tablet emulator tests and accessibility navigation checks are recorded.
+  - [x] Compact, medium, and expanded widths have deliberate navigation behavior.
+  - [x] Tab selection and independent route state survive resizing, rotation, and process recreation.
+  - [x] Large screens do not merely stretch phone layouts where list-detail presentation is appropriate.
+  - [x] Foldable/tablet emulator tests and accessibility navigation checks are recorded.
+
+  **Design and source evidence (2026-09-16):** Compared pins are Android
+  `0f353eaaa53eff7d9c7720ec2e131db96ba59253`, iOS
+  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+  `b29695d547b78389ed7230b35cd133f7046b4b52`, and Arcane
+  `9fa57c867b1085a7142d7e755f87ddd9318b1a1d`. The existing configurable four-slot bottom bar remains
+  below 600 dp; 600–839 dp uses a rail plus a permission-filtered More sheet; 840 dp and wider uses a
+  grouped permanent drawer with every authorized destination. Existing selection/DataStore/route
+  owners and one hoisted nested `NavController` per stack remain authoritative; non-pinnable
+  administrative destinations launch through their existing Settings host so their deeper routes
+  remain functional. Containers and
+  Projects use a 360 dp list beside the same detail host whenever at least 600 dp content width
+  remains; `launchSingleTop` plus root normalization prevents duplicate detail destinations while
+  preserving compact Back. No second navigation framework, adaptive store, or broad screen redesign
+  was introduced.
+
+  **Automated and live evidence (2026-09-16):** The green 377-test baseline and focused 63-test run
+  cover breakpoints, authorization, configurable selection, restoration, Back, route construction,
+  shortcuts, and session/environment fences. Disposable API 35 validation covered a 1080 x 2400
+  compact phone, a 2208 x 1840 foldable across expanded/half-open/1080 x 2092 compact/1600 x 1840
+  medium states, and a 2560 x 1600 tablet rotated to 1600 x 2560 medium portrait. Tab customization,
+  independent nested stacks, list selection/detail/Back, rotation, resize/fold, process recreation,
+  valid cold/warm authenticated routes, static shortcuts, and 200% font scale passed. TalkBack and
+  keyboard/D-pad navigation were exercised on representative expanded resource/topology flows.
+  Operation notifications retain the already-tested authenticated-route coordinator and were
+  regression-covered rather than given a second adaptive route path. The complete device and cleanup
+  record is in [Android-native presentation batch](native-presentation.md). Follow-up API 30
+  authenticated validation reproduced a stale first-composition Dashboard callback, then verified
+  the corrected current-selection handler from Containers, Images, Projects, Settings, reinstall,
+  and process restart. Two Compose device tests passed the Dashboard-to-Volumes-to-Dashboard touch
+  sequence and long-press-without-selection behavior.
 
 - [x] **PAR-305 — Define authenticated resource routes and Android shortcuts**
 
@@ -1116,9 +1173,9 @@ The standard checks are:
   dynamic publication is limited to three enabled, permission-reviewed environments; resource-level
   dynamic shortcuts and widget presentation await a separately reviewed use case.
 
-- [ ] **PAR-505 — Add interactive network topology visualization**
+- [x] **PAR-505 — Add interactive network topology visualization**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P2
 - **Dependencies:** None
 - **Scope:** iOS 0.7.0 now renders an interactive network-to-container diagram while Android presents
@@ -1126,11 +1183,36 @@ The standard checks are:
   retaining the current list as an accessible and large-graph fallback. Do not copy known iOS summary
   stubs.
 - **Acceptance criteria:**
-  - [ ] Node, edge, grouping, scale, interaction, and accessibility requirements are defined.
-  - [ ] Counts and relationships come from authoritative server data.
-  - [ ] Large, cyclic, malformed, and partially unavailable graphs remain bounded and have a usable
+  - [x] Node, edge, grouping, scale, interaction, and accessibility requirements are defined.
+  - [x] Counts and relationships come from authoritative server data.
+  - [x] Large, cyclic, malformed, and partially unavailable graphs remain bounded and have a usable
     non-graph fallback.
-  - [ ] Selection, environment changes, rotation, font scaling, and TalkBack are device-tested.
+  - [x] Selection, environment changes, rotation, font scaling, and TalkBack are device-tested.
+
+  **Design and source evidence (2026-09-16):** Compared pins are Android
+  `0f353eaaa53eff7d9c7720ec2e131db96ba59253`, iOS
+  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+  `b29695d547b78389ed7230b35cd133f7046b4b52`, and Arcane
+  `9fa57c867b1085a7142d7e755f87ddd9318b1a1d`. Merged SDK PR #11 supplies defensive unknown-node
+  decoding; Android uses only that typed response. Hard bounds are 500 nodes/2,000 edges, with an
+  80-node/240-edge interactive threshold, 512-byte IDs, 256-byte labels/metadata, 0.35–1.75 zoom,
+  bounded pan, and explicit Fit/Reset. Deterministic bipartite grouping drops duplicate, missing,
+  reversed, cyclic/self, unknown-type, and malformed relationships without inventing edges. The
+  grouped list remains the direct accessible and forced over-limit fallback; selection is fenced by
+  environment and canonical graph identity, and refresh races cannot publish an old graph.
+
+  **Automated and live evidence (2026-09-16):** The green 377-test baseline includes deterministic
+  maximum hard-bound and over-limit graphs plus cyclic, duplicate-node/edge, missing-endpoint,
+  malformed-label/ID, isolated-node, layout, viewport, and selection tests. Against Arcane 2.10.2
+  image `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`, Docker inspection
+  proved a six-network/eight-container shared and isolated fixture before the typed response rendered
+  18 nodes/13 edges. Phone/tablet runs covered empty/moderate topology, pan, real pinch zoom, Fit,
+  Reset, node detail, list fallback, rotation, environment change, offline retained-data labeling,
+  and 200% font scale. TalkBack exported one labeled focusable button per node; keyboard/D-pad focus
+  and Enter opened details, selected borders supplied a non-color cue, and decorative edges were
+  silent. Fixtures, AVDs, APK, screenshots, mounts, packages, and trust artifacts were removed while
+  preserving existing environments and the API 30 AVD. Full evidence and exclusions are in
+  [Android-native presentation batch](native-presentation.md).
 
 ## Phase 4: Quality, accessibility, localization, and distribution
 

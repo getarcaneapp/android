@@ -42,6 +42,8 @@ data class StatusSnapshot(
     val sourceUpdatedAtEpochMs: Long?,
     val freshness: SnapshotFreshness,
     val errorCode: SnapshotErrorCode = SnapshotErrorCode.NONE,
+    /** One-way canonical server identity used only to bind safe authenticated app routes. */
+    val serverBindingHash: String? = null,
     val scopeId: String? = null,
     val activeEnvironmentKey: String? = null,
     val totalRunningContainers: Int = 0,
@@ -73,6 +75,7 @@ class StatusSnapshotStore(
     private val sourceVersion: Int,
     private val now: () -> Long = System::currentTimeMillis,
     private val maximumBytes: Int = MAXIMUM_SNAPSHOT_BYTES,
+    private val onMaterialChange: () -> Unit = {},
 ) {
     private val lock = Any()
     private val json = Json {
@@ -89,6 +92,7 @@ class StatusSnapshotStore(
 
     fun publish(snapshot: StatusSnapshot): Boolean = synchronized(lock) {
         val bounded = snapshot.bounded()
+        if (!bounded.isValid()) return false
         if (bounded.freshness == SnapshotFreshness.SIGNED_OUT) {
             activeScopeId = null
         } else if (bounded.scopeId != activeScopeId) {
@@ -102,13 +106,14 @@ class StatusSnapshotStore(
             current.freshness != SnapshotFreshness.SIGNED_OUT &&
             bounded.generatedAtEpochMs <= current.generatedAtEpochMs
         ) return false
-        writeAtomic(bounded)
+        writeAtomicAndNotify(bounded, current)
     }
 
     /** Logout and server/account changes synchronously replace any authenticated projection. */
     fun publishSignedOut(): Boolean = synchronized(lock) {
         activeScopeId = null
-        writeAtomic(StatusSnapshot.signedOut(sourceVersion, now()))
+        val current = readFile(deleteInvalid = false)
+        writeAtomicAndNotify(StatusSnapshot.signedOut(sourceVersion, now()), current)
     }
 
     /** Authorizes writers for one manager-validated session scope. Readers never activate writes. */
@@ -122,6 +127,14 @@ class StatusSnapshotStore(
         loadLocked(expectedScopeId)
     }
 
+    /** Reads only the already-sanitized projection for widgets; it cannot authorize a writer. */
+    fun loadForExternalConsumer(): StatusSnapshotRead = synchronized(lock) {
+        if (!file.exists()) return@synchronized StatusSnapshotRead.Missing
+        val snapshot = readFile(deleteInvalid = true)
+            ?: return@synchronized StatusSnapshotRead.CorruptOrUnsupported
+        StatusSnapshotRead.Available(snapshot)
+    }
+
     private fun loadLocked(expectedScopeId: String?): StatusSnapshotRead {
         if (!file.exists()) return StatusSnapshotRead.Missing
         val snapshot = readFile(deleteInvalid = true) ?: return StatusSnapshotRead.CorruptOrUnsupported
@@ -130,13 +143,22 @@ class StatusSnapshotStore(
             (expectedScopeId == null || snapshot.scopeId != expectedScopeId)
         ) {
             val signedOut = StatusSnapshot.signedOut(sourceVersion, now())
-            writeAtomic(signedOut)
+            writeAtomicAndNotify(signedOut, snapshot)
             return StatusSnapshotRead.Available(signedOut)
         }
         return StatusSnapshotRead.Available(snapshot)
     }
 
-    fun delete() = synchronized(lock) { file.delete() }
+    /** Removes all prior projection data when no server is configured and refreshes consumers. */
+    fun clearForUnconfigured(): Boolean = synchronized(lock) {
+        activeScopeId = null
+        val deleted = file.delete()
+        // A launcher may still hold RemoteViews produced before app data was cleared, even when
+        // the projection file is already absent. Re-render every explicit SETUP boundary so that
+        // stale signed-in content cannot survive behind that missing file.
+        onMaterialChange()
+        deleted
+    }
 
     fun fileForDebugInspection(): File = file
 
@@ -183,6 +205,7 @@ class StatusSnapshotStore(
             sourceVersion = this@StatusSnapshotStore.sourceVersion.coerceAtLeast(0),
             generatedAtEpochMs = generated,
             sourceUpdatedAtEpochMs = sourceUpdatedAtEpochMs?.coerceIn(0, generated),
+            serverBindingHash = serverBindingHash?.takeIf(::isSha256),
             scopeId = scopeId?.takeIf(::isSha256),
             activeEnvironmentKey = activeEnvironmentKey?.takeIf(::isSha256),
             totalRunningContainers = boundedCount(totalRunningContainers),
@@ -209,6 +232,7 @@ class StatusSnapshotStore(
             generatedAtEpochMs >= 0 &&
             (sourceUpdatedAtEpochMs == null || sourceUpdatedAtEpochMs in 0..generatedAtEpochMs) &&
             activeEnvironmentKey?.let(::isSha256) != false &&
+            serverBindingHash?.let(::isSha256) != false &&
             listOf(
                 totalRunningContainers,
                 totalContainers,
@@ -229,6 +253,7 @@ class StatusSnapshotStore(
             } &&
             when (freshness) {
                 SnapshotFreshness.SIGNED_OUT ->
+                    serverBindingHash == null &&
                     scopeId == null &&
                         activeEnvironmentKey == null &&
                         sourceUpdatedAtEpochMs == null &&
@@ -239,14 +264,29 @@ class StatusSnapshotStore(
                         totalUpdates == 0 &&
                         onlineEnvironments == 0 &&
                         environments.isEmpty()
-                SnapshotFreshness.ERROR -> scopeId?.let(::isSha256) == true && errorCode != SnapshotErrorCode.NONE
+                SnapshotFreshness.ERROR ->
+                    serverBindingHash?.let(::isSha256) == true &&
+                        scopeId?.let(::isSha256) == true &&
+                        errorCode != SnapshotErrorCode.NONE
                 SnapshotFreshness.FRESH,
                 SnapshotFreshness.STALE,
-                -> scopeId?.let(::isSha256) == true && errorCode == SnapshotErrorCode.NONE
+                -> serverBindingHash?.let(::isSha256) == true &&
+                    scopeId?.let(::isSha256) == true &&
+                    errorCode == SnapshotErrorCode.NONE
             }
 
+    private fun writeAtomicAndNotify(snapshot: StatusSnapshot, previous: StatusSnapshot?): Boolean {
+        val written = writeAtomic(snapshot)
+        if (written && previous?.materiallyEquals(snapshot) != true) onMaterialChange()
+        return written
+    }
+
+    private fun StatusSnapshot.materiallyEquals(other: StatusSnapshot): Boolean =
+        copy(generatedAtEpochMs = 0, sourceUpdatedAtEpochMs = null) ==
+            other.copy(generatedAtEpochMs = 0, sourceUpdatedAtEpochMs = null)
+
     companion object {
-        const val SNAPSHOT_SCHEMA_VERSION = 1
+        const val SNAPSHOT_SCHEMA_VERSION = 2
         const val SNAPSHOT_DIRECTORY = "arcane_status_snapshots"
         const val SNAPSHOT_FILE = "status-v1.json"
         const val MAXIMUM_SNAPSHOT_BYTES = 64 * 1024
