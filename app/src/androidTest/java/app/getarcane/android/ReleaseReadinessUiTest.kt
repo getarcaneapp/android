@@ -15,7 +15,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.test.espresso.Espresso.pressBack
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.action.ViewActions.pressBack
+import androidx.test.espresso.matcher.RootMatchers.isDialog
+import androidx.test.espresso.matcher.ViewMatchers.isRoot
 import app.getarcane.android.core.AuthStatus
 import app.getarcane.android.core.OperationKind
 import app.getarcane.android.core.OperationRecord
@@ -77,7 +80,7 @@ class ReleaseReadinessUiTest {
         }
 
         composeRule.onNodeWithText("Delete test container?").assertIsDisplayed()
-        pressBack()
+        onView(isRoot()).inRoot(isDialog()).perform(pressBack())
         composeRule.runOnIdle {
             assertEquals(0, confirmations)
             assertEquals(1, dismissals)
