@@ -267,6 +267,7 @@ fun DashboardScreen(
                 sourceUpdatedAtEpochMs = sourceUpdatedAtEpochMs,
                 freshness = freshness,
                 errorCode = if (refreshError == null) SnapshotErrorCode.NONE else SnapshotErrorCode.NETWORK_UNAVAILABLE,
+                serverBindingHash = activeScope.serverBindingHash,
                 scopeId = scopeId,
                 activeEnvironmentKey = opaqueEnvironmentKey(scopeId, envId.rawValue),
                 totalRunningContainers = dashboardTotals?.running ?: 0,

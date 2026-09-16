@@ -131,9 +131,10 @@ internal fun isEnvironmentScopedSettingsDetail(route: String?): Boolean = route 
     SettingsRoutes.UPGRADE,
 )
 
-enum class SettingsInitialDestination {
-    Root,
-    Upgrade,
+sealed interface SettingsInitialDestination {
+    data object Root : SettingsInitialDestination
+    data object Upgrade : SettingsInitialDestination
+    data class Tab(val tabId: String, val requestId: Long) : SettingsInitialDestination
 }
 
 /**
@@ -144,9 +145,9 @@ fun SettingsScreen(
     popToRootSignal: Int = 0,
     initialDestination: SettingsInitialDestination = SettingsInitialDestination.Root,
     onInitialDestinationHandled: () -> Unit = {},
+    nav: NavHostController = rememberNavController(),
 ) {
     val manager = LocalArcaneManager.current
-    val nav = rememberNavController()
     val currentEntry by nav.currentBackStackEntryAsState()
     val currentRoute = currentEntry?.destination?.route
     val isAdmin = manager.currentUser?.isAdmin ?: false
@@ -181,6 +182,10 @@ fun SettingsScreen(
         when (initialDestination) {
             SettingsInitialDestination.Root -> Unit
             SettingsInitialDestination.Upgrade -> nav.navigate(SettingsRoutes.UPGRADE) {
+                popUpTo(SettingsRoutes.ROOT)
+                launchSingleTop = true
+            }
+            is SettingsInitialDestination.Tab -> nav.navigate(initialDestination.tabId) {
                 popUpTo(SettingsRoutes.ROOT)
                 launchSingleTop = true
             }

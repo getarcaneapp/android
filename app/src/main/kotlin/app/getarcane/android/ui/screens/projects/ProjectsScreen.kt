@@ -10,8 +10,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.navigation.NavHostController
 import app.getarcane.android.core.ProjectDeployPreferenceValues
 import app.getarcane.android.nav.popToRootOrReplace
+import app.getarcane.android.ui.components.AdaptiveListDetailLayout
+import app.getarcane.android.ui.components.ListDetailPlaceholder
 import app.getarcane.android.ui.screens.settings.registries.TemplateRegistriesScreen
 
 /**
@@ -23,22 +26,48 @@ fun ProjectsScreen(
     popToRootSignal: Int = 0,
     dashboardProjectId: String? = null,
     onDashboardBack: () -> Unit = {},
+    initialProjectId: String? = null,
+    initialRequestId: Long = 0,
+    onInitialDetailHandled: (Long) -> Unit = {},
+    nav: NavHostController = rememberNavController(),
 ) {
-    val nav = rememberNavController()
     var streamOptions by remember { mutableStateOf<ProjectDeployPreferenceValues?>(null) }
+    fun openDetail(id: String) {
+        nav.navigate("detail/$id") {
+            popUpTo(nav.graph.startDestinationId) { inclusive = false }
+            launchSingleTop = true
+        }
+    }
     LaunchedEffect(popToRootSignal) {
         if (popToRootSignal > 0) {
             nav.popToRootOrReplace(rootRoute = "list", fallbackPopUpToRoute = "detail/{id}")
         }
     }
-    NavHost(navController = nav, startDestination = if (dashboardProjectId == null) "list" else "dashboard-detail") {
+    LaunchedEffect(initialRequestId, initialProjectId) {
+        if (initialRequestId > 0 && initialProjectId != null) {
+            openDetail(initialProjectId)
+            onInitialDetailHandled(initialRequestId)
+        }
+    }
+
+    val listPane: @Composable () -> Unit = {
+        ProjectListScreen(
+            onOpen = ::openDetail,
+            onArchived = { nav.navigate("archived") },
+            onCreate = { nav.navigate("create") },
+            onTemplateRegistries = { nav.navigate("templates") },
+        )
+    }
+    AdaptiveListDetailLayout(
+        listPane = listPane,
+    ) { expanded ->
+        NavHost(navController = nav, startDestination = if (dashboardProjectId == null) "list" else "dashboard-detail") {
         composable("list") {
-            ProjectListScreen(
-                onOpen = { id -> nav.navigate("detail/$id") },
-                onArchived = { nav.navigate("archived") },
-                onCreate = { nav.navigate("create") },
-                onTemplateRegistries = { nav.navigate("templates") },
-            )
+            if (expanded) {
+                ListDetailPlaceholder("project")
+            } else {
+                listPane()
+            }
         }
         composable("create") {
             CreateProjectScreen(
@@ -52,12 +81,12 @@ fun ProjectsScreen(
             ProjectDetailScreen(
                 projectId = id,
                 onBack = onDashboardBack,
-                onStream = { id, action, title, options ->
+                onStream = { childId, action, title, options ->
                     streamOptions = options
-                    nav.navigate("stream/$id/$action/${title.encodeArg()}")
+                    nav.navigate("stream/$childId/$action/${title.encodeArg()}")
                 },
-                onLogs = { id, title -> nav.navigate("logs/$id/${title.encodeArg()}") },
-                onCompose = { id, title -> nav.navigate("compose/$id/${title.encodeArg()}") },
+                onLogs = { childId, title -> nav.navigate("logs/$childId/${title.encodeArg()}") },
+                onCompose = { childId, title -> nav.navigate("compose/$childId/${title.encodeArg()}") },
             )
         }
         composable("templates") {
@@ -68,12 +97,12 @@ fun ProjectsScreen(
             ProjectDetailScreen(
                 projectId = id,
                 onBack = { nav.popBackStack() },
-                onStream = { id, action, title, options ->
+                onStream = { childId, action, title, options ->
                     streamOptions = options
-                    nav.navigate("stream/$id/$action/${title.encodeArg()}")
+                    nav.navigate("stream/$childId/$action/${title.encodeArg()}")
                 },
-                onLogs = { id, title -> nav.navigate("logs/$id/${title.encodeArg()}") },
-                onCompose = { id, title -> nav.navigate("compose/$id/${title.encodeArg()}") },
+                onLogs = { childId, title -> nav.navigate("logs/$childId/${title.encodeArg()}") },
+                onCompose = { childId, title -> nav.navigate("compose/$childId/${title.encodeArg()}") },
             )
         }
         composable("compose/{id}/{title}") { entry ->
@@ -108,6 +137,7 @@ fun ProjectsScreen(
                 onOpenFiles = { id, title -> nav.navigate("compose/$id/${title.encodeArg()}") },
             )
         }
+    }
     }
 }
 

@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.navigation.NavType
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -36,10 +37,10 @@ fun ImagesScreen(
     vulnerabilitiesEnvironmentName: String? = null,
     onInitialDestinationHandled: () -> Unit = {},
     onInitialDestinationBack: (() -> Unit)? = null,
+    nav: NavHostController = rememberNavController(),
 ) {
     val manager = LocalArcaneManager.current
     val initialRoute = remember { initialDestination.startRoute }
-    val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     var initialVulnerabilitiesActive by remember {
         mutableStateOf(initialDestination == ImagesInitialDestination.Vulnerabilities)

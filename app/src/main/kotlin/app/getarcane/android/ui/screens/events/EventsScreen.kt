@@ -64,6 +64,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavType
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -94,8 +95,10 @@ import kotlinx.datetime.toLocalDateTime
 
 /** Events tab with its own nested back stack (list -> detail). */
 @Composable
-fun EventsScreen(popToRootSignal: Int = 0) {
-    val nav = rememberNavController()
+fun EventsScreen(
+    popToRootSignal: Int = 0,
+    nav: NavHostController = rememberNavController(),
+) {
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     // Hold the loaded events here so the detail screen can resolve by ID without re-fetching
     // (the list endpoint is the only source — there is no per-event GET).

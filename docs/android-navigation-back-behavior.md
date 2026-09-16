@@ -12,6 +12,24 @@ Implementation note for Arcane Android system navigation, especially the hardwar
 
 ## Top-level authenticated shell (`MainTabView`)
 
+The shell is width-adaptive without changing navigation ownership. Below 600 dp it uses the existing
+configurable four-item bottom bar plus Settings. From 600 through 839 dp it uses a rail with the
+configured items, permission-filtered More sheet, and Settings. At 840 dp and wider it uses a
+permanent grouped drawer. `MainTabSelection`, the tab DataStore, and each tab's existing
+`NavController` remain authoritative; resizing never creates a second selection or route stack.
+Non-pinnable administrative destinations selected from More/the drawer are opened in their existing
+Settings `NavHost`, retaining its nested user/role/provider/category Back behavior.
+
+Each tab's saveable composition is keyed by tab ID and, for environment-scoped tabs, environment ID.
+Nested routes therefore survive tab changes, rotation, resizing/folding, and process recreation.
+Changing environment removes the old environment-scoped saved state while preserving global tabs.
+Containers and Projects use one pane while the shell leaves less than 600 dp of content width and a
+persistent 360 dp list beside that same nested `NavHost` at 600 dp or more. This includes wider
+medium windows after the rail is measured, as well as expanded drawer layouts. Detail selection
+returns to the list root before a
+`launchSingleTop` navigation, preventing duplicate detail destinations while preserving compact
+Back behavior.
+
 - Top-level tabs: Dashboard, the four user-configurable visible tabs, and Settings.
 - Back from a nested screen inside the selected tab pops that tab's nested stack first.
 - Back from the root of any non-Dashboard top-level tab should switch to Dashboard instead of immediately exiting the app.

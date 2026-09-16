@@ -2,6 +2,7 @@ package app.getarcane.android.ui.screens.volumes
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -17,8 +18,8 @@ fun VolumesScreen(
     popToRootSignal: Int = 0,
     dashboardVolumeName: String? = null,
     onDashboardBack: () -> Unit = {},
+    nav: NavHostController = rememberNavController(),
 ) {
-    val nav = rememberNavController()
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     NavHost(navController = nav, startDestination = if (dashboardVolumeName == null) "list" else "dashboard-detail") {
         composable("list") {

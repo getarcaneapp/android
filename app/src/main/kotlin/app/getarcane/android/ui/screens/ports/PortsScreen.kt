@@ -1,6 +1,7 @@
 package app.getarcane.android.ui.screens.ports
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -11,8 +12,10 @@ import app.getarcane.android.nav.PopToRootOnSignal
  * NavigationStack, which pushes a PortMappingDetailView per row.
  */
 @Composable
-fun PortsScreen(popToRootSignal: Int = 0) {
-    val nav = rememberNavController()
+fun PortsScreen(
+    popToRootSignal: Int = 0,
+    nav: NavHostController = rememberNavController(),
+) {
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {

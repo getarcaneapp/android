@@ -1,6 +1,7 @@
 package app.getarcane.android.ui.screens.networks
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -11,8 +12,10 @@ import app.getarcane.android.nav.PopToRootOnSignal
  * `NetworksView` NavigationStack: NetworkDetailView links out to NetworkTopologyView.
  */
 @Composable
-fun NetworksScreen(popToRootSignal: Int = 0) {
-    val nav = rememberNavController()
+fun NetworksScreen(
+    popToRootSignal: Int = 0,
+    nav: NavHostController = rememberNavController(),
+) {
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = "list")
     NavHost(navController = nav, startDestination = "list") {
         composable("list") {

@@ -126,15 +126,18 @@ authoritative user/capability context, then changes scope before any network res
 
 `StatusSnapshotStore` is a credential-free, strict 64 KiB projection at
 `noBackupFilesDir/arcane_status_snapshots/status-v1.json`. Persistent no-backup storage is deliberate:
-future widget processes need process-death survival, while server-derived status must never enter
+widget processes need process-death survival, while server-derived status must never enter
 cloud backup or device transfer. The store has no SDK or manager dependency and cannot own a client.
 
-Schema version 1 contains only:
+PAR-303 advances the strict payload to schema version 2. Version 1 has no migration and fails closed;
+the stable file name is retained so the old payload is removed or atomically replaced instead of
+leaving an orphan projection. Schema version 2 contains only:
 
 ```text
 schemaVersion, sourceVersion, generatedAtEpochMs, sourceUpdatedAtEpochMs
 freshness = fresh | stale | error | signed_out
 errorCode = none | network_unavailable | server_error | unknown
+serverBindingHash = SHA-256(canonical server identity) or null
 scopeId = SHA-256(server, credential origin, account, permission context) or null
 activeEnvironmentKey = SHA-256(scopeId, environment ID) or null
 bounded aggregate counts
@@ -142,8 +145,10 @@ up to 10 {opaque environment key, 128-byte display name, online flag, bounded co
 ```
 
 It contains no raw server URL/origin, username, account or environment ID, credential, cookie,
-secret, log, resource identity/detail, mutation capability, or SDK object. The source-version and
-generation/freshness fields prevent a consumer from presenting projected data as live.
+secret, log, resource identity/detail, mutation capability, or SDK object. The server binding permits
+only a validated, server-bound Dashboard route; it is not a URL or reversible identifier. The
+source-version and generation/freshness fields prevent a consumer from presenting projected data as
+live.
 
 Writes use same-directory temporary files, descriptor sync, and atomic rename. Counts, strings,
 rows, schema, and file size are validated. Corrupt, oversized, old, or unknown schemas fail closed
@@ -151,8 +156,12 @@ and are removed. An active-scope authorization fence and generated-at ordering r
 concurrent writers. Logout, Change Server,
 account change, credential-origin change, and permission-scope change synchronously replace the
 file with a signed-out snapshot; a scope mismatch found after process death does the same before
-returning data. Offline refreshes publish stale/error metadata from the approved cache state.
-Glance and widget presentation are intentionally outside this batch.
+returning data. Offline refreshes publish stale/error metadata from the approved cache state. The
+Glance widget has a read-only entry point that cannot activate a writer scope. It renders the file
+without an SDK/client dependency, requests no periodic work, and is refreshed only when the app
+publishes a material presentation change or the launcher asks it to render. Timestamp-only writes
+do not request an update. At render time, fresh data older than 60 seconds is marked stale and data
+older than the Dashboard's 24-hour stale bound is marked unavailable.
 
 ## PAR-305 routes and shortcuts
 

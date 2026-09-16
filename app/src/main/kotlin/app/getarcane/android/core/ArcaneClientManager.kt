@@ -9,6 +9,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import app.getarcane.android.nav.MainTabSelectionStore
 import app.getarcane.android.nav.ArcaneShortcutPublisher
 import app.getarcane.android.BuildConfig
+import app.getarcane.android.widget.FleetStatusWidgetUpdater
 import app.getarcane.sdk.ArcaneClient
 import app.getarcane.sdk.ArcaneConfiguration
 import app.getarcane.sdk.EnvironmentId
@@ -93,6 +94,7 @@ class ArcaneClientManager(context: Context) {
     internal val statusSnapshotStore = StatusSnapshotStore(
         directory = java.io.File(appContext.noBackupFilesDir, StatusSnapshotStore.SNAPSHOT_DIRECTORY),
         sourceVersion = BuildConfig.VERSION_CODE,
+        onMaterialChange = { FleetStatusWidgetUpdater.requestUpdate(appContext) },
     )
     private val offlineReadSessionStore = OfflineReadSessionStore(
         java.io.File(appContext.cacheDir, OfflineReadSessionStore.DIRECTORY),
@@ -215,7 +217,10 @@ class ArcaneClientManager(context: Context) {
                 refreshLoginMethods = ::refreshLoginMethods,
                 updateStatus = {
                     authStatus = it
-                    if (it == AuthStatus.SETUP || it == AuthStatus.LOGIN) {
+                    if (it == AuthStatus.SETUP) {
+                        statusSnapshotStore.clearForUnconfigured()
+                        shortcutPublisher.removeDynamicShortcuts()
+                    } else if (it == AuthStatus.LOGIN) {
                         statusSnapshotStore.publishSignedOut()
                         shortcutPublisher.removeDynamicShortcuts()
                     }

@@ -62,6 +62,11 @@ class BackupPolicyTest {
         assertTrue(admittedPaths.none { it.contains("arcane_read_cache") })
         assertTrue(admittedPaths.none { it.contains("arcane_offline_read_session") })
         assertTrue(admittedPaths.none { it.contains("arcane_status_snapshots") })
+
+        val widget = File("src/main/kotlin/app/getarcane/android/widget/FleetStatusWidget.kt").readText()
+        assertFalse(widget.contains("GlanceStateDefinition"))
+        assertFalse(widget.contains("DataStore"))
+        assertFalse(widget.contains("SharedPreferences"))
     }
 
     private fun document(relativePath: String) =
@@ -98,6 +103,7 @@ class BackupPolicyTest {
             Rule("file", "datastore/arcane_prefs.preferences_pb"),
             Rule("file", "datastore/arcane_secure_tokens.preferences_pb"),
             Rule("file", "datastore/arcane_operations.preferences_pb"),
+            Rule("file", "datastore/GlanceAppWidgetManager-app.getarcane.android.preferences_pb"),
             Rule("sharedpref", "arcane_pinned.xml"),
             Rule("sharedpref", "arcane_project_deploy_options.xml"),
             Rule("sharedpref", "arcane_secure_prefs.xml"),
