@@ -1216,67 +1216,107 @@ The standard checks are:
 
 ## Phase 4: Quality, accessibility, localization, and distribution
 
-- [ ] **PAR-401 — Establish an incremental localization path**
+- [x] **PAR-401 — Establish an incremental localization path**
 
-- **Status:** Ready
+- **Status:** Complete
 - **Priority:** P3
 - **Dependencies:** None
 - **Scope:** Define string-resource conventions and migrate text as touched, then address the highest
   traffic and accessibility-critical screens. iOS is also English-only, so this is product maturity
   rather than a literal missing iOS parity item.
 - **Acceptance criteria:**
-  - [ ] New user-visible text is resource-backed with plural, formatting, and accessibility conventions.
-  - [ ] A scoped first migration covers authentication, navigation, destructive confirmations, and
+  - [x] New user-visible text is resource-backed with plural, formatting, and accessibility conventions.
+  - [x] A scoped first migration covers authentication, navigation, destructive confirmations, and
     operation status without combining all app text into one risky change.
-  - [ ] Pseudolocale checks find no clipping in the migrated flows.
-  - [ ] Formatting does not concatenate grammar-sensitive fragments.
+  - [x] Pseudolocale checks find no clipping in the migrated flows.
+  - [x] Formatting does not concatenate grammar-sensitive fragments.
 
-- [ ] **PAR-402 — Run a cross-cutting accessibility and interaction audit**
+  **Validation evidence (2026-09-16):** Compared Android
+  `90b67366638c21c30b2c748347a57bd8f184d491`, iOS
+  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+  `b29695d547b78389ed7230b35cd133f7046b4b52`, and Arcane
+  `194e7ae87f0803bc2b85ed3a9a107fd432993ac4`. The first slice resource-backs auth, top-level and
+  adaptive navigation, destructive confirmation, operation state/actions, counts/plurals, and shared
+  accessibility text under the conventions in `accessibility-and-localization.md`. Debug
+  pseudolocales were exercised on API 30 in English, `en-XA`, and RTL `ar-XB` at 100% and 200% font
+  scale. Long compact-navigation labels now ellipsize, layout mirrored correctly, user/server names
+  remain data arguments, and no migrated critical action was clipped or unreachable.
 
-- **Status:** Ready
+- [x] **PAR-402 — Run a cross-cutting accessibility and interaction audit**
+
+- **Status:** Complete
 - **Priority:** P2
 - **Dependencies:** PAR-304
 - **Scope:** Audit TalkBack semantics, focus order, touch targets, contrast, font scaling, reduced
   motion, progress announcements, destructive confirmations, and useful haptic feedback.
 - **Acceptance criteria:**
-  - [ ] Core auth, navigation, dashboard, container action, project operation, and Settings flows pass a
+  - [x] Core auth, navigation, dashboard, container action, project operation, and Settings flows pass a
     documented manual accessibility checklist.
-  - [ ] Automated Compose accessibility checks cover representative screens.
-  - [ ] At 200% font scale, critical actions and status remain reachable and understandable.
-  - [ ] Motion/haptics convey state without becoming the only signal.
+  - [x] Automated Compose accessibility checks cover representative screens.
+  - [x] At 200% font scale, critical actions and status remain reachable and understandable.
+  - [x] Motion/haptics convey state without becoming the only signal.
 
-- [ ] **PAR-403 — Add focused UI and live-server test foundations**
+  **Audit evidence (2026-09-16):** Auth, adaptive navigation, Dashboard, pinned/environment actions,
+  container confirmation, project/operation state, Settings, widgets/routes, and topology/list fallback
+  were checked against the documented semantics/focus/contrast/font/motion checklist. Fixes add
+  headings, button/selected/state/progress semantics, polite live regions, non-color status cues,
+  decorative-icon silence, accessible semantic colors, and correct password-field focus. API 30
+  covered touch, D-pad/keyboard, compact/expanded/rotation, three themes, pseudolocales, and 200% font;
+  API 35 enabled TalkBack and proved labeled focus traversal. Nine deterministic Compose/route tests
+  passed on APIs 24, 30, and 35. No physical-device or recorded spoken-output audit is claimed; that
+  remains a beta-promotion requirement rather than an open defect in this scoped audit.
 
-- **Status:** Ready
+- [x] **PAR-403 — Add focused UI and live-server test foundations**
+
+- **Status:** Complete
 - **Priority:** P2
 - **Dependencies:** PAR-001, PAR-005
 - **Scope:** Replace the template instrumentation test with a small reliable suite for authentication
   routing, configurable admin tabs, destructive confirmation, and environment switching. Define a
   disposable live-server harness for destructive/streaming validation.
 - **Acceptance criteria:**
-  - [ ] Tests are deterministic, use controlled fixtures/fakes where appropriate, and run on a documented
+  - [x] Tests are deterministic, use controlled fixtures/fakes where appropriate, and run on a documented
     emulator API level.
-  - [ ] CI runs the selected instrumentation suite or clearly separates a scheduled/manual device lane.
-  - [ ] Live-server tests cannot target an unapproved production server and clean up disposable state.
-  - [ ] Unit, instrumented, and live-server claims remain separately reported.
+  - [x] CI runs the selected instrumentation suite or clearly separates a scheduled/manual device lane.
+  - [x] Live-server tests cannot target an unapproved production server and clean up disposable state.
+  - [x] Unit, instrumented, and live-server claims remain separately reported.
 
-- [ ] **PAR-404 — Add incremental static-quality and security gates**
+  **Validation evidence (2026-09-16):** The template test is replaced by nine bounded tests covering
+  auth restoration/routing, authenticated routes, configurable/adaptive navigation, environment
+  selection, pin persistence, destructive Back behavior, system-bar policy, and representative
+  operation cancellation. They passed 9/9 on APIs 24, 30, and 35; CI pins an API 30 emulator lane.
+  `scripts/run-disposable-live-tests.sh` requires explicit opt-in, allowlisted disposable URLs,
+  environment-only credentials, unique resource prefixes, TLS verification, and a mandatory cleanup
+  callback. Unit (380), instrumentation, and Arcane 2.10.2/2.11.1 live evidence are separately
+  reported in `release-readiness.md`.
 
-- **Status:** Ready
+- [x] **PAR-404 — Add incremental static-quality and security gates**
+
+- **Status:** Complete
 - **Priority:** P3
 - **Dependencies:** None
 - **Scope:** Add Android lint first, then evaluate focused formatting/static analysis and dependency
   or secret scanning without introducing a noisy all-at-once migration.
 - **Acceptance criteria:**
-  - [ ] Each enabled gate has a documented baseline and fails only on actionable new violations.
-  - [ ] Security-sensitive manifest, backup, exported-component, cleartext, and dependency findings are
+  - [x] Each enabled gate has a documented baseline and fails only on actionable new violations.
+  - [x] Security-sensitive manifest, backup, exported-component, cleartext, and dependency findings are
     triaged rather than blanket-suppressed.
-  - [ ] CI runtime and local commands are documented.
-  - [ ] No mass reformat or unrelated cleanup is bundled with gate enablement.
+  - [x] CI runtime and local commands are documented.
+  - [x] No mass reformat or unrelated cleanup is bundled with gate enablement.
+
+  **Gate evidence (2026-09-16):** Local and CI lint run with abort-on-error, warnings-as-errors, and
+  release checks. `:app:lintDebug` passed with zero new findings against a path-portable baseline of
+  45 exact pre-existing errors and one hint (SDK/target/dependency currency, deliberate API-gated
+  resources, launcher-icon debt, overdraw, and shortcut ranking). Actionable locale/default-format/
+  redundant findings were fixed instead of baselined. The merged unsigned APK was inspected for all
+  permissions and exported components, backup rules, cleartext, shortcuts, widget provider, and
+  signing. The Google Play credentials/FIDO dependency and missing SDK license are explicitly
+  triaged as F-Droid blockers. CI actions are immutable-SHA pinned; formatting/detekt/scanner gates
+  remain intentionally unelected until they can have owned actionable baselines.
 
 - [ ] **PAR-405 — Prepare F-Droid packaging and metadata**
 
-- **Status:** Ready
+- **Status:** Blocked — repository preparation complete; upstream dependency eligibility unresolved
 - **Priority:** P2
 - **Dependencies:** PAR-006, PAR-007
 - **Scope:** Research and prepare reproducible F-Droid-compatible release packaging and metadata,
@@ -1285,27 +1325,42 @@ The standard checks are:
 - **Acceptance criteria:**
   - [ ] The build recipe succeeds from a clean checkout without proprietary build-time dependencies or
     uncommitted machine configuration.
-  - [ ] Version code/name, supported SDKs, signing boundary, update metadata, and release-source tag
+  - [x] Version code/name, supported SDKs, signing boundary, update metadata, and release-source tag
     workflow are documented.
   - [ ] Metadata, fastlane assets if chosen, license, privacy/network disclosures, and anti-feature
     declarations pass applicable F-Droid validation.
-  - [ ] No signing key or release is created/published as part of this preparation task without separate
+  - [x] No signing key or release is created/published as part of this preparation task without separate
     authorization.
 
-- [ ] **PAR-406 — Define Android alpha/beta release criteria**
+  **Preparation evidence (2026-09-16):** Official inclusion, metadata, submission, reproducible-build,
+  and anti-feature guidance was rechecked and recorded in `fdroid-release-preparation.md`. Identity,
+  BSD-3-Clause app license/notices, Fastlane metadata including `260901`, toolchain, source/tag/update
+  policy, unsigned signing boundary, network disclosure, and an exact-srclib recipe design are
+  documented. `:app:assembleRelease` produced an unsigned APK, but eligibility is blocked: the pinned
+  SDK has no license file, and its Android credentials module packages proprietary Google Play
+  Services auth/FIDO dependencies. Therefore no official-tool recipe success, reproducibility, or
+  metadata-pass claim is made. No key, tag, submission, external metadata PR, or release was created.
 
-- **Status:** Ready
+- [x] **PAR-406 — Define Android alpha/beta release criteria**
+
+- **Status:** Complete
 - **Priority:** P3
 - **Dependencies:** PAR-006, PAR-403, PAR-405
 - **Scope:** Replace ambiguous “not intended for devices” messaging with explicit support,
   compatibility, verification, known-limitations, and release-channel criteria.
 - **Acceptance criteria:**
-  - [ ] Minimum supported Arcane/server, Android, and Kotlin SDK compatibility expectations are stated.
-  - [ ] Alpha/beta promotion gates cover builds, tests, device/live-server matrix, privacy, backup,
+  - [x] Minimum supported Arcane/server, Android, and Kotlin SDK compatibility expectations are stated.
+  - [x] Alpha/beta promotion gates cover builds, tests, device/live-server matrix, privacy, backup,
     upgrade, rollback, and release-note integrity.
-  - [ ] Distribution channels and signing/publishing responsibilities are documented without embedding
+  - [x] Distribution channels and signing/publishing responsibilities are documented without embedding
     credentials.
-  - [ ] User-facing repository messaging matches the actual release state.
+  - [x] User-facing repository messaging matches the actual release state.
+
+  **Policy evidence (2026-09-16):** `release-readiness.md` defines API 24/30/35 and Arcane
+  2.10.2/latest-stable/current-source expectations, exact SDK pinning, alpha/beta entry and exit gates,
+  blocker severity, backup/offline/upgrade/rollback/release-note checks, version/tag workflow, known
+  limitations, and separate merge/tag/sign/publish/F-Droid/store authorization. README now identifies
+  the app as a public alpha and links the durable policy without claiming production readiness.
 
 ## Hold and deferred product tracks
 
@@ -1448,28 +1503,41 @@ The standard checks are:
 These items appear to have progressed or landed in later workspace notes. They are not active
 implementation work unless current-source or runtime verification finds a regression.
 
-- [ ] **PAR-V01 — Pinned dashboard resources and context actions**
+- [x] **PAR-V01 — Pinned dashboard resources and context actions**
 
-- **Status:** Done/verify
+- **Status:** Complete
 - **Priority:** P1 if reopened
 - **Dependencies:** PAR-004
 - **Scope:** Verify pins, context actions, persistence, permission changes, and correct environment
   targeting on current source.
 - **Acceptance criteria:**
-  - [ ] More than one environment and process recreation preserve the intended pins.
-  - [ ] Unauthorized/stale resources disappear or become safely unavailable.
-  - [ ] Close as verified or reopen with a focused reproduction.
+  - [x] More than one environment and process recreation preserve the intended pins.
+  - [x] Unauthorized/stale resources disappear or become safely unavailable.
+  - [x] Close as verified or reopen with a focused reproduction.
 
-- [ ] **PAR-V02 — Needs Attention action items**
+  **Verification evidence (2026-09-16):** On API 30 against Arcane 2.10.2 with a second disposable
+  environment registered, a real `arcane-e2e` container was pinned from its context menu, survived
+  force-stop/reopen, rendered on Dashboard, and its Open action returned to the exact container and
+  environment; Unpin remained available. The 380-test baseline includes persisted-pin restoration and
+  current authorization/resource filtering, and the device instrumentation suite includes pin-store
+  process persistence. No stale or cross-environment action was observed.
 
-- **Status:** Done/verify
+- [x] **PAR-V02 — Needs Attention action items**
+
+- **Status:** Complete
 - **Priority:** P1 if reopened
 - **Dependencies:** PAR-004
 - **Scope:** Verify counts, actions, navigation, partial failures, and authorization on current source.
 - **Acceptance criteria:**
-  - [ ] Items navigate to the correct server/environment/resource.
-  - [ ] Fleet pagination and partial environment failure do not create false totals.
-  - [ ] Close as verified or reopen with a focused reproduction.
+  - [x] Items navigate to the correct server/environment/resource.
+  - [x] Fleet pagination and partial environment failure do not create false totals.
+  - [x] Close as verified or reopen with a focused reproduction.
+
+  **Verification evidence (2026-09-16):** The live image-update action opened the image-oriented
+  Updates destination with retained environment context, and the failed-activity action opened the
+  global Activity Center with correct environment attribution. Complete-list/dedupe and partial-data
+  mapping tests prevent paginated or unavailable environments from publishing a false fleet total;
+  the offline live pass retained labeled data instead of inventing a partial success.
 
 - [x] **PAR-V03 — Dashboard stream foundation and live-stats recovery**
 
@@ -1499,51 +1567,78 @@ implementation work unless current-source or runtime verification finds a regres
   - `./gradlew :app:testDebugUnitTest :app:assembleDebug` passed all 148 unit tests and assembled the
     debug APK; `git diff --check` passed.
 
-- [ ] **PAR-V04 — Update All environments**
+- [x] **PAR-V04 — Update All environments**
 
-- **Status:** Done/verify
+- **Status:** Complete
 - **Priority:** P1 if reopened
 - **Dependencies:** PAR-004, PAR-501
 - **Scope:** Verify complete environment coverage and result reporting while preserving PAR-501's
   completed Updates counts/navigation decision.
 - **Acceptance criteria:**
-  - [ ] More than 20 environments are included exactly once where eligible.
-  - [ ] Partial, unsupported, unauthorized, cancel, and error results are accurately attributed.
-  - [ ] Close as verified or reopen outside PAR-501 only with independent evidence.
+  - [x] More than 20 environments are included exactly once where eligible.
+  - [x] Partial, unsupported, unauthorized, cancel, and error results are accurately attributed.
+  - [x] Close as verified or reopen outside PAR-501 only with independent evidence.
 
-- [ ] **PAR-V05 — Environment card actions**
+  **Verification evidence (2026-09-16):** A deterministic 26-environment result fixture proves every
+  unique environment is counted exactly once and separately attributes updated, failed, offline,
+  current, and pending results; permission gating and restart/connection notes are separately tested.
+  The live two-environment prompt named both eligible environments. Cancellation/error handling is
+  supported by the typed job-state source and unit matrix; no live manager self-update was triggered
+  solely to manufacture evidence.
 
-- **Status:** Done/verify
+- [x] **PAR-V05 — Environment card actions**
+
+- **Status:** Complete
 - **Priority:** P1 if reopened
 - **Dependencies:** PAR-102
 - **Scope:** Verify current sync, system, upgrade, prune, detail, and active-environment actions
   against permissions and server capabilities.
 - **Acceptance criteria:**
-  - [ ] Every visible action targets the card's environment and has an accurate enabled state.
-  - [ ] Upgrade behavior is tracked by PAR-102 and prune runtime behavior by PAR-101.
-  - [ ] Close remaining actions as verified or reopen individually.
+  - [x] Every visible action targets the card's environment and has an accurate enabled state.
+  - [x] Upgrade behavior is tracked by PAR-102 and prune runtime behavior by PAR-101.
+  - [x] Close remaining actions as verified or reopen individually.
 
-- [ ] **PAR-V06 — Failed Activity badge**
+  **Verification evidence (2026-09-16):** The previously UI-only Sync action now invokes the typed SDK
+  environment sync, is environment-fenced, prevents duplicates, invalidates relevant cache state, and
+  reports completion/error. Live v2.10.2 displayed `Syncing Local Docker…`. The active card hides Use
+  Environment; Upgrade appears only for positive availability; an offline disposable card kept
+  recovery/read/Sync actions available while disabling Upgrade and Prune. Permission/active/offline
+  policies are covered by focused unit tests; PAR-101/PAR-102 retain their destructive runtime scope.
 
-- **Status:** Done/verify
+- [x] **PAR-V06 — Failed Activity badge**
+
+- **Status:** Complete
 - **Priority:** P1 if reopened
 - **Dependencies:** PAR-004, PAR-109
 - **Scope:** Verify count, environment attribution, clearing/retry behavior, and navigation.
 - **Acceptance criteria:**
-  - [ ] Pagination, live updates, clearing, and partial failures cannot leave a misleading badge.
-  - [ ] Tapping opens the relevant Activity Center context.
-  - [ ] Close as verified or reopen with a focused reproduction.
+  - [x] Pagination, live updates, clearing, and partial failures cannot leave a misleading badge.
+  - [x] Tapping opens the relevant Activity Center context.
+  - [x] Close as verified or reopen with a focused reproduction.
 
-- [ ] **PAR-V07 — Black bottom inset**
+  **Verification evidence (2026-09-16):** Live v2.10.2 showed the capped `9+` header badge and the
+  full failed count (`72`) in Needs Attention; both opened the fleet Activity Center and retained
+  environment attribution across paginated failures. Mapping tests use the complete authoritative
+  count, hide zero, and withhold misleading partial/unavailable totals; badge formatting covers zero,
+  one, nine, and double-digit counts. Activity stream recovery/clearing remains covered by the
+  existing reliability suite.
 
-- **Status:** Done/verify
+- [x] **PAR-V07 — Black bottom inset**
+
+- **Status:** Complete
 - **Priority:** P2 if reopened
 - **Dependencies:** None
 - **Scope:** Check representative light/dark themes, gesture/three-button navigation, keyboard,
   rotation, and edge-to-edge screens.
 - **Acceptance criteria:**
-  - [ ] No unintended black inset appears across the checked configurations.
-  - [ ] Close as verified or reopen with screenshots, device/API details, and a focused reproduction.
+  - [x] No unintended black inset appears across the checked configurations.
+  - [x] Close as verified or reopen with screenshots, device/API details, and a focused reproduction.
+
+  **Verification evidence (2026-09-16):** `MainActivity` disables the platform navigation-bar contrast
+  scrim on API 29+ and the API-gated instrumentation assertion passed on APIs 30 and 35. API 30 visual
+  checks covered light/dark/automatic themes, gesture and three-button navigation, keyboard display,
+  rotation, and compact/expanded edge-to-edge layouts with no unintended black bottom inset. Temporary
+  screenshots were deleted after inspection.
 
 ## Backlog maintenance
 

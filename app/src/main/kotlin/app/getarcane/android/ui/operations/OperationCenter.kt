@@ -37,10 +37,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import app.getarcane.android.R
 import app.getarcane.android.core.LocalOperationStore
 import app.getarcane.android.core.OperationRecord
 import app.getarcane.android.core.OperationState
@@ -94,7 +102,17 @@ private fun OperationIndicator(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Card(onClick = onClick, modifier = modifier.fillMaxWidth()) {
+    val operationSummary = pluralStringResource(R.plurals.operation_in_progress_count, count, count)
+    val reconnectingSummary = if (reconnecting) stringResource(R.string.operation_reconnecting) else null
+    Card(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+                stateDescription = reconnectingSummary?.let { "$operationSummary. $it" } ?: operationSummary
+            },
+    ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -102,10 +120,10 @@ private fun OperationIndicator(
         ) {
             CircularProgressIndicator(modifier = Modifier.padding(2.dp), strokeWidth = 2.dp)
             Column(Modifier.weight(1f)) {
-                Text(if (count == 1) "1 operation in progress" else "$count operations in progress", fontWeight = FontWeight.SemiBold)
-                if (reconnecting) Text("Reconnecting to server activity", style = MaterialTheme.typography.bodySmall)
+                Text(operationSummary, fontWeight = FontWeight.SemiBold)
+                if (reconnectingSummary != null) Text(reconnectingSummary, style = MaterialTheme.typography.bodySmall)
             }
-            Text("View", color = MaterialTheme.colorScheme.primary)
+            Text(stringResource(R.string.action_view), color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -139,12 +157,17 @@ private fun OperationCenterSheet() {
 private fun OperationList() {
     val store = LocalOperationStore.current
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        Text("Operations", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(
+            stringResource(R.string.operation_center_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics { heading() },
+        )
         store.unavailableMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
         }
         if (store.operations.isEmpty()) {
-            Text("No recent operations", modifier = Modifier.padding(vertical = 32.dp))
+            Text(stringResource(R.string.operation_center_empty), modifier = Modifier.padding(vertical = 32.dp))
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 600.dp).padding(vertical = 12.dp),
@@ -181,23 +204,32 @@ fun OperationDetail(
     canCancel: Boolean,
 ) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp)) {
-        TextButton(onClick = onBack) { Text("Back to operations") }
-        Text(record.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        TextButton(onClick = onBack) { Text(stringResource(R.string.action_back_to_operations)) }
+        Text(
+            record.title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics { heading() },
+        )
         Text(record.state.displayName(), modifier = Modifier.padding(top = 4.dp))
         record.progressPercent?.let {
             LinearProgressIndicator(progress = { it / 100f }, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
         }
         record.detailMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (canCancel) OutlinedButton(onClick = onCancel) { Text("Cancel") }
+            if (canCancel) OutlinedButton(onClick = onCancel) { Text(stringResource(R.string.action_cancel)) }
             if (record.state == OperationState.UNKNOWN || record.state == OperationState.INTERRUPTED) {
-                OutlinedButton(onClick = onRetry) { Text("Check again") }
+                OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.action_check_again)) }
             }
-            if (record.serverActivityId != null) OutlinedButton(onClick = onOpenActivity) { Text("Activity Center") }
-            if (record.isTerminalLike) Button(onClick = onDismiss) { Text("Dismiss") }
+            if (record.serverActivityId != null) OutlinedButton(onClick = onOpenActivity) { Text(stringResource(R.string.action_activity_center)) }
+            if (record.isTerminalLike) Button(onClick = onDismiss) { Text(stringResource(R.string.action_dismiss)) }
         }
         if (record.lines.isNotEmpty()) {
-            Text("Output", fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(R.string.operation_output_heading),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.semantics { heading() },
+            )
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).padding(vertical = 8.dp)) {
                 itemsIndexed(record.lines) { index, line ->
                     Text(
@@ -212,16 +244,17 @@ fun OperationDetail(
     }
 }
 
-private fun OperationState.displayName(): String = when (this) {
-    OperationState.QUEUED -> "Queued"
-    OperationState.STARTING -> "Starting"
-    OperationState.RUNNING -> "Running"
-    OperationState.RECONNECTING -> "Reconnecting"
-    OperationState.CANCEL_REQUESTED -> "Cancellation requested"
-    OperationState.SUCCESS -> "Completed"
-    OperationState.FAILURE -> "Failed"
-    OperationState.CANCELLED -> "Cancelled"
-    OperationState.INTERRUPTED -> "Interrupted"
-    OperationState.UNKNOWN -> "Outcome unknown"
-    OperationState.CLEARED -> "Cleared"
-}
+@Composable
+private fun OperationState.displayName(): String = stringResource(when (this) {
+    OperationState.QUEUED -> R.string.operation_state_queued
+    OperationState.STARTING -> R.string.operation_state_starting
+    OperationState.RUNNING -> R.string.operation_state_running
+    OperationState.RECONNECTING -> R.string.operation_state_reconnecting
+    OperationState.CANCEL_REQUESTED -> R.string.operation_state_cancel_requested
+    OperationState.SUCCESS -> R.string.operation_state_completed
+    OperationState.FAILURE -> R.string.operation_state_failed
+    OperationState.CANCELLED -> R.string.operation_state_cancelled
+    OperationState.INTERRUPTED -> R.string.operation_state_interrupted
+    OperationState.UNKNOWN -> R.string.operation_state_unknown
+    OperationState.CLEARED -> R.string.operation_state_cleared
+})

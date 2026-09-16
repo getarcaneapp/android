@@ -77,7 +77,7 @@ fun DemoBanner() {
             Column(Modifier.weight(1f)) {
                 Text("Demo Mode", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Text(
-                    String.format("%d:%02d remaining", minutes, seconds),
+                    String.format(java.util.Locale.getDefault(), "%d:%02d remaining", minutes, seconds),
                     style = MaterialTheme.typography.labelMedium,
                     fontFamily = FontFamily.Monospace,
                     color = if (isLowTime) ArcaneOrange else MaterialTheme.colorScheme.onSurfaceVariant,

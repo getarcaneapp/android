@@ -6,7 +6,7 @@ import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.CallMerge
+import androidx.compose.material.icons.automirrored.filled.CallMerge
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Hub
@@ -53,7 +53,7 @@ fun permissionResourceIcon(key: String): ImageVector = when (key) {
     "environments" -> Icons.Filled.Storage
     "registries" -> Icons.Filled.Cloud
     "templates" -> Icons.Filled.Description
-    "git-repositories" -> Icons.Filled.CallMerge
+    "git-repositories" -> Icons.AutoMirrored.Filled.CallMerge
     "gitops" -> Icons.Filled.Sync
     "webhooks" -> Icons.Filled.Webhook
     "system" -> Icons.Filled.Settings

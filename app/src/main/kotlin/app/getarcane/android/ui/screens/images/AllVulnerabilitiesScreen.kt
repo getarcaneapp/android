@@ -347,7 +347,7 @@ private fun VulnerabilityWithImageRow(item: VulnerabilityWithImage, onClick: () 
         }
         item.cvss?.preferredScore?.let {
             Text(
-                String.format("%.1f", it),
+                String.format(java.util.Locale.getDefault(), "%.1f", it),
                 style = MaterialTheme.typography.labelMedium,
                 fontFamily = FontFamily.Monospace,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -387,7 +387,7 @@ private fun VulnerabilityWithImageDetailDialog(
                         record.cvss?.preferredScore?.let {
                             LabeledRow(
                                 "CVSS",
-                                String.format("%.1f", it)
+                                String.format(java.util.Locale.getDefault(), "%.1f", it)
                             )
                         }
                         record.publishedDate?.let { LabeledRow("Published", formatImageDate(it)) }

@@ -12,7 +12,7 @@ fun formatBytes(bytes: Long): String {
         value /= 1024
         i++
     }
-    return if (i == 0) "$bytes B" else String.format("%.1f %s", value, units[i])
+    return if (i == 0) "$bytes B" else String.format(java.util.Locale.getDefault(), "%.1f %s", value, units[i])
 }
 
 /** Display name for an image: first real repo:tag, else short id. Mirrors iOS `ImageSummary.displayName`. */

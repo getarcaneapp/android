@@ -59,6 +59,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -72,6 +80,7 @@ import app.getarcane.android.core.loadCompleteEnvironments
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.getarcane.android.BuildConfig
+import app.getarcane.android.R
 import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.ArcaneDashboardStreamClient
 import app.getarcane.android.core.DashboardActionItemKind
@@ -109,6 +118,7 @@ import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.android.ui.theme.ArcaneTeal
+import app.getarcane.android.ui.theme.accessibleOnSurface
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.activity.ActivityStatus
 import app.getarcane.sdk.models.base.SortOrder
@@ -205,6 +215,7 @@ fun DashboardScreen(
     onOpenApiKeys: (() -> Unit)? = null,
 ) {
     val manager = LocalArcaneManager.current
+    val context = LocalContext.current
     val client = manager.client
     val envId = manager.activeEnvironmentId
 
@@ -230,6 +241,7 @@ fun DashboardScreen(
     var pruneEnvironmentId by remember { mutableStateOf<EnvironmentId?>(null) }
     var upgradeEnvironment by remember { mutableStateOf<Environment?>(null) }
     val statsHistory = remember { mutableStateMapOf<String, DashboardStatsSeries>() }
+    val syncingEnvironments = remember { mutableStateMapOf<String, Boolean>() }
     val scope = rememberCoroutineScope()
     val streamClient = remember(client) { client?.let(::ArcaneDashboardStreamClient) }
     val streamStore = remember(scope) { DashboardStreamStore(scope) }
@@ -462,7 +474,7 @@ fun DashboardScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Dashboard") },
+                title = { Text(stringResource(R.string.nav_dashboard)) },
                 actions = {
                     if (supportsActivities) {
                         IconButton(onClick = { showActivities = true }) {
@@ -471,7 +483,11 @@ fun DashboardScreen(
                     }
                     if (canPruneActiveEnvironment) {
                         IconButton(onClick = { pruneEnvironmentId = envId }) {
-                            Icon(Icons.Filled.Delete, contentDescription = "System Prune", tint = ArcaneRed)
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = stringResource(R.string.action_system_prune),
+                                tint = ArcaneRed,
+                            )
                         }
                     }
                 },
@@ -571,11 +587,11 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
-                        Text("Environments", style = MaterialTheme.typography.titleMedium)
+                        Text(stringResource(R.string.dashboard_environments), style = MaterialTheme.typography.titleMedium)
                         if (shouldShowUpdateAllAction(isAdmin)) {
                             Button(onClick = { showUpdateAll = true }) {
                                 Icon(Icons.Filled.ArrowCircleUp, contentDescription = null)
-                                Text("  Update All")
+                                Text(stringResource(R.string.update_all_action), modifier = Modifier.padding(start = 8.dp))
                             }
                         }
                     }
@@ -589,6 +605,7 @@ fun DashboardScreen(
                         statsSeries = statsHistory[env.id],
                         versionInfo = streamState?.snapshot?.versionInfo,
                         refreshToken = refreshKey,
+                        syncing = syncingEnvironments[env.id] == true,
                         onSelect = { manager.setActiveEnvironment(EnvironmentId(env.id), env.name ?: env.id) },
                         actions = environmentCardActions(
                             canPrune = currentUser.canPruneEnvironment(env.id),
@@ -602,8 +619,34 @@ fun DashboardScreen(
                                     onOpenEnvironmentDetails?.invoke(env.id)
                                 }
                                 EnvironmentCardAction.Sync -> {
-                                    refreshKey++
-                                    scope.launch { snackbar.showSnackbar("Refreshing ${env.name ?: env.id}") }
+                                    if (syncingEnvironments[env.id] == true) return@EnvironmentDashboardCard
+                                    val captured = manager.authenticatedClientScope()
+                                        ?: return@EnvironmentDashboardCard
+                                    scope.launch {
+                                        val environmentName = env.name ?: env.id
+                                        syncingEnvironments[env.id] = true
+                                        snackbar.showSnackbar(
+                                            context.getString(R.string.environment_syncing, environmentName),
+                                        )
+                                        try {
+                                            captured.client.environments.sync(EnvironmentId(env.id))
+                                            if (manager.isCurrent(captured)) {
+                                                manager.invalidateReadCache(EnvironmentId(env.id))
+                                                refreshKey++
+                                                snackbar.showSnackbar(
+                                                    context.getString(R.string.environment_synced, environmentName),
+                                                )
+                                            }
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (e: Throwable) {
+                                            if (manager.isCurrent(captured)) {
+                                                snackbar.showSnackbar(friendlyErrorMessage(e))
+                                            }
+                                        } finally {
+                                            syncingEnvironments.remove(env.id)
+                                        }
+                                    }
                                 }
                                 EnvironmentCardAction.UpgradeArcane -> {
                                     upgradeEnvironment = env
@@ -746,13 +789,18 @@ private suspend fun loadLegacyDashboardTotals(
 
 @Composable
 private fun ActivityCenterToolbarIcon(failedCount: Int) {
+    val contentDescription = if (failedCount > 0) {
+        pluralStringResource(R.plurals.a11y_failed_activities, failedCount, failedCount)
+    } else {
+        stringResource(R.string.a11y_activity_center)
+    }
     Box(
         modifier = Modifier.size(30.dp),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             Icons.Filled.History,
-            contentDescription = activityCenterButtonContentDescription(failedCount),
+            contentDescription = contentDescription,
             modifier = Modifier.size(24.dp),
         )
 
@@ -771,7 +819,8 @@ private fun BoxScope.ActivityCenterFailedBadge(failedCount: Int) {
             .height(18.dp)
             .widthIn(min = 18.dp)
             .background(ArcaneRed, CircleShape)
-            .padding(horizontal = if (failedCount > 9) 4.dp else 0.dp),
+            .padding(horizontal = if (failedCount > 9) 4.dp else 0.dp)
+            .clearAndSetSemantics {},
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -789,23 +838,18 @@ private fun BoxScope.ActivityCenterFailedBadge(failedCount: Int) {
 internal fun failedActivityBadgeText(count: Int): String =
     if (count > 9) "9+" else count.coerceAtLeast(0).toString()
 
-internal fun activityCenterButtonContentDescription(failedCount: Int): String =
-    if (failedCount > 0) {
-        "Activity Center, $failedCount failed ${if (failedCount == 1) "activity needs" else "activities need"} attention"
-    } else {
-        "Activity Center"
-    }
-
 @Composable
 private fun NeedsAttentionSection(items: List<NeedsAttentionItem>) {
     Card(Modifier.fillMaxWidth()) {
         Column {
             Text(
-                "Needs Attention",
+                stringResource(R.string.dashboard_needs_attention),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 4.dp),
+                modifier = Modifier
+                    .padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 4.dp)
+                    .semantics { heading() },
             )
             items.forEachIndexed { index, item ->
                 NeedsAttentionRow(item = item)
@@ -820,14 +864,15 @@ private fun NeedsAttentionSection(items: List<NeedsAttentionItem>) {
 
 @Composable
 private fun NeedsAttentionRow(item: NeedsAttentionItem) {
-    val tint = when (item.severity) {
+    val tint = accessibleOnSurface(when (item.severity) {
         NeedsAttentionSeverity.Critical -> ArcaneRed
         NeedsAttentionSeverity.Warning -> ArcaneOrange
-    }
+    })
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = item.action)
+            .semantics { role = Role.Button }
             .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -875,13 +920,13 @@ private fun DashboardStreamFailedBanner(onRetry: () -> Unit) {
                 modifier = Modifier.size(18.dp),
             )
             Text(
-                "Live counts paused",
+                stringResource(R.string.dashboard_live_counts_paused),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
             TextButton(onClick = onRetry) {
-                Text("Retry")
+                Text(stringResource(R.string.action_retry))
             }
         }
     }
@@ -1207,10 +1252,13 @@ private fun SystemPruneSheet(
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = { Text("System Prune") },
+                        title = { Text(stringResource(R.string.action_system_prune)) },
                         navigationIcon = {
                             IconButton(onClick = onDismiss) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel")
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.action_cancel),
+                                )
                             }
                         },
                         actions = {

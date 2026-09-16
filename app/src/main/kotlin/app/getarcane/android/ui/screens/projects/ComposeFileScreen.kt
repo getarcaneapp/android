@@ -22,10 +22,10 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DataObject
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
@@ -305,7 +305,7 @@ fun ComposeFileScreen(
                         DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
                             DropdownMenuItem(
                                 text = { Text("New File") },
-                                leadingIcon = { Icon(Icons.Filled.InsertDriveFile, null) },
+                                leadingIcon = { Icon(Icons.AutoMirrored.Filled.InsertDriveFile, null) },
                                 onClick = { addMenu = false; createKind = WorkspaceCreateKind.FILE },
                             )
                             DropdownMenuItem(
@@ -652,7 +652,7 @@ private fun ProjectWorkspaceEditor(
             }
             if (entry.structuralEditable && canUpdateNow && structuralActionsAllowed) {
                 IconButton(onClick = onRename) { Icon(Icons.Filled.Edit, "Rename") }
-                IconButton(onClick = onMove) { Icon(Icons.Filled.DriveFileMove, "Move") }
+                IconButton(onClick = onMove) { Icon(Icons.AutoMirrored.Filled.DriveFileMove, "Move") }
                 IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, "Delete") }
             }
         }

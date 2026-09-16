@@ -1,20 +1,25 @@
 package app.getarcane.android.ui.screens.containers
 
+import androidx.annotation.StringRes
+import app.getarcane.android.R
+
 internal enum class ContainerDetailAction(
     val permission: String,
-    val title: String,
+    @get:StringRes val titleRes: Int,
+    @get:StringRes val successMessageRes: Int? = null,
+    @get:StringRes val confirmationMessageRes: Int? = null,
 ) {
-    Start("containers:start", "Start"),
-    Stop("containers:stop", "Stop"),
-    Restart("containers:restart", "Restart"),
-    Pause("containers:pause", "Pause"),
-    Unpause("containers:pause", "Unpause"),
-    Kill("containers:kill", "Kill"),
-    Redeploy("containers:redeploy", "Redeploy"),
-    Delete("containers:delete", "Delete"),
-    Inspect("containers:read", "Inspect"),
-    Logs("containers:logs", "Logs"),
-    Terminal("containers:exec", "Terminal"),
+    Start("containers:start", R.string.container_action_start, R.string.container_started),
+    Stop("containers:stop", R.string.container_action_stop, R.string.container_stopped, R.string.confirm_container_stop_message),
+    Restart("containers:restart", R.string.container_action_restart, R.string.container_restarted, R.string.confirm_container_restart_message),
+    Pause("containers:pause", R.string.container_action_pause, R.string.container_paused, R.string.confirm_container_pause_message),
+    Unpause("containers:pause", R.string.container_action_unpause, R.string.container_unpaused),
+    Kill("containers:kill", R.string.container_action_kill, R.string.container_killed, R.string.confirm_container_kill_message),
+    Redeploy("containers:redeploy", R.string.container_action_redeploy, R.string.container_redeployed, R.string.confirm_container_redeploy_message),
+    Delete("containers:delete", R.string.container_action_delete, R.string.container_deleted, R.string.confirm_container_delete_message),
+    Inspect("containers:read", R.string.container_action_inspect),
+    Logs("containers:logs", R.string.container_action_logs),
+    Terminal("containers:exec", R.string.container_action_terminal),
 }
 
 internal fun availableContainerActions(
@@ -45,36 +50,3 @@ internal fun availableContainerActions(
         }
     }
 }
-
-internal fun ContainerDetailAction.confirmationMessage(resourceName: String, environmentName: String): String? =
-    when (this) {
-        ContainerDetailAction.Stop ->
-            "Stop “$resourceName” in $environmentName? The container can be started again."
-        ContainerDetailAction.Restart ->
-            "Restart “$resourceName” in $environmentName? Active connections may be interrupted."
-        ContainerDetailAction.Pause ->
-            "Pause “$resourceName” in $environmentName? Its processes will stop running until unpaused."
-        ContainerDetailAction.Kill ->
-            "Force kill “$resourceName” in $environmentName with SIGKILL? The process cannot shut down cleanly."
-        ContainerDetailAction.Redeploy ->
-            "Redeploy “$resourceName” in $environmentName? Arcane will pull and recreate the container."
-        ContainerDetailAction.Delete ->
-            "Permanently delete “$resourceName” from $environmentName? Arcane will force removal if needed; this cannot be undone."
-        else -> null
-    }
-
-internal val ContainerDetailAction.successMessage: String
-    get() = when (this) {
-        ContainerDetailAction.Start -> "Container started."
-        ContainerDetailAction.Stop -> "Container stopped."
-        ContainerDetailAction.Restart -> "Container restarted."
-        ContainerDetailAction.Pause -> "Container paused."
-        ContainerDetailAction.Unpause -> "Container unpaused."
-        ContainerDetailAction.Kill -> "Container killed."
-        ContainerDetailAction.Redeploy -> "Container redeployed."
-        ContainerDetailAction.Delete -> "Container deleted."
-        ContainerDetailAction.Inspect,
-        ContainerDetailAction.Logs,
-        ContainerDetailAction.Terminal,
-        -> ""
-    }

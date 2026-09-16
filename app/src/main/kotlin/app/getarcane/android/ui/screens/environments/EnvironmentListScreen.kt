@@ -39,9 +39,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.R
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.ReadCachePolicy
@@ -182,7 +188,7 @@ fun EnvironmentListScreen(onOpen: (String) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-private fun EnvironmentRow(
+internal fun EnvironmentRow(
     env: Environment,
     isActive: Boolean,
     onClick: () -> Unit,
@@ -195,6 +201,10 @@ private fun EnvironmentRow(
             Modifier
                 .fillMaxWidth()
                 .combinedClickable(onClick = onClick, onLongClick = { if (!isActive) menu = true })
+                .semantics {
+                    role = Role.Button
+                    selected = isActive
+                }
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -209,7 +219,7 @@ private fun EnvironmentRow(
                     Text(env.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     if (isActive) {
                         Text(
-                            "Active",
+                            stringResource(R.string.state_active),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -224,7 +234,11 @@ private fun EnvironmentRow(
             StatusBadge(env.status)
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-            DropdownMenuItem(text = { Text("Set Active") }, onClick = { menu = false; onSetActive() }, leadingIcon = { Icon(Icons.Filled.CheckCircle, null) })
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_set_active)) },
+                onClick = { menu = false; onSetActive() },
+                leadingIcon = { Icon(Icons.Filled.CheckCircle, null) },
+            )
         }
     }
 }

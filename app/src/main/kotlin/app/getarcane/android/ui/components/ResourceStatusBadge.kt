@@ -27,6 +27,7 @@ import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.android.ui.theme.ArcaneYellow
+import app.getarcane.android.ui.theme.accessibleOnSurface
 
 /**
  * A capsule status pill with a leading status icon and tinted background/border.
@@ -45,7 +46,7 @@ fun ResourceStatusBadge(
     val live = isLive ?: (normalized == "running" || normalized == "online")
     val unknownTint = MaterialTheme.colorScheme.onSurfaceVariant
 
-    val tint: Color = when {
+    val semanticTint: Color = when {
         live -> ArcaneGreen
         normalized in setOf("running", "online", "success", "completed", "done") -> ArcaneGreen
         normalized in setOf("partial", "partially running") -> ArcaneOrange
@@ -54,6 +55,7 @@ fun ResourceStatusBadge(
         normalized == "paused" -> ArcaneYellow
         else -> unknownTint
     }
+    val tint = accessibleOnSurface(semanticTint)
 
     val icon: ImageVector = when {
         live -> Icons.Filled.CheckCircle

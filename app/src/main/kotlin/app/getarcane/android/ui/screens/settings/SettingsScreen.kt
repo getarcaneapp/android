@@ -20,11 +20,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import app.getarcane.android.R
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.nav.AppTab
 import app.getarcane.android.nav.NavTabsStore
@@ -284,10 +286,10 @@ private fun SettingsRoot(nav: NavHostController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.nav_settings)) },
                 actions = {
                     IconButton(onClick = { nav.navigate(SettingsRoutes.APP_SETTINGS) }) {
-                        Icon(Icons.Filled.Settings, contentDescription = "App Settings")
+                        Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.a11y_app_settings))
                     }
                 },
             )
@@ -310,12 +312,12 @@ private fun SettingsRoot(nav: NavHostController) {
                 val tabs = visibleTabs(section)
                 if (tabs.isNotEmpty()) {
                     item(key = "${section.name}-header") {
-                        SettingsSectionHeader(section.title)
+                        SettingsSectionHeader(stringResource(section.titleRes))
                     }
                     tabs.forEach { tab ->
                         item(key = tab.id) {
                             SettingsRow(
-                                title = tab.title,
+                                title = stringResource(tab.titleRes),
                                 icon = tab.icon,
                                 iconColor = tab.color,
                                 onClick = { nav.navigate(tab.id) },

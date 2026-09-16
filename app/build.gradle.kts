@@ -44,6 +44,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            isPseudoLocalesEnabled = true
+        }
         release {
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
@@ -64,6 +67,13 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
+    }
+
+    lint {
+        baseline = file("lint-baseline.xml")
+        abortOnError = true
+        warningsAsErrors = true
+        checkReleaseBuilds = true
     }
 }
 
@@ -100,7 +110,7 @@ dependencies {
 
     // OkHttp HTTP engine for Ktor: robust TLS/HTTP-2 on Android (the pure-Kotlin CIO engine
     // fails the TLS handshake against some Cloudflare-fronted hosts, e.g. demo.getarcane.app).
-    implementation("io.ktor:ktor-client-okhttp:3.0.3")
+    implementation(libs.ktor.client.okhttp)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

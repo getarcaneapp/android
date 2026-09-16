@@ -80,8 +80,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalAutofill
 import androidx.compose.ui.platform.LocalAutofillTree
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -261,7 +262,7 @@ private fun Header(isSetup: Boolean, isStartingDemo: Boolean, brand: Color) {
         ) {
             Image(
                 painter = painterResource(R.drawable.arcane_logo),
-                contentDescription = "Arcane",
+                contentDescription = stringResource(R.string.brand_name),
                 modifier = Modifier.size(68.dp),
             )
         }
@@ -270,10 +271,10 @@ private fun Header(isSetup: Boolean, isStartingDemo: Boolean, brand: Color) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Arcane", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.brand_name), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             val subtitle = when {
-                isStartingDemo -> "Setting things up for you…"
-                isSetup -> "Connect to your Arcane server"
+                isStartingDemo -> stringResource(R.string.auth_starting_demo)
+                isSetup -> stringResource(R.string.auth_connect_subtitle)
                 else -> null
             }
             subtitle?.let {
@@ -291,17 +292,17 @@ private fun SetupFields(value: String, onValueChange: (String) -> Unit, onGo: ()
         FieldCard {
             FieldRow(
                 icon = Icons.Filled.Dns,
-                label = "Server URL",
+                label = stringResource(R.string.auth_server_url_label),
                 value = value,
                 onValueChange = onValueChange,
-                placeholder = "https://arcane.example.com",
+                placeholder = stringResource(R.string.auth_server_url_placeholder),
                 keyboardType = KeyboardType.Uri,
                 imeAction = ImeAction.Go,
                 keyboardActions = KeyboardActions(onGo = { onGo() }),
             )
         }
         Text(
-            "For a local server, include the scheme — e.g. http://192.168.1.50:3000",
+            stringResource(R.string.auth_local_server_hint),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
@@ -321,6 +322,7 @@ private fun CredentialsFields(
     onSubmit: () -> Unit,
 ) {
     val passwordFocus = remember { FocusRequester() }
+    val passwordLabel = stringResource(R.string.auth_password_label)
     FieldCard {
         // Server (read-only) row.
         Column(
@@ -329,7 +331,7 @@ private fun CredentialsFields(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(Icons.Filled.Dns, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Server", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.auth_server_label), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Text(
                 manager.serverUrl,
@@ -344,10 +346,10 @@ private fun CredentialsFields(
             HorizontalDivider(Modifier.padding(start = 16.dp))
             FieldRow(
                 icon = Icons.Filled.Person,
-                label = "Username",
+                label = stringResource(R.string.auth_username_label),
                 value = username,
                 onValueChange = onUsername,
-                placeholder = "Username",
+                placeholder = stringResource(R.string.auth_username_label),
                 imeAction = ImeAction.Next,
                 keyboardActions = KeyboardActions(onNext = { passwordFocus.requestFocus() }),
                 autofillTypes = listOf(AutofillType.Username),
@@ -355,16 +357,15 @@ private fun CredentialsFields(
             HorizontalDivider(Modifier.padding(start = 16.dp))
             FieldRow(
                 icon = Icons.Filled.Lock,
-                label = "Password",
+                label = passwordLabel,
                 value = password,
                 onValueChange = onPassword,
-                placeholder = "Password",
+                placeholder = passwordLabel,
                 imeAction = ImeAction.Go,
                 keyboardActions = KeyboardActions(onGo = { onSubmit() }),
                 visualTransformation = PasswordVisualTransformation(),
                 textFieldModifier = Modifier
-                    .focusRequester(passwordFocus)
-                    .clearAndSetSemantics { contentDescription = "Password" },
+                    .focusRequester(passwordFocus),
                 autofillTypes = listOf(AutofillType.Password),
             )
         }
@@ -392,7 +393,7 @@ private fun Actions(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (isSetup) {
             PrimaryButton(
-                text = "Connect",
+                text = stringResource(R.string.auth_connect_action),
                 icon = Icons.AutoMirrored.Filled.ArrowForward,
                 enabled = connectEnabled && !manager.isLoading,
                 loading = manager.isLoading && !manager.isStartingDemo,
@@ -401,7 +402,7 @@ private fun Actions(
         } else {
             if (manager.passkeyLoginState == PasskeyLoginState.AVAILABLE) {
                 PrimaryButton(
-                    text = "Sign in with a passkey",
+                    text = stringResource(R.string.auth_sign_in_passkey_action),
                     icon = Icons.Filled.VpnKey,
                     enabled = !manager.isLoading,
                     loading = false,
@@ -410,7 +411,11 @@ private fun Actions(
             }
             if (manager.isOidcAvailable && !showPasswordForm) {
                 PrimaryButton(
-                    text = "Continue with ${manager.oidc?.providerName?.takeIf { it.isNotBlank() } ?: "OIDC"}",
+                    text = stringResource(
+                        R.string.auth_continue_provider_action,
+                        manager.oidc?.providerName?.takeIf { it.isNotBlank() }
+                            ?: stringResource(R.string.auth_default_oidc_provider),
+                    ),
                     icon = Icons.Filled.VpnKey,
                     enabled = !manager.isLoading,
                     loading = false,
@@ -426,12 +431,16 @@ private fun Actions(
                 ) {
                     Icon(if (showPasswordForm) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null, Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(if (showPasswordForm) "Hide password sign in" else "Sign in with username and password")
+                    Text(
+                        stringResource(
+                            if (showPasswordForm) R.string.auth_hide_password_action else R.string.auth_show_password_action,
+                        ),
+                    )
                 }
             }
             if (showPassword) {
                 PrimaryButton(
-                    text = "Sign In",
+                    text = stringResource(R.string.auth_sign_in_action),
                     icon = Icons.AutoMirrored.Filled.Login,
                     enabled = signInEnabled && !manager.isLoading,
                     loading = manager.isLoading,
@@ -442,10 +451,10 @@ private fun Actions(
                 TextButton(
                     onClick = manager::cancelPasskeyBrowserOperation,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Cancel passkey request") }
+                ) { Text(stringResource(R.string.auth_cancel_passkey_action)) }
             }
             TextButton(onClick = onChangeServer, modifier = Modifier.fillMaxWidth()) {
-                Text("Change Server", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.auth_change_server_action), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -459,20 +468,20 @@ private fun MfaChallengeContent(manager: ArcaneClientManager) {
     ProtectSensitiveWindow()
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            "Two-factor authentication",
+            stringResource(R.string.auth_mfa_title),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
         )
         Text(
-            "Use a registered passkey or one of your recovery codes.",
+            stringResource(R.string.auth_mfa_instructions),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
         PrimaryButton(
-            text = "Continue with passkey",
+            text = stringResource(R.string.auth_mfa_continue_passkey_action),
             icon = Icons.Filled.VpnKey,
             enabled = manager.passkeyBridgeState == PasskeyLoginState.AVAILABLE && !manager.isLoading,
             loading = manager.isLoading && recoveryCode.isEmpty(),
@@ -480,7 +489,7 @@ private fun MfaChallengeContent(manager: ArcaneClientManager) {
         )
         if (manager.passkeyBridgeState != PasskeyLoginState.AVAILABLE) {
             Text(
-                "Passkey verification is unavailable for this server connection. Use a recovery code.",
+                stringResource(R.string.auth_mfa_passkey_unavailable),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
@@ -490,12 +499,12 @@ private fun MfaChallengeContent(manager: ArcaneClientManager) {
             TextButton(
                 onClick = manager::cancelPasskeyBrowserOperation,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Cancel passkey request") }
+            ) { Text(stringResource(R.string.auth_cancel_passkey_action)) }
         }
         SensitiveOutlinedField(
             value = recoveryCode,
             onValueChange = { recoveryCode = it },
-            label = "Recovery code",
+            label = stringResource(R.string.auth_recovery_code_label),
             enabled = !manager.isLoading,
         )
         OutlinedButton(
@@ -506,7 +515,7 @@ private fun MfaChallengeContent(manager: ArcaneClientManager) {
             },
             enabled = recoveryCode.isNotBlank() && !manager.isLoading,
             modifier = Modifier.fillMaxWidth().height(48.dp),
-        ) { Text("Use recovery code") }
+        ) { Text(stringResource(R.string.auth_use_recovery_code_action)) }
         TextButton(
             onClick = {
                 recoveryCode = ""
@@ -514,7 +523,7 @@ private fun MfaChallengeContent(manager: ArcaneClientManager) {
             },
             enabled = !manager.isLoading,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Back to sign in") }
+        ) { Text(stringResource(R.string.auth_back_to_sign_in_action)) }
     }
 }
 
@@ -559,12 +568,12 @@ private fun DemoCard(manager: ArcaneClientManager, brand: Color) {
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    if (starting) "Starting demo…" else "Try the demo",
+                    stringResource(if (starting) R.string.auth_demo_starting else R.string.auth_demo_action),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    if (starting) "This usually takes about 30 seconds." else "Temporary instance for ~10 minutes. No account needed.",
+                    stringResource(if (starting) R.string.auth_demo_starting_detail else R.string.auth_demo_detail),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -631,6 +640,7 @@ private fun FieldRow(
             visualTransformation = visualTransformation,
             modifier = textFieldModifier
                 .fillMaxWidth()
+                .semantics { contentDescription = label }
                 .autofill(autofillTypes, onValueChange),
             decorationBox = { inner ->
                 if (value.isEmpty()) {
@@ -695,7 +705,12 @@ private fun InfoBanner(message: String, onDismiss: () -> Unit) {
             Icon(Icons.Filled.Info, null, tint = MaterialTheme.colorScheme.primary)
             Text(message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             IconButton(onClick = onDismiss) {
-                Icon(Icons.Filled.Close, "Dismiss", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                Icon(
+                    Icons.Filled.Close,
+                    stringResource(R.string.a11y_dismiss),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }

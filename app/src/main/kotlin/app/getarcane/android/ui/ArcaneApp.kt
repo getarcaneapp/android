@@ -10,6 +10,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import app.getarcane.android.R
 import app.getarcane.android.core.AuthStatus
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.nav.MainTabView
@@ -21,10 +25,11 @@ import app.getarcane.android.ui.operations.OperationHost
 @Composable
 fun ArcaneApp() {
     val manager = LocalArcaneManager.current
-    when (manager.authStatus) {
-        AuthStatus.AUTHENTICATING -> LoadingScreen()
-        AuthStatus.SETUP, AuthStatus.LOGIN -> LoginScreen()
-        AuthStatus.AUTHENTICATED -> {
+    AuthRouteContent(
+        authStatus = manager.authStatus,
+        authenticatingContent = { LoadingScreen() },
+        loginContent = { LoginScreen() },
+        authenticatedContent = {
             // When a demo is active, the banner sits above the tab shell (iOS ContentView VStack).
             // Consume the status-bar inset at this level so the banner drops below the notch/clock
             // and the tab shell below doesn't double-inset. With no demo, leave the inset for
@@ -40,13 +45,34 @@ fun ArcaneApp() {
                     Box(Modifier.weight(1f)) { MainTabView() }
                 }
             }
-        }
+        },
+    )
+}
+
+/** Deterministic root routing contract used by the app and focused instrumentation tests. */
+@Composable
+internal fun AuthRouteContent(
+    authStatus: AuthStatus,
+    authenticatingContent: @Composable () -> Unit,
+    loginContent: @Composable () -> Unit,
+    authenticatedContent: @Composable () -> Unit,
+) {
+    when (authStatus) {
+        AuthStatus.AUTHENTICATING -> authenticatingContent()
+        AuthStatus.SETUP, AuthStatus.LOGIN -> loginContent()
+        AuthStatus.AUTHENTICATED -> authenticatedContent()
     }
 }
 
 @Composable
 private fun LoadingScreen() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    val loadingDescription = stringResource(R.string.auth_loading)
+    Box(
+        Modifier
+            .fillMaxSize()
+            .semantics { contentDescription = loadingDescription },
+        contentAlignment = Alignment.Center,
+    ) {
         CircularProgressIndicator()
     }
 }

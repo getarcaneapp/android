@@ -21,40 +21,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.R
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.LocalOperationStore
 import app.getarcane.android.core.OperationStartResult
 import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.operations.OperationDetail
-import app.getarcane.sdk.models.system.EnvironmentUpdateJob
-import app.getarcane.sdk.models.system.EnvironmentUpdateJobStatus
-import app.getarcane.sdk.models.system.EnvironmentUpdateResultStatus
 import app.getarcane.sdk.models.user.isGlobalAdmin
 
 internal fun shouldShowUpdateAllAction(isAdmin: Boolean): Boolean = isAdmin
-
-internal fun updateAllLastRunSummary(job: EnvironmentUpdateJob): String {
-    if (job.status == EnvironmentUpdateJobStatus.FAILED) return job.error ?: "Failed"
-    val results = job.results.orEmpty()
-    val updated = results.count { it.status == EnvironmentUpdateResultStatus.UPDATED || it.status == EnvironmentUpdateResultStatus.TRIGGERED }
-    val failed = results.count { it.status == EnvironmentUpdateResultStatus.FAILED }
-    val skipped = results.count { it.status == EnvironmentUpdateResultStatus.SKIPPED_OFFLINE }
-    return buildList {
-        add("$updated updated")
-        if (failed > 0) add("$failed failed")
-        if (skipped > 0) add("$skipped skipped")
-        job.managerTargetVersion?.takeIf { it.isNotBlank() && ':' !in it && it.length <= 20 }?.let(::add)
-    }.joinToString(" · ")
-}
-
-internal fun updateAllFinishedMessage(job: EnvironmentUpdateJob, note: String?): String =
-    note ?: when {
-        job.status == EnvironmentUpdateJobStatus.COMPLETED &&
-            job.results.orEmpty().none { it.status == EnvironmentUpdateResultStatus.FAILED } -> "All environments updated"
-        job.status == EnvironmentUpdateJobStatus.FAILED -> job.error ?: "Fleet update failed"
-        else -> updateAllLastRunSummary(job)
-    }
 
 /** Fleet update surface backed by the one app-scoped operation owner and SDK job contract. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,13 +53,21 @@ fun UpdateAllEnvironmentsDialog(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Update All") },
-                actions = { IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, "Close") } },
+                title = { Text(stringResource(R.string.update_all_title)) },
+                actions = {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, stringResource(R.string.a11y_close))
+                    }
+                },
             )
         },
     ) { padding ->
         when {
-            !isAdmin -> ContentUnavailable("Admins Only", Icons.Filled.Lock, "Updating all environments requires an administrator account.")
+            !isAdmin -> ContentUnavailable(
+                stringResource(R.string.update_all_admin_only_title),
+                Icons.Filled.Lock,
+                stringResource(R.string.update_all_admin_only_message),
+            )
             record != null -> Box(Modifier.fillMaxSize().padding(padding)) {
                 OperationDetail(
                     record = record,
@@ -95,7 +81,13 @@ fun UpdateAllEnvironmentsDialog(
             }
             else -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(startError ?: "Update all $environmentCount environments to the latest Arcane release?")
+                    Text(
+                        startError ?: pluralStringResource(
+                            R.plurals.update_all_confirmation,
+                            environmentCount,
+                            environmentCount,
+                        ),
+                    )
                     Button(
                         onClick = {
                             when (val result = store.startFleetUpdate()) {
@@ -105,7 +97,7 @@ fun UpdateAllEnvironmentsDialog(
                             }
                         },
                         modifier = Modifier.padding(top = 16.dp),
-                    ) { Text("Update All") }
+                    ) { Text(stringResource(R.string.update_all_action)) }
                 }
             }
         }

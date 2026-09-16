@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import app.getarcane.android.core.FleetUpdateSummary
+import app.getarcane.android.core.fleetUpdateSummary
 import app.getarcane.sdk.models.system.EnvironmentUpdateJob
 import app.getarcane.sdk.models.system.EnvironmentUpdateJobStatus
 import app.getarcane.sdk.models.system.EnvironmentUpdateResult
@@ -31,7 +33,10 @@ class UpdateAllEnvironmentsTest {
             ),
         )
 
-        assertEquals("2 updated · 1 failed · 1 skipped · 1.2.3", updateAllLastRunSummary(job))
+        assertEquals(
+            FleetUpdateSummary(2, 1, 1, 1, 0, "1.2.3"),
+            fleetUpdateSummary(job),
+        )
     }
 
     @Test
@@ -45,11 +50,11 @@ class UpdateAllEnvironmentsTest {
             ),
         )
 
-        assertEquals("1 updated", updateAllLastRunSummary(job))
+        assertEquals(FleetUpdateSummary(1, 0, 0, 0, 0, null), fleetUpdateSummary(job))
     }
 
     @Test
-    fun finishedMessagePrefersConnectionNote() {
+    fun pendingRestartRemainsPendingInTheFleetSummary() {
         val job = EnvironmentUpdateJob(
             id = "job-3",
             status = EnvironmentUpdateJobStatus.PENDING_RESTART,
@@ -58,9 +63,44 @@ class UpdateAllEnvironmentsTest {
             ),
         )
 
-        assertEquals(
-            "The Arcane manager is restarting. Check back in a minute.",
-            updateAllFinishedMessage(job, "The Arcane manager is restarting. Check back in a minute."),
+        assertEquals(FleetUpdateSummary(0, 0, 0, 0, 1, null), fleetUpdateSummary(job))
+    }
+
+    @Test
+    fun resultSummaryAttributesMoreThanTwentyEnvironmentsExactlyOnce() {
+        val results = (0 until 26).map { index ->
+            EnvironmentUpdateResult(
+                environmentId = index.toString(),
+                environmentName = "Environment $index",
+                status = when (index % 5) {
+                    0 -> EnvironmentUpdateResultStatus.UPDATED
+                    1 -> EnvironmentUpdateResultStatus.FAILED
+                    2 -> EnvironmentUpdateResultStatus.SKIPPED_OFFLINE
+                    3 -> EnvironmentUpdateResultStatus.SKIPPED_UP_TO_DATE
+                    else -> EnvironmentUpdateResultStatus.PENDING
+                },
+            )
+        }
+        val job = EnvironmentUpdateJob(
+            id = "job-26",
+            status = EnvironmentUpdateJobStatus.COMPLETED,
+            results = results,
         )
+
+        assertEquals(FleetUpdateSummary(6, 5, 5, 5, 5, null), fleetUpdateSummary(job))
+        assertEquals(26, results.map { it.environmentId }.distinct().size)
+    }
+
+    @Test
+    fun completedUpToDateFleetIsNotReportedAsUpdated() {
+        val job = EnvironmentUpdateJob(
+            id = "job-current",
+            status = EnvironmentUpdateJobStatus.COMPLETED,
+            results = listOf(
+                EnvironmentUpdateResult("0", "Manager", EnvironmentUpdateResultStatus.SKIPPED_UP_TO_DATE),
+            ),
+        )
+
+        assertEquals(FleetUpdateSummary(0, 0, 0, 1, 0, null), fleetUpdateSummary(job))
     }
 }

@@ -1,6 +1,7 @@
 package app.getarcane.android.core
 
 import android.content.Context
+import androidx.core.content.edit
 import android.content.SharedPreferences
 import app.getarcane.sdk.models.project.DeployOptions
 import app.getarcane.sdk.models.project.DeployPullPolicy
@@ -92,14 +93,14 @@ private class SharedPreferencesProjectDeployStorage(
         if (preferences.contains(key)) preferences.getBoolean(key, false) else null
 
     override fun put(values: Map<String, Any>) {
-        preferences.edit().apply {
+        preferences.edit {
             values.forEach { (key, value) ->
                 when (value) {
                     is String -> putString(key, value)
                     is Boolean -> putBoolean(key, value)
                 }
             }
-        }.apply()
+        }
     }
 }
 

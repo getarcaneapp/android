@@ -12,6 +12,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import java.util.concurrent.TimeUnit
 
@@ -36,6 +39,7 @@ fun StaleDataBanner(info: StaleDataInfo, nowEpochMs: Long = System.currentTimeMi
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.tertiaryContainer)
+            .semantics { liveRegion = LiveRegionMode.Polite }
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         androidx.compose.foundation.layout.Row {
