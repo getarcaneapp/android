@@ -5,11 +5,13 @@ import androidx.datastore.preferences.core.edit
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -20,6 +22,20 @@ import org.junit.rules.TemporaryFolder
 class PrefsAppearanceTest {
     @get:Rule
     val temp = TemporaryFolder()
+
+    private val testScopes = mutableListOf<CoroutineScope>()
+
+    private fun testScope(): CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).also(testScopes::add)
+
+    @After
+    fun cancelTestScopes() = runBlocking {
+        testScopes.asReversed().forEach { scope ->
+            val job = scope.coroutineContext[Job]
+            scope.cancel()
+            job?.join()
+        }
+    }
 
     @Test
     fun persistedValueMappingFallsBackToAuto() {
@@ -40,7 +56,7 @@ class PrefsAppearanceTest {
 
     @Test
     fun allThemeModesPersistWithoutChangingAccent() = runBlocking {
-        val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val dataStoreScope = testScope()
         val file = File(temp.root, "arcane_prefs.preferences_pb")
         val dataStore = PreferenceDataStoreFactory.create(scope = dataStoreScope) { file }
         val prefs = Prefs(dataStore)
@@ -55,12 +71,11 @@ class PrefsAppearanceTest {
             assertEquals("#AF52DE", anotherPrefsOwner.accentHex.first())
         }
 
-        dataStoreScope.cancel()
     }
 
     @Test
     fun invalidStoredModeFallsBackWithoutChangingAccent() = runBlocking {
-        val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val dataStoreScope = testScope()
         val file = File(temp.root, "invalid_arcane_prefs.preferences_pb")
         val dataStore = PreferenceDataStoreFactory.create(scope = dataStoreScope) { file }
         val prefs = Prefs(dataStore)
@@ -72,13 +87,12 @@ class PrefsAppearanceTest {
         assertEquals(AppThemeMode.AUTO, prefs.themeMode.first())
         assertEquals("#34C759", prefs.accentHex.first())
 
-        dataStoreScope.cancel()
     }
 
     @Test
     fun appOwnedAppearanceStatePersistsAfterSetterReturns() = runBlocking {
-        val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val appearanceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val dataStoreScope = testScope()
+        val appearanceScope = testScope()
         val file = File(temp.root, "owned_arcane_prefs.preferences_pb")
         val dataStore = PreferenceDataStoreFactory.create(scope = dataStoreScope) { file }
         val appearancePreferences = AppearancePreferences(Prefs(dataStore), appearanceScope)
@@ -95,7 +109,5 @@ class PrefsAppearanceTest {
         assertEquals(AppThemeMode.LIGHT, appearancePreferences.themeMode.first { it == AppThemeMode.LIGHT })
         assertEquals("#5856D6", appearancePreferences.accentHex.first { it == "#5856D6" })
 
-        appearanceScope.cancel()
-        dataStoreScope.cancel()
     }
 }
