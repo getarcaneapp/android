@@ -1,13 +1,14 @@
 package app.getarcane.android
 
-import android.view.KeyEvent
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -15,8 +16,9 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performClick
-import androidx.test.platform.app.InstrumentationRegistry
+import androidx.compose.ui.test.pressKey
 import app.getarcane.android.core.AuthStatus
 import app.getarcane.android.core.OperationKind
 import app.getarcane.android.core.OperationRecord
@@ -33,6 +35,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
+@OptIn(ExperimentalTestApi::class)
 class ReleaseReadinessUiTest {
     @get:Rule
     val composeRule = createComposeRule()
@@ -78,7 +81,7 @@ class ReleaseReadinessUiTest {
         }
 
         composeRule.onNodeWithText("Delete test container?").assertIsDisplayed()
-        InstrumentationRegistry.getInstrumentation().sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        composeRule.onNodeWithText("Delete test container?").performKeyInput { pressKey(Key.Back) }
         composeRule.runOnIdle {
             assertEquals(0, confirmations)
             assertEquals(1, dismissals)
