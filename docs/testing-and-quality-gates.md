@@ -16,7 +16,9 @@ Use JDK 21 with the repository's Gradle wrapper. The required pull-request basel
 The first command normally completes in about two minutes on the reference development host after
 dependencies are cached. Lint normally completes in under two minutes. CI runs those gates in the
 `Build APK` job and runs the deterministic Compose/route suite separately on an API 30 x86_64
-emulator with animations disabled:
+KVM-accelerated emulator with animations disabled. The emulator lane runs for pull requests, `main`
+and tag pushes, and explicit workflow dispatches; feature-branch push builds do not duplicate an open
+pull request's emulator job:
 
 ```sh
 ./gradlew --no-daemon :app:connectedDebugAndroidTest
