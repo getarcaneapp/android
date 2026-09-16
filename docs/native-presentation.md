@@ -150,13 +150,16 @@ maximum/over-limit layouts, duplicate/missing/reversed/cyclic relationships, sel
 and viewport bounds. `:app:assembleDebug`, manifest/resource merge, APK inspection, backup-policy
 tests, and `git diff --check` also pass.
 
-Post-publication device feedback identified two compact-phone regressions before review: the custom
-full-item click detector could swallow the Dashboard switch on an OEM input stack, and optimistic
-cache emissions briefly flashed the cached-data warning before a successful revalidation. Compact
-tabs now use Material `NavigationBarItem` as the normal click owner while retaining icon long-press
-customization. All resilient list families now keep the warning hidden during optimistic cache use
-and reveal it only after live revalidation fails. Focused tests cover the Volumes-to-Dashboard
-transition and both warning phases.
+Post-publication device feedback identified two compact-phone regressions before review: nested
+click handling could swallow the Dashboard switch when the icon itself was tapped on an OEM input
+stack, and optimistic cache emissions briefly flashed the cached-data warning before a successful
+revalidation. Compact tabs now give Material `NavigationBarItem` sole ownership of ordinary taps;
+a non-consuming pointer observer and an accessibility long-click action retain customization without
+adding a nested click target. Dashboard tap and system Back also share the same root transition. All
+resilient list families keep the warning hidden during optimistic cache use and reveal it only after
+live revalidation fails. Focused JVM tests cover the selection rule and both warning phases. Compose
+instrumentation coverage is compiled for a physical Dashboard tap from Volumes and for a long press
+that customizes without selecting it; execution remains a device validation item.
 
 Live validation used three disposable Google APIs API 35 x86_64 AVDs against Arcane 2.10.2,
 container image ID `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`:

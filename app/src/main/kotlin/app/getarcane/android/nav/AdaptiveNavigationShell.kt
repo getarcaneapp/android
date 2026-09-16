@@ -1,8 +1,9 @@
 package app.getarcane.android.nav
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,7 +42,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
 
@@ -221,7 +227,6 @@ private fun ShellScaffold(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.CompactNavigationItem(
     tab: AppTab,
@@ -230,28 +235,26 @@ private fun RowScope.CompactNavigationItem(
     onLongClick: () -> Unit,
 ) {
     NavigationBarItem(
+        modifier = Modifier
+            .observeLongPress(onLongClick)
+            .semantics {
+                onLongClick(label = "Customize ${tab.tabBarTitle} tab") {
+                    onLongClick()
+                    true
+                }
+            },
         selected = selected,
         onClick = onClick,
         icon = {
-            // Keep customization on the icon while the standard NavigationBarItem owns normal
-            // taps. This avoids competing full-item click detectors swallowing a tab switch on
-            // some OEM Compose/input combinations.
             Icon(
                 tab.icon,
                 contentDescription = tab.title,
-                modifier = Modifier.combinedClickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onClick,
-                    onLongClick = onLongClick,
-                ),
             )
         },
         label = { Text(tab.tabBarTitle, maxLines = 1) },
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.CompactNavigationItem(
     icon: @Composable () -> Unit,
@@ -265,4 +268,28 @@ private fun RowScope.CompactNavigationItem(
         icon = icon,
         label = { Text(label, maxLines = 1) },
     )
+}
+
+/**
+ * Observes a physical long press without consuming ordinary taps from [NavigationBarItem]. Once
+ * the timeout is reached, subsequent pointer changes are consumed so the long press cannot also
+ * activate the tab. Keeping this outside the icon avoids a nested click target and duplicate
+ * accessibility node inside the Material navigation item.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.observeLongPress(onLongClick: () -> Unit): Modifier = pointerInput(onLongClick) {
+    awaitEachGesture {
+        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        val completedBeforeTimeout = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            waitForUpOrCancellation(pass = PointerEventPass.Initial)
+            true
+        }
+        if (completedBeforeTimeout == null) {
+            onLongClick()
+            do {
+                val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                event.changes.forEach { it.consume() }
+            } while (event.changes.any { it.pressed })
+        }
+    }
 }

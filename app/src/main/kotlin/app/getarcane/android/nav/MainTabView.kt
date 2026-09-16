@@ -255,6 +255,11 @@ fun MainTabView() {
         selectedTabId = normalizedSelection,
         hasDashboardOpenTarget = dashboardOpenTarget != null,
     )
+    fun returnToDashboard() {
+        dashboardOpenTarget = null
+        externalRouteBackTabId = null
+        selected = AppTab.Dashboard.id
+    }
     BackHandler(enabled = rootBackAction == MainBackNavigation.Action.SwitchToDashboard) {
         // Register this before child content so nested NavHosts and transient UI get first chance to
         // consume Back. Dashboard-hosted details clear back to the Dashboard, and non-Dashboard
@@ -264,13 +269,18 @@ fun MainTabView() {
             selected = externalRouteBackTabId ?: AppTab.Dashboard.id
             externalRouteBackTabId = null
         } else {
-            selected = AppTab.Dashboard.id
+            returnToDashboard()
         }
     }
 
     fun selectOrPopToRoot(tabId: String) {
         val selectedTab = AppTab.byId(tabId)
-        if (selectedTab != null && AdaptiveNavigation.usesSettingsHost(selectedTab)) {
+        if (tabId == AppTab.Dashboard.id &&
+            (normalizedSelection != AppTab.Dashboard.id || dashboardOpenTarget != null)
+        ) {
+            // The Dashboard item and system Back intentionally use the same state transition.
+            returnToDashboard()
+        } else if (selectedTab != null && AdaptiveNavigation.usesSettingsHost(selectedTab)) {
             dashboardOpenTarget = null
             externalRouteBackTabId = null
             settingsTabRequestId += 1
