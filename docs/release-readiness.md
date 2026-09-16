@@ -43,7 +43,7 @@ failures/limitations, and cleanup. Required evidence is:
   flows, including animation scale 0/reduced-motion observations;
 - backup/restore allowlist inspection and a disposable restore regression; previous-debug-to-candidate
   upgrade plus rollback/data-policy observations;
-- clean-checkout sibling-SDK build, remote-SDK fallback build, unsigned release build, packaged
+- clean-checkout remote-SDK fallback build, matching sibling-SDK build, unsigned release build, packaged
   manifest/permissions/exported components/shortcuts/widget/backup/signing inspection, dependency and
   secret/artifact scan, `git diff --check`, and an independent complete-diff/release review;
 - accurate changelog/release notes, known limitations, F-Droid metadata state, source-tag/version
@@ -121,10 +121,13 @@ sufficient; no SDK source change or SDK PR was required.
 - **Automated lanes:** `:app:testDebugUnitTest :app:assembleDebug` passed 380 tests in 66 suites with
   zero failures/errors/skips. `:app:lintDebug` passed with no new findings; the reviewed baseline has
   45 exact pre-existing errors and one advisory hint. The unsigned `:app:assembleRelease` build
-  passed, and `apksigner` rejected the output as unsigned as intended. Instrumentation passed 9/9 on
-  a fresh API 24 image, the retained API 30 regression image, and a fresh API 35 image. The API 24
-  run installed/launched the app and exercised the suite; its API-29 system-bar assertion was
-  assumption-skipped internally.
+  passed, and `apksigner` rejected the output as unsigned as intended. A fresh GitHub clone of commit
+  `94e972ae03afd3a9fe133ad78a2861fadc4fc36d` had no sibling SDK, `local.properties`, or signing
+  variables; `-Parcane.remoteSdk` resolved public SDK `main` to
+  `b29695d547b78389ed7230b35cd133f7046b4b52` and passed all 380 unit tests plus debug and unsigned
+  release assembly. Instrumentation passed 9/9 on a fresh API 24 image, the retained API 30
+  regression image, and a fresh API 35 image. The API 24 run installed/launched the app and exercised
+  the suite; its API-29 system-bar assertion was assumption-skipped internally.
 - **Server lane:** API 30 authenticated against disposable Arcane 2.10.2 image digest
   `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc` and a second isolated
   Arcane 2.11.1 image digest

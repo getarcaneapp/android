@@ -1336,10 +1336,13 @@ The standard checks are:
   and anti-feature guidance was rechecked and recorded in `fdroid-release-preparation.md`. Identity,
   BSD-3-Clause app license/notices, Fastlane metadata including `260901`, toolchain, source/tag/update
   policy, unsigned signing boundary, network disclosure, and an exact-srclib recipe design are
-  documented. `:app:assembleRelease` produced an unsigned APK, but eligibility is blocked: the pinned
-  SDK has no license file, and its Android credentials module packages proprietary Google Play
-  Services auth/FIDO dependencies. Therefore no official-tool recipe success, reproducibility, or
-  metadata-pass claim is made. No key, tag, submission, external metadata PR, or release was created.
+  documented. A fresh clone of Android `94e972ae03afd3a9fe133ad78a2861fadc4fc36d`
+  with `-Parcane.remoteSdk`, no sibling/local configuration, and no signing variables resolved SDK
+  `b29695d547b78389ed7230b35cd133f7046b4b52`, passed 380 unit tests, and assembled debug plus unsigned
+  release APKs. Eligibility is still blocked: the pinned SDK has no license file, and its Android
+  credentials module packages proprietary Google Play Services auth/FIDO dependencies. Therefore no
+  official-tool recipe success, reproducibility, or metadata-pass claim is made. No key, tag,
+  submission, external metadata PR, or release was created.
 
 - [x] **PAR-406 — Define Android alpha/beta release criteria**
 

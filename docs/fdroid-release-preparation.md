@@ -68,6 +68,12 @@ for `https://github.com/getarcaneapp/libarcane-kotlin.git` at an exact full comm
 `../libarcane-kotlin`, and let the existing composite build consume it. Network fetching from Gradle
 source control during the isolated build must not be relied upon.
 
+Ordinary fallback buildability was verified from a fresh GitHub clone of Android
+`94e972ae03afd3a9fe133ad78a2861fadc4fc36d` with no sibling SDK, `local.properties`, or signing
+variables. `-Parcane.remoteSdk` resolved public SDK `main` to
+`b29695d547b78389ed7230b35cd133f7046b4b52`; 380 unit tests and debug/unsigned-release assembly
+passed. This validates the documented fallback, not the candidate F-Droid recipe or reproducibility.
+
 Candidate external metadata structure after the SDK license blocker is resolved:
 
 ```yaml
