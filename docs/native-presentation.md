@@ -142,13 +142,21 @@ and canonical graph identity remain valid.
 
 ## Automated and live validation (2026-09-16)
 
-The final JVM baseline contains 374 tests. The 60-test focused presentation run covers adaptive
+The final JVM baseline contains 377 tests. The 63-test focused presentation run covers adaptive
 breakpoints and authorized destinations; existing selection, restoration, Back, route, and shortcut
 rules; snapshot atomicity, strict schema/privacy/bounds, session fences, unconfigured/sign-out
 transitions, and widget model/routing/provider policy; plus topology normalization, deterministic
 maximum/over-limit layouts, duplicate/missing/reversed/cyclic relationships, selection identity,
 and viewport bounds. `:app:assembleDebug`, manifest/resource merge, APK inspection, backup-policy
 tests, and `git diff --check` also pass.
+
+Post-publication device feedback identified two compact-phone regressions before review: the custom
+full-item click detector could swallow the Dashboard switch on an OEM input stack, and optimistic
+cache emissions briefly flashed the cached-data warning before a successful revalidation. Compact
+tabs now use Material `NavigationBarItem` as the normal click owner while retaining icon long-press
+customization. All resilient list families now keep the warning hidden during optimistic cache use
+and reveal it only after live revalidation fails. Focused tests cover the Volumes-to-Dashboard
+transition and both warning phases.
 
 Live validation used three disposable Google APIs API 35 x86_64 AVDs against Arcane 2.10.2,
 container image ID `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`:

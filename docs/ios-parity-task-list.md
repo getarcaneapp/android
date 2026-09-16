@@ -1066,7 +1066,7 @@ The standard checks are:
   privacy-reviewed aggregates and display names. The receiver is non-exported. Glance's internal
   widget-manager bookkeeping and the snapshot remain excluded by the unchanged backup allowlist.
 
-  **Automated and live evidence (2026-09-16):** The green 374-test baseline and 60-test focused
+  **Automated and live evidence (2026-09-16):** The green 377-test baseline and 63-test focused
   presentation run cover snapshot privacy/schema/bounds/session fencing, material refresh decisions,
   safe route encoding, responsive model states, provider manifest, and backup policy. On the API 35
   compact phone the widget was added, resized, removed, reinstalled/re-added, and observed fresh
@@ -1107,7 +1107,7 @@ The standard checks are:
   preserving compact Back. No second navigation framework, adaptive store, or broad screen redesign
   was introduced.
 
-  **Automated and live evidence (2026-09-16):** The green 374-test baseline and focused 60-test run
+  **Automated and live evidence (2026-09-16):** The green 377-test baseline and focused 63-test run
   cover breakpoints, authorization, configurable selection, restoration, Back, route construction,
   shortcuts, and session/environment fences. Disposable API 35 validation covered a 1080 x 2400
   compact phone, a 2208 x 1840 foldable across expanded/half-open/1080 x 2092 compact/1600 x 1840
@@ -1197,7 +1197,7 @@ The standard checks are:
   grouped list remains the direct accessible and forced over-limit fallback; selection is fenced by
   environment and canonical graph identity, and refresh races cannot publish an old graph.
 
-  **Automated and live evidence (2026-09-16):** The green 374-test baseline includes deterministic
+  **Automated and live evidence (2026-09-16):** The green 377-test baseline includes deterministic
   maximum hard-bound and over-limit graphs plus cyclic, duplicate-node/edge, missing-endpoint,
   malformed-label/ID, isolated-node, layout, viewport, and selection tests. Against Arcane 2.10.2
   image `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`, Docker inspection

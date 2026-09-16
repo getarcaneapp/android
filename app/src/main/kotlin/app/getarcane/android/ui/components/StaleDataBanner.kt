@@ -20,6 +20,15 @@ data class StaleDataInfo(
     val refreshError: String? = null,
 )
 
+/**
+ * The first cache emission is an optimistic value while revalidation is pending (or while the
+ * policy still considers it current). Surface a warning only after a live refresh actually fails.
+ */
+internal fun staleDataInfoAfterRefreshFailure(
+    storedAtEpochMs: Long,
+    refreshError: String?,
+): StaleDataInfo? = refreshError?.let { StaleDataInfo(storedAtEpochMs, it) }
+
 @Composable
 fun StaleDataBanner(info: StaleDataInfo, nowEpochMs: Long = System.currentTimeMillis()) {
     val age = staleAgeLabel(nowEpochMs - info.storedAtEpochMs)

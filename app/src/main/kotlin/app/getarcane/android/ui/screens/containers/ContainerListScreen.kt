@@ -71,6 +71,7 @@ import app.getarcane.android.ui.components.ContentUnavailable
 import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.components.StaleDataBanner
 import app.getarcane.android.ui.components.StaleDataInfo
+import app.getarcane.android.ui.components.staleDataInfoAfterRefreshFailure
 import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.StatusRunning
 import app.getarcane.android.ui.theme.StatusUnknown
@@ -140,7 +141,7 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
             when (read) {
                 is ResilientRead.Stale -> {
                     loadState = completeContainerLoad(read.value)
-                    staleInfo = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                    staleInfo = staleDataInfoAfterRefreshFailure(read.storedAtEpochMs, read.refreshError)
                 }
                 is ResilientRead.Fresh -> {
                     loadState = completeContainerLoad(read.value)

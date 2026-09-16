@@ -1,25 +1,20 @@
 package app.getarcane.android.nav
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Settings
@@ -29,6 +24,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
@@ -45,8 +41,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
@@ -234,13 +228,28 @@ private fun RowScope.CompactNavigationItem(
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-) = CompactNavigationItem(
-    icon = { Icon(tab.icon, contentDescription = tab.title) },
-    label = tab.tabBarTitle,
-    selected = selected,
-    onClick = onClick,
-    onLongClick = onLongClick,
-)
+) {
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = {
+            // Keep customization on the icon while the standard NavigationBarItem owns normal
+            // taps. This avoids competing full-item click detectors swallowing a tab switch on
+            // some OEM Compose/input combinations.
+            Icon(
+                tab.icon,
+                contentDescription = tab.title,
+                modifier = Modifier.combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                ),
+            )
+        },
+        label = { Text(tab.tabBarTitle, maxLines = 1) },
+    )
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -249,32 +258,11 @@ private fun RowScope.CompactNavigationItem(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
 ) {
-    val tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-    Column(
-        modifier = Modifier
-            .weight(1f)
-            .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-                onLongClick = onLongClick,
-            )
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Box(
-            Modifier
-                .clip(RoundedCornerShape(50))
-                .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
-                .padding(horizontal = 18.dp, vertical = 4.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            icon()
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, color = tint)
-    }
+    NavigationBarItem(
+        selected = selected,
+        onClick = onClick,
+        icon = icon,
+        label = { Text(label, maxLines = 1) },
+    )
 }

@@ -98,11 +98,13 @@ sync, and atomic rename. Invalid, corrupt, oversized, mismatched, expired, and u
 are deleted as misses. Version 1 has no predecessor migration; future schemas require an explicit
 decoder/migration or fail closed.
 
-The first cache value is always `Stale`, even inside its revalidation interval. Network success is
-`Fresh`; refresh failure retains an explicitly stale value with a closed user-facing error. A cache
-hit is never labelled live. Equal scoped requests coalesce onto one network load. Per-key request
-sequence and global invalidation generations fence late network results, so an older refresh or a
-result completing after invalidation cannot overwrite newer state.
+The first cache value is always typed `Stale`, even inside its revalidation interval. Screens may
+present that value optimistically while revalidation is pending, but do not flash the cached-data
+warning during an otherwise successful load. Network success is `Fresh`; refresh failure retains the
+value and then exposes the cached-data warning with a closed user-facing error. A cache hit is never
+published as live external status. Equal scoped requests coalesce onto one network load. Per-key
+request sequence and global invalidation generations fence late network results, so an older refresh
+or a result completing after invalidation cannot overwrite newer state.
 
 Connected Dashboard streams remain the authoritative source of live stream totals. Cached REST
 state is only the marked fallback and never owns or competes with the stream. Successful direct

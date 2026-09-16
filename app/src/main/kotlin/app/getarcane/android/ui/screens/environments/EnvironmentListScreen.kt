@@ -56,6 +56,7 @@ import app.getarcane.android.ui.components.SkeletonListLoadingView
 import app.getarcane.android.ui.components.StatusBadge
 import app.getarcane.android.ui.components.StaleDataBanner
 import app.getarcane.android.ui.components.StaleDataInfo
+import app.getarcane.android.ui.components.staleDataInfoAfterRefreshFailure
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGray
 import app.getarcane.android.ui.theme.ArcaneGreen
@@ -109,7 +110,7 @@ fun EnvironmentListScreen(onOpen: (String) -> Unit) {
             when (read) {
                 is ResilientRead.Stale -> {
                     state = Loadable.Success(read.value)
-                    staleInfo = StaleDataInfo(read.storedAtEpochMs, read.refreshError)
+                    staleInfo = staleDataInfoAfterRefreshFailure(read.storedAtEpochMs, read.refreshError)
                     manager.shortcutPublisher.removeDynamicShortcuts()
                 }
                 is ResilientRead.Fresh -> {
