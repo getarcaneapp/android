@@ -151,15 +151,24 @@ and viewport bounds. `:app:assembleDebug`, manifest/resource merge, APK inspecti
 tests, and `git diff --check` also pass.
 
 Post-publication device feedback identified two compact-phone regressions before review: nested
-click handling could swallow the Dashboard switch when the icon itself was tapped on an OEM input
-stack, and optimistic cache emissions briefly flashed the cached-data warning before a successful
+click handling could swallow a tab tap on an OEM input stack, while the Dashboard handler retained
+its first-composition selection and could therefore acknowledge a later tap without leaving another
+tab. Optimistic cache emissions also briefly flashed the cached-data warning before a successful
 revalidation. Compact tabs now give Material `NavigationBarItem` sole ownership of ordinary taps;
 a non-consuming pointer observer and an accessibility long-click action retain customization without
-adding a nested click target. Dashboard tap and system Back also share the same root transition. All
-resilient list families keep the warning hidden during optimistic cache use and reveal it only after
-live revalidation fails. Focused JVM tests cover the selection rule and both warning phases. Compose
-instrumentation coverage is compiled for a physical Dashboard tap from Volumes and for a long press
-that customizes without selecting it; execution remains a device validation item.
+adding a nested click target. The Dashboard handler reads the latest normalized selection and shares
+the same root transition as system Back. All resilient list families keep the warning hidden during
+optimistic cache use and reveal it only after live revalidation fails. Focused JVM tests cover the
+selection rule and both warning phases.
+
+The follow-up was reproduced and verified in the authenticated debug APK on a disposable clone of
+the existing Android 11/API 30 AVD against the retained Arcane 2.10.2 instance. Before the fix,
+instrumented logs proved the Dashboard click arrived while its handler still read `dashboard` with
+Containers visibly selected. After the fix, physical taps returned from Containers, Images,
+Projects, and Settings to Dashboard; reinstall plus process restart preserved authentication and
+also returned from restored Containers. The two Compose device tests passed for the exact
+Dashboard-to-Volumes-to-Dashboard sequence and for long-press customization without accidental
+selection.
 
 Live validation used three disposable Google APIs API 35 x86_64 AVDs against Arcane 2.10.2,
 container image ID `sha256:62d8001c3568e03acf66b53d4bdd97fcca59ae9e43f1561d8f720f38b738ffbc`:

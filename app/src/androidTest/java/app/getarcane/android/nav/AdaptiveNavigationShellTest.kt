@@ -8,7 +8,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -25,9 +24,9 @@ class AdaptiveNavigationShellTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun tappingDashboardIconSwitchesFromVolumes() {
+    fun tappingAnotherTabThenDashboardSwitchesBack() {
         composeRule.setContent {
-            var selectedTabId by remember { mutableStateOf(AppTab.Volumes.id) }
+            var selectedTabId by remember { mutableStateOf(AppTab.Dashboard.id) }
             ArcaneTheme {
                 AdaptiveNavigationShell(
                     pinnedTabs = listOf(
@@ -41,13 +40,21 @@ class AdaptiveNavigationShellTest {
                     snackbarHostState = remember { SnackbarHostState() },
                     onSelect = { selectedTabId = it },
                     onCompactLongClick = {},
-                    content = {},
-                )
+                ) {
+                    Text(selectedTabId, Modifier.testTag("result"))
+                }
             }
         }
 
-        composeRule.onNodeWithContentDescription("Dashboard").performTouchInput { click() }
-        composeRule.onNodeWithContentDescription("Dashboard").assertIsSelected()
+        composeRule
+            .onNodeWithContentDescription("Volumes", useUnmergedTree = true)
+            .performTouchInput { click() }
+        composeRule.onNodeWithTag("result").assertTextEquals("volumes")
+
+        composeRule
+            .onNodeWithContentDescription("Dashboard", useUnmergedTree = true)
+            .performTouchInput { click() }
+        composeRule.onNodeWithTag("result").assertTextEquals("dashboard")
     }
 
     @Test
@@ -77,7 +84,9 @@ class AdaptiveNavigationShellTest {
             }
         }
 
-        composeRule.onNodeWithContentDescription("Dashboard").performTouchInput { longClick() }
+        composeRule
+            .onNodeWithContentDescription("Dashboard", useUnmergedTree = true)
+            .performTouchInput { longClick() }
         composeRule.onNodeWithTag("result").assertTextEquals("volumes:dashboard")
     }
 }

@@ -1117,7 +1117,11 @@ The standard checks are:
   keyboard/D-pad navigation were exercised on representative expanded resource/topology flows.
   Operation notifications retain the already-tested authenticated-route coordinator and were
   regression-covered rather than given a second adaptive route path. The complete device and cleanup
-  record is in [Android-native presentation batch](native-presentation.md).
+  record is in [Android-native presentation batch](native-presentation.md). Follow-up API 30
+  authenticated validation reproduced a stale first-composition Dashboard callback, then verified
+  the corrected current-selection handler from Containers, Images, Projects, Settings, reinstall,
+  and process restart. Two Compose device tests passed the Dashboard-to-Volumes-to-Dashboard touch
+  sequence and long-press-without-selection behavior.
 
 - [x] **PAR-305 — Define authenticated resource routes and Android shortcuts**
 

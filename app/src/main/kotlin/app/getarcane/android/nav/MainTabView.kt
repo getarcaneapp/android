@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -250,6 +251,7 @@ fun MainTabView() {
         hostedResourceTabId = hostedResourceTabId,
         visibleTabs = visible,
     )
+    val latestNormalizedSelection by rememberUpdatedState(normalizedSelection)
 
     val rootBackAction = MainBackNavigation.resolve(
         selectedTabId = normalizedSelection,
@@ -276,7 +278,7 @@ fun MainTabView() {
     fun selectOrPopToRoot(tabId: String) {
         val selectedTab = AppTab.byId(tabId)
         if (tabId == AppTab.Dashboard.id &&
-            (normalizedSelection != AppTab.Dashboard.id || dashboardOpenTarget != null)
+            (latestNormalizedSelection != AppTab.Dashboard.id || dashboardOpenTarget != null)
         ) {
             // The Dashboard item and system Back intentionally use the same state transition.
             returnToDashboard()
@@ -286,10 +288,10 @@ fun MainTabView() {
             settingsTabRequestId += 1
             settingsInitialDestination = SettingsInitialDestination.Tab(tabId, settingsTabRequestId)
             selected = SETTINGS_ID
-        } else if (dashboardOpenTarget != null && normalizedSelection == AppTab.Dashboard.id && tabId == AppTab.Dashboard.id) {
+        } else if (dashboardOpenTarget != null && latestNormalizedSelection == AppTab.Dashboard.id && tabId == AppTab.Dashboard.id) {
             dashboardOpenTarget = null
             externalRouteBackTabId = null
-        } else if (MainTabSelection.shouldPopToRootOnTap(normalizedSelection, tabId)) {
+        } else if (MainTabSelection.shouldPopToRootOnTap(latestNormalizedSelection, tabId)) {
             dashboardOpenTarget = null
             externalRouteBackTabId = null
             popToRootSignals[tabId] = (popToRootSignals[tabId] ?: 0) + 1
