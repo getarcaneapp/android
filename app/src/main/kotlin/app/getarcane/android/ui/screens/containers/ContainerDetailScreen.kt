@@ -30,6 +30,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Source
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.MoreVert
@@ -129,6 +132,9 @@ fun ContainerDetailScreen(
     onLogs: (String) -> Unit,
     onTerminal: (String) -> Unit,
     onInspect: (String) -> Unit,
+    onEdit: ((String) -> Unit)? = null,
+    onCommit: ((String) -> Unit)? = null,
+    onCompose: ((String) -> Unit)? = null,
 ) {
     val manager = LocalArcaneManager.current
     val operationStore = LocalOperationStore.current
@@ -272,11 +278,35 @@ fun ContainerDetailScreen(
                             Icon(Icons.Filled.Terminal, "Terminal")
                         }
                     }
-                    if (availableActions.any { it in setOf(ContainerDetailAction.Kill, ContainerDetailAction.Delete) }) Box {
+                    if (onEdit != null || onCommit != null || onCompose != null ||
+                        availableActions.any { it in setOf(ContainerDetailAction.Kill, ContainerDetailAction.Delete) }
+                    ) Box {
                         IconButton(onClick = { overflowOpen = true }, enabled = !busy) {
                             Icon(Icons.Filled.MoreVert, "More")
                         }
                         DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                            if (onEdit != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Edit & Recreate") },
+                                    onClick = { overflowOpen = false; onEdit(id) },
+                                    leadingIcon = { Icon(Icons.Filled.Edit, null) },
+                                )
+                            }
+                            if (onCommit != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Commit to Image") },
+                                    onClick = { overflowOpen = false; onCommit(id) },
+                                    leadingIcon = { Icon(Icons.Filled.Save, null) },
+                                )
+                            }
+                            if (onCompose != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Convert to Compose") },
+                                    onClick = { overflowOpen = false; onCompose(id) },
+                                    leadingIcon = { Icon(Icons.Filled.Source, null) },
+                                )
+                            }
+                            if (onEdit != null || onCommit != null || onCompose != null) HorizontalDivider()
                             if (ContainerDetailAction.Kill in availableActions) {
                                 DropdownMenuItem(
                                     text = { Text("Force Kill", color = ArcaneRed) },

@@ -20,6 +20,14 @@ class ServerFeatureSupportTest {
         assertFalse(version("1.99.0", semver = true).supportsContainerReliabilityActions())
     }
 
+    @Test
+    fun standaloneManagementGateStartsAtArcane2100() {
+        assertFalse(version("2.9.9").supportsContainerManagementWorkflows())
+        assertTrue(version("2.10.0").supportsContainerManagementWorkflows())
+        assertTrue(version("v2.12.0").supportsContainerManagementWorkflows())
+        assertFalse(version("dev", semver = false).supportsContainerManagementWorkflows())
+    }
+
     private fun version(value: String, semver: Boolean = true) = VersionInfo(
         currentVersion = value,
         revision = "revision",

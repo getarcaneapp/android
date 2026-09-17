@@ -2,6 +2,9 @@ package app.getarcane.android.ui.screens.containers
 
 import androidx.annotation.StringRes
 import app.getarcane.android.R
+import app.getarcane.sdk.models.role.Permission
+import app.getarcane.sdk.models.user.User
+import app.getarcane.sdk.models.user.hasPermission
 
 internal enum class ContainerDetailAction(
     val permission: String,
@@ -49,4 +52,29 @@ internal fun availableContainerActions(
             -> true
         }
     }
+}
+
+internal data class ContainerWorkflowAccess(
+    val canCreate: Boolean,
+    val canEdit: Boolean,
+    val canCommit: Boolean,
+    val canCompose: Boolean,
+)
+
+internal fun containerWorkflowAccess(
+    user: User?,
+    environmentId: String,
+    offline: Boolean,
+    supportsManagement: Boolean,
+    canCreateProjectSurface: Boolean,
+): ContainerWorkflowAccess {
+    if (offline || user == null) return ContainerWorkflowAccess(false, false, false, false)
+    return ContainerWorkflowAccess(
+        canCreate = supportsManagement && user.hasPermission(Permission.Containers.CREATE, environmentId),
+        canEdit = supportsManagement && user.hasPermission(Permission.Containers.EDIT, environmentId),
+        canCommit = supportsManagement && user.hasPermission(Permission.Images.COMMIT, environmentId),
+        canCompose = supportsManagement && canCreateProjectSurface &&
+            user.hasPermission(Permission.Containers.READ, environmentId) &&
+            user.hasPermission(Permission.Projects.CREATE, environmentId),
+    )
 }

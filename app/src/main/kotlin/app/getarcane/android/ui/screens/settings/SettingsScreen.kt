@@ -91,16 +91,19 @@ internal object SettingsRoutes {
     const val AUTHENTICATION = "authentication"
     const val BUILDS = "builds"
     const val SYSTEM = "system"
-    const val SYSTEM_CATEGORY = "system/{categoryId}"
+    const val SYSTEM_CATEGORY = "system/{categoryId}/{environmentId}"
     const val CONTAINER_REGISTRIES = "container-registries"
     const val TEMPLATE_REGISTRIES = "template-registries"
-    const val UPGRADE = "upgrade"
+    const val UPGRADE = "upgrade/{environmentId}"
+
+    fun systemCategory(categoryId: String, environmentId: String): String =
+        "system/$categoryId/$environmentId"
+
+    fun upgrade(environmentId: String): String = "upgrade/$environmentId"
 }
 
 internal fun settingsRouteAccessOwner(route: String?): AppTab? {
-    AppTab.byId(route.orEmpty())?.let { tab ->
-        if (tab.requiresAdmin || tab.requiresV2) return tab
-    }
+    AppTab.byId(route.orEmpty())?.let { return it }
     return when (route) {
         SettingsRoutes.USER_DETAIL,
         SettingsRoutes.USER_ROLE_ASSIGNMENTS -> AppTab.Users
@@ -119,9 +122,11 @@ internal fun shouldResetUnauthorizedSettingsRoute(
     supportsV2: Boolean,
     supportsPost26: Boolean,
     canReadVariables: Boolean = true,
+    canAccessOwner: ((AppTab) -> Boolean)? = null,
 ): Boolean {
     if (route == SettingsRoutes.ACCOUNT_SECURITY) return !supportsPost26
     val owner = settingsRouteAccessOwner(route) ?: return false
+    canAccessOwner?.let { return !it(owner) }
     return (owner.requiresAdmin && !isAdmin) ||
         (owner.requiresV2 && !supportsV2) ||
         (owner == AppTab.Variables && !canReadVariables)
@@ -129,8 +134,6 @@ internal fun shouldResetUnauthorizedSettingsRoute(
 
 internal fun isEnvironmentScopedSettingsDetail(route: String?): Boolean = route in setOf(
     SettingsRoutes.NOTIFICATION_PROVIDER,
-    SettingsRoutes.SYSTEM_CATEGORY,
-    SettingsRoutes.UPGRADE,
 )
 
 sealed interface SettingsInitialDestination {
@@ -160,13 +163,23 @@ fun SettingsScreen(
     var navigationEnvironmentId by remember { mutableStateOf(environmentId) }
 
     nav.PopToRootOnSignal(popToRootSignal, rootRoute = SettingsRoutes.ROOT)
-    LaunchedEffect(currentRoute, isAdmin, supportsV2, supportsPost26, canReadVariables) {
+    LaunchedEffect(
+        currentRoute,
+        isAdmin,
+        supportsV2,
+        supportsPost26,
+        canReadVariables,
+        manager.currentUser,
+        manager.permissionsManifest,
+        environmentId,
+    ) {
         if (shouldResetUnauthorizedSettingsRoute(
                 currentRoute,
                 isAdmin,
                 supportsV2,
                 supportsPost26,
                 canReadVariables,
+                manager::canAccess,
             )
         ) {
             nav.popBackStack(SettingsRoutes.ROOT, inclusive = false)
@@ -183,7 +196,7 @@ fun SettingsScreen(
     LaunchedEffect(initialDestination) {
         when (initialDestination) {
             SettingsInitialDestination.Root -> Unit
-            SettingsInitialDestination.Upgrade -> nav.navigate(SettingsRoutes.UPGRADE) {
+            SettingsInitialDestination.Upgrade -> nav.navigate(SettingsRoutes.upgrade(manager.activeEnvironmentId.rawValue)) {
                 popUpTo(SettingsRoutes.ROOT)
                 launchSingleTop = true
             }
@@ -256,10 +269,21 @@ fun SettingsScreen(
         composable(SettingsRoutes.SYSTEM_CATEGORY) { entry ->
             SettingsCategoryScreen(
                 categoryId = entry.arguments?.getString("categoryId").orEmpty(),
+                environmentId = app.getarcane.sdk.EnvironmentId(
+                    entry.arguments?.getString("environmentId").orEmpty(),
+                ),
+                environmentName = entry.arguments?.getString("environmentId").orEmpty(),
                 onBack = { nav.popBackStack() },
             )
         }
-        composable(SettingsRoutes.UPGRADE) { SystemUpgradeScreen(onBack = { nav.popBackStack() }) }
+        composable(SettingsRoutes.UPGRADE) { entry ->
+            val environmentId = entry.arguments?.getString("environmentId").orEmpty()
+            SystemUpgradeScreen(
+                onBack = { nav.popBackStack() },
+                environmentId = app.getarcane.sdk.EnvironmentId(environmentId),
+                environmentName = environmentId,
+            )
+        }
     }
 }
 
@@ -278,9 +302,7 @@ private fun SettingsRoot(nav: NavHostController) {
         AppTab.entries.filter { tab ->
             tab.section == section &&
                 tab !in pinnedTabs &&
-                (isAdmin || !tab.requiresAdmin) &&
-                (supportsV2 || !tab.requiresV2) &&
-                (tab != AppTab.Variables || canReadVariables)
+                manager.canAccess(tab)
         }
 
     Scaffold(
@@ -334,6 +356,13 @@ private fun SettingsRoot(nav: NavHostController) {
 
 @Composable
 private fun SettingsTabDestination(tab: AppTab, nav: NavHostController) {
+    val manager = LocalArcaneManager.current
+    if (!manager.canAccess(tab)) {
+        LaunchedEffect(tab, manager.currentUser, manager.permissionsManifest, manager.activeEnvironmentId) {
+            nav.popBackStack(SettingsRoutes.ROOT, inclusive = false)
+        }
+        return
+    }
     when (tab) {
         AppTab.Dashboard -> DashboardScreen()
         AppTab.Containers -> ContainersScreen()
@@ -346,7 +375,6 @@ private fun SettingsTabDestination(tab: AppTab, nav: NavHostController) {
         AppTab.Activities -> ActivitiesTab()
         AppTab.Events -> EventsScreen()
         AppTab.Variables -> {
-            val manager = LocalArcaneManager.current
             VariablesScreen(
                 client = manager.client,
                 currentUser = manager.currentUser,
@@ -364,8 +392,12 @@ private fun SettingsTabDestination(tab: AppTab, nav: NavHostController) {
         AppTab.Notifications -> NotificationSettingsScreen(onOpenProvider = { provider -> nav.navigate("notifications/${provider.wire}") })
         AppTab.Webhooks -> WebhooksScreen()
         AppTab.SystemSettings -> SystemSettingsScreen(
-            onOpenCategory = { id -> nav.navigate("system/$id") },
-            onUpgrade = { nav.navigate(SettingsRoutes.UPGRADE) },
+            onOpenCategory = { id, environmentId, _ ->
+                nav.navigate(SettingsRoutes.systemCategory(id, environmentId.rawValue))
+            },
+            onUpgrade = { environmentId, _ ->
+                nav.navigate(SettingsRoutes.upgrade(environmentId.rawValue))
+            },
         )
         AppTab.Authentication -> AuthenticationSettingsScreen(onBack = { nav.popBackStack() })
         AppTab.Builds -> BuildSettingsScreen(onBack = { nav.popBackStack() })

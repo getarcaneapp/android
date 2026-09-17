@@ -28,6 +28,8 @@
     <string name="auth_sign_in_action">Sign in</string>
     <string name="auth_cancel_passkey_action">Cancel passkey request</string>
     <string name="auth_change_server_action">Change server</string>
+    <string name="auth_checking_sign_in_methods">Checking available sign-in methods…</string>
+    <string name="auth_no_sign_in_methods">This server has no supported sign-in method enabled. Check its authentication configuration or change server.</string>
     <string name="auth_mfa_title">Two-factor authentication</string>
     <string name="auth_mfa_instructions">Use a registered passkey or one of your recovery codes.</string>
     <string name="auth_mfa_continue_passkey_action">Continue with passkey</string>

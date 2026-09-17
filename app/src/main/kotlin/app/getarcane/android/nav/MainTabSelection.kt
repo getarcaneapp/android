@@ -9,11 +9,13 @@ internal object MainTabSelection {
         visibleTabs: List<AppTab>,
         isAdmin: Boolean,
         supportsV2: Boolean,
+        canAccess: ((AppTab) -> Boolean)? = null,
     ): String = normalize(
         selectedTabId = storedTabId ?: AppTab.Dashboard.id,
         visibleTabs = visibleTabs,
         isAdmin = isAdmin,
         supportsV2 = supportsV2,
+        canAccess = canAccess,
     )
 
     fun normalize(
@@ -21,7 +23,8 @@ internal object MainTabSelection {
         visibleTabs: List<AppTab>,
         isAdmin: Boolean,
         supportsV2: Boolean,
-    ): String = if (isSelectable(selectedTabId, isAdmin, supportsV2)) {
+        canAccess: ((AppTab) -> Boolean)? = null,
+    ): String = if (isSelectable(selectedTabId, isAdmin, supportsV2, canAccess)) {
         selectedTabId
     } else {
         visibleTabs.firstOrNull()?.id ?: AppTab.Dashboard.id
@@ -47,9 +50,11 @@ internal object MainTabSelection {
         tabId: String,
         isAdmin: Boolean,
         supportsV2: Boolean,
+        canAccess: ((AppTab) -> Boolean)?,
     ): Boolean {
         if (tabId == SETTINGS_ID) return true
         val tab = AppTab.byId(tabId) ?: return false
-        return (!tab.requiresAdmin || isAdmin) && (!tab.requiresV2 || supportsV2)
+        return canAccess?.invoke(tab)
+            ?: ((!tab.requiresAdmin || isAdmin) && (!tab.requiresV2 || supportsV2))
     }
 }

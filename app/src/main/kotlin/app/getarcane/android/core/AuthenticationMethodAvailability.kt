@@ -22,21 +22,34 @@ internal data class PasskeyAvailabilityResult(
  * same client, including a probe that was in flight while logout started.
  */
 internal data class AuthenticationMethodAvailability(
+    val localProbeGeneration: Long = 0,
     val oidcProbeGeneration: Long = 0,
     val passkeyProbeGeneration: Long = 0,
+    val localState: AuthenticationMethodState = AuthenticationMethodState.LOADING,
     val oidcState: AuthenticationMethodState = AuthenticationMethodState.LOADING,
     val oidcStatus: OidcStatusInfo? = null,
     val passkeyLoginState: AuthenticationMethodState = AuthenticationMethodState.LOADING,
     val passkeyBridgeState: AuthenticationMethodState = AuthenticationMethodState.LOADING,
 ) {
     fun beginAll(): AuthenticationMethodAvailability = copy(
+        localProbeGeneration = localProbeGeneration + 1,
         oidcProbeGeneration = oidcProbeGeneration + 1,
         passkeyProbeGeneration = passkeyProbeGeneration + 1,
+        localState = AuthenticationMethodState.LOADING,
         oidcState = AuthenticationMethodState.LOADING,
         oidcStatus = null,
         passkeyLoginState = AuthenticationMethodState.LOADING,
         passkeyBridgeState = AuthenticationMethodState.LOADING,
     )
+
+    fun applyLocal(
+        probeGeneration: Long,
+        state: AuthenticationMethodState,
+    ): AuthenticationMethodAvailability = if (probeGeneration == localProbeGeneration) {
+        copy(localState = state)
+    } else {
+        this
+    }
 
     fun beginPasskeyBridgeProbe(): AuthenticationMethodAvailability = copy(
         passkeyProbeGeneration = passkeyProbeGeneration + 1,
@@ -80,19 +93,44 @@ internal data class LoginActionVisibility(
     val showOidc: Boolean,
     val showOidcDisclosure: Boolean,
     val showPassword: Boolean,
+    val checking: Boolean,
+    val noMethodsAvailable: Boolean,
 )
 
 internal fun loginActionVisibility(
     availability: AuthenticationMethodAvailability,
     showPasswordForm: Boolean,
 ): LoginActionVisibility {
+    val checking = availability.localState == AuthenticationMethodState.LOADING ||
+        availability.oidcState == AuthenticationMethodState.LOADING ||
+        availability.passkeyLoginState == AuthenticationMethodState.LOADING
+    val localAvailable = availability.localState == AuthenticationMethodState.AVAILABLE
     val oidcAvailable = availability.oidcState == AuthenticationMethodState.AVAILABLE
+    val passkeyAvailable = availability.passkeyLoginState == AuthenticationMethodState.AVAILABLE
     return LoginActionVisibility(
-        showPasskey = availability.passkeyLoginState == AuthenticationMethodState.AVAILABLE,
-        showOidc = oidcAvailable && !showPasswordForm,
-        showOidcDisclosure = oidcAvailable,
-        showPassword = !oidcAvailable || showPasswordForm,
+        showPasskey = !checking && passkeyAvailable,
+        showOidc = !checking && oidcAvailable && (!localAvailable || !showPasswordForm),
+        showOidcDisclosure = !checking && oidcAvailable && localAvailable,
+        showPassword = !checking && localAvailable && (!oidcAvailable || showPasswordForm),
+        checking = checking,
+        noMethodsAvailable = !checking && !localAvailable && !oidcAvailable && !passkeyAvailable,
     )
+}
+
+/** Missing means an older server where local authentication remains the compatible default. */
+internal suspend fun probeLocalAuthAvailability(
+    loadPublicSettings: suspend () -> Map<String, String>,
+): AuthenticationMethodState = try {
+    val configured = loadPublicSettings()["authLocalEnabled"]?.trim()
+    if (configured?.equals("false", ignoreCase = true) == true) {
+        AuthenticationMethodState.UNAVAILABLE
+    } else {
+        AuthenticationMethodState.AVAILABLE
+    }
+} catch (e: CancellationException) {
+    throw e
+} catch (_: Throwable) {
+    AuthenticationMethodState.ERROR
 }
 
 /**

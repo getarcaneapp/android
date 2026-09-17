@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.getarcane.android.nav.MainTabSelectionStore
 import app.getarcane.android.nav.ArcaneShortcutPublisher
+import app.getarcane.android.nav.AppTab
 import app.getarcane.android.BuildConfig
 import app.getarcane.android.widget.FleetStatusWidgetUpdater
 import app.getarcane.sdk.ArcaneClient
@@ -25,6 +26,7 @@ import app.getarcane.sdk.models.auth.MFAChallenge
 import app.getarcane.sdk.models.auth.OidcStatusInfo
 import app.getarcane.sdk.models.auth.PasskeySummary
 import app.getarcane.sdk.models.auth.StepUpGrant
+import app.getarcane.sdk.models.role.PermissionsManifest
 import app.getarcane.sdk.models.user.User
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.okhttp.OkHttp
@@ -121,13 +123,17 @@ class ArcaneClientManager(context: Context) {
     var currentUser by mutableStateOf<User?>(null); private set
     internal var offlineReadSessionActive by mutableStateOf(false); private set
     var capabilities by mutableStateOf(ServerCapabilities.UNKNOWN); private set
+    var permissionsManifest by mutableStateOf<PermissionsManifest?>(null); private set
+    private var allowLegacyAccessSurfaceFallback by mutableStateOf(true)
     var supportsPost26MobileFeatures by mutableStateOf(false); private set
     var supportsProjectWorkspaceContract by mutableStateOf(false); private set
     var supportsContainerReliabilityActions by mutableStateOf(false); private set
+    var supportsContainerManagementWorkflows by mutableStateOf(false); private set
     var isLoading by mutableStateOf(false); private set
     var errorMessage by mutableStateOf<String?>(null); private set
     private var authenticationMethods by mutableStateOf(AuthenticationMethodAvailability())
     val oidc: OidcStatusInfo? get() = authenticationMethods.oidcStatus
+    val localAuthState: AuthenticationMethodState get() = authenticationMethods.localState
     val oidcLoginState: AuthenticationMethodState get() = authenticationMethods.oidcState
     val passkeyLoginState: AuthenticationMethodState get() = authenticationMethods.passkeyLoginState
     val passkeyBridgeState: AuthenticationMethodState get() = authenticationMethods.passkeyBridgeState
@@ -210,11 +216,14 @@ class ArcaneClientManager(context: Context) {
                         val restoredUser = c.auth.me()
                         val detectedCapabilities = c.serverCapabilities()
                         val mobileFeatures = detectMobileFeatures(c)
+                        val manifestResult = loadPermissionsManifest(c, detectedCapabilities)
                         currentUser = restoredUser
                         capabilities = detectedCapabilities
+                        applyPermissionsManifest(manifestResult)
                         supportsPost26MobileFeatures = mobileFeatures.post26
                         supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
                         supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
+                        supportsContainerManagementWorkflows = mobileFeatures.containerManagement
                     }
                 },
                 refreshLoginMethods = ::refreshLoginMethods,
@@ -394,11 +403,14 @@ class ArcaneClientManager(context: Context) {
             val user = activeClient.auth.me()
             val detectedCapabilities = activeClient.serverCapabilities()
             val mobileFeatures = detectMobileFeatures(activeClient)
+            val manifestResult = loadPermissionsManifest(activeClient, detectedCapabilities)
             currentUser = user
             capabilities = detectedCapabilities
+            applyPermissionsManifest(manifestResult)
             supportsPost26MobileFeatures = mobileFeatures.post26
             supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
             supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
+            supportsContainerManagementWorkflows = mobileFeatures.containerManagement
             offlineReadScopeOverride = null
             offlineReadSessionActive = false
             validateResilientSession()
@@ -439,6 +451,8 @@ class ArcaneClientManager(context: Context) {
         offlineReadScopeOverride = saved.cacheScope
         offlineReadSessionActive = true
         currentUser = saved.asReadOnlyUser()
+        permissionsManifest = null
+        allowLegacyAccessSurfaceFallback = true
         capabilities = ServerCapabilities(
             ServerCapabilities.Mode.entries.firstOrNull { it.name == saved.capabilityMode }
                 ?: return false,
@@ -526,9 +540,12 @@ class ArcaneClientManager(context: Context) {
         resetEnvironment()
         currentUser = null
         capabilities = ServerCapabilities.UNKNOWN
+        permissionsManifest = null
+        allowLegacyAccessSurfaceFallback = true
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
         supportsContainerReliabilityActions = false
+        supportsContainerManagementWorkflows = false
         pendingMfa = null
         authenticationMethods = authenticationMethods.beginAll()
         cookieJar.clear()
@@ -805,13 +822,16 @@ class ArcaneClientManager(context: Context) {
             is AuthenticationResult.Authenticated -> {
                 val detectedCapabilities = c.serverCapabilities()
                 val mobileFeatures = detectMobileFeatures(c)
+                val manifestResult = loadPermissionsManifest(c, detectedCapabilities)
                 if (!isCurrentClient(generation, c)) return
                 pendingMfa = null
                 currentUser = result.response.user
                 capabilities = detectedCapabilities
+                applyPermissionsManifest(manifestResult)
                 supportsPost26MobileFeatures = mobileFeatures.post26
                 supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
                 supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
+                supportsContainerManagementWorkflows = mobileFeatures.containerManagement
                 authStatus = AuthStatus.AUTHENTICATED
                 refreshLoginMethods()
                 operationStore?.onAuthenticated()
@@ -842,9 +862,12 @@ class ArcaneClientManager(context: Context) {
             cookieJar.clear()
             currentUser = null
             capabilities = ServerCapabilities.UNKNOWN
+            permissionsManifest = null
+            allowLegacyAccessSurfaceFallback = true
             supportsPost26MobileFeatures = false
             supportsProjectWorkspaceContract = false
             supportsContainerReliabilityActions = false
+            supportsContainerManagementWorkflows = false
             pendingMfa = null
             refreshLoginMethods()
         }
@@ -913,9 +936,12 @@ class ArcaneClientManager(context: Context) {
         serverUrl = ""
         currentUser = null
         capabilities = ServerCapabilities.UNKNOWN
+        permissionsManifest = null
+        allowLegacyAccessSurfaceFallback = true
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
         supportsContainerReliabilityActions = false
+        supportsContainerManagementWorkflows = false
         pendingMfa = null
         authenticationMethods = authenticationMethods.beginAll()
         isLoading = false
@@ -1000,12 +1026,15 @@ class ArcaneClientManager(context: Context) {
                     val response = c.auth.login(session.username, session.password)
                     val detectedCapabilities = c.serverCapabilities()
                     val mobileFeatures = detectMobileFeatures(c)
+                    val manifestResult = loadPermissionsManifest(c, detectedCapabilities)
                     if (!isCurrentClient(generation, c)) return@launch
                     currentUser = response.user
                     capabilities = detectedCapabilities
+                    applyPermissionsManifest(manifestResult)
                     supportsPost26MobileFeatures = mobileFeatures.post26
                     supportsProjectWorkspaceContract = mobileFeatures.projectWorkspace
                     supportsContainerReliabilityActions = mobileFeatures.containerReliabilityActions
+                    supportsContainerManagementWorkflows = mobileFeatures.containerManagement
                     demoEndsAt = session.endsAtMillis
                     authStatus = AuthStatus.AUTHENTICATED
                     refreshLoginMethods()
@@ -1048,9 +1077,12 @@ class ArcaneClientManager(context: Context) {
         clientGeneration++
         currentUser = null
         capabilities = ServerCapabilities.UNKNOWN
+        permissionsManifest = null
+        allowLegacyAccessSurfaceFallback = true
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
         supportsContainerReliabilityActions = false
+        supportsContainerManagementWorkflows = false
         pendingMfa = null
         authenticationMethods = authenticationMethods.beginAll()
         demoEndsAt = null
@@ -1088,8 +1120,84 @@ class ArcaneClientManager(context: Context) {
     fun setActiveEnvironment(id: EnvironmentId, name: String) {
         activeEnvironmentId = id
         activeEnvironmentName = name
-        scope.launch { prefs.setActiveEnv(id.rawValue, name) }
+        scope.launch {
+            prefs.setActiveEnv(id.rawValue, name)
+            refreshAuthorization()
+        }
     }
+
+    internal fun canAccess(tab: AppTab): Boolean {
+        val user = currentUser ?: return false
+        return canAccessTab(
+            tab = tab,
+            user = user,
+            supportsV2 = capabilities.mode == ServerCapabilities.Mode.RBAC,
+            manifest = permissionsManifest,
+            environmentId = activeEnvironmentId.rawValue,
+            allowLegacyFallback = allowLegacyAccessSurfaceFallback,
+        )
+    }
+
+    internal fun canAccessSurface(surfaceId: String, environmentId: String = activeEnvironmentId.rawValue): Boolean {
+        val user = currentUser ?: return false
+        val manifest = permissionsManifest
+        if (capabilities.mode != ServerCapabilities.Mode.RBAC) return true
+        if (manifest?.accessSurfaces?.isNotEmpty() == true) {
+            return manifest.canAccessSurface(surfaceId, user, environmentId)
+        }
+        return allowLegacyAccessSurfaceFallback
+    }
+
+    /** Refreshes user permissions and server-owned reachability without changing the session. */
+    internal suspend fun refreshAuthorization() {
+        val c = client ?: return
+        val generation = clientGeneration
+        if (authStatus != AuthStatus.AUTHENTICATED) return
+        try {
+            val user = c.auth.me()
+            val manifestResult = loadPermissionsManifest(c, capabilities)
+            if (!isCurrentClient(generation, c)) return
+            currentUser = user
+            if (!manifestResult.failed) applyPermissionsManifest(manifestResult)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            // Keep the last authoritative authorization snapshot. Requests remain server-enforced.
+        }
+    }
+
+    private suspend fun loadPermissionsManifest(
+        c: ArcaneClient,
+        serverCapabilities: ServerCapabilities,
+    ): PermissionsManifestLoadResult {
+        if (serverCapabilities.mode != ServerCapabilities.Mode.RBAC) {
+            return PermissionsManifestLoadResult(legacyFallback = true)
+        }
+        return try {
+            val manifest = c.roles.availablePermissions()
+            PermissionsManifestLoadResult(
+                manifest = manifest,
+                legacyFallback = manifest.accessSurfaces.isEmpty(),
+            )
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: ArcaneError.NotFound) {
+            PermissionsManifestLoadResult(legacyFallback = true)
+        } catch (_: Throwable) {
+            PermissionsManifestLoadResult(failed = true)
+        }
+    }
+
+    private fun applyPermissionsManifest(result: PermissionsManifestLoadResult) {
+        permissionsManifest = result.manifest
+        allowLegacyAccessSurfaceFallback = result.legacyFallback
+    }
+
+    private data class PermissionsManifestLoadResult(
+        val manifest: PermissionsManifest? = null,
+        val legacyFallback: Boolean = false,
+        val failed: Boolean = false,
+    )
 
     private suspend fun detectMobileFeatures(client: ArcaneClient): MobileFeatureSupport = try {
         val version = client.version.appVersion()
@@ -1097,6 +1205,7 @@ class ArcaneClientManager(context: Context) {
             post26 = version.supportsPost26MobileFeatures,
             projectWorkspace = version.supportsProjectWorkspaceContract,
             containerReliabilityActions = version.supportsContainerReliabilityActions(),
+            containerManagement = version.supportsContainerManagementWorkflows(),
         )
     } catch (e: CancellationException) {
         throw e
@@ -1108,6 +1217,7 @@ class ArcaneClientManager(context: Context) {
         val post26: Boolean = false,
         val projectWorkspace: Boolean = false,
         val containerReliabilityActions: Boolean = false,
+        val containerManagement: Boolean = false,
     )
 
     private suspend fun refreshLoginMethods() {
@@ -1116,11 +1226,20 @@ class ArcaneClientManager(context: Context) {
         if (!isCurrentClient(clientGeneration, c)) return
         authenticationMethods = authenticationMethods.beginAll()
         val oidcProbeGeneration = authenticationMethods.oidcProbeGeneration
+        val localProbeGeneration = authenticationMethods.localProbeGeneration
         val passkeyProbeGeneration = authenticationMethods.passkeyProbeGeneration
 
         // These probes publish independently. A failure in either optional method cannot hide the
         // other method or the password fallback.
         coroutineScope {
+            launch {
+                val result = probeLocalAuthAvailability {
+                    c.settings.getPublicSettings().associate { it.key to it.value }
+                }
+                if (isCurrentClient(clientGeneration, c)) {
+                    authenticationMethods = authenticationMethods.applyLocal(localProbeGeneration, result)
+                }
+            }
             launch {
                 val result = probeOidcAvailability(
                     loadPublicSettings = {

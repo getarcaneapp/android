@@ -91,9 +91,9 @@ fun MainTabView() {
 
     val isAdmin = manager.currentUser?.isGlobalAdmin ?: false
     val supportsV2 = manager.capabilities.mode == ServerCapabilities.Mode.RBAC
-    val visible = tabsStore.visibleTabs(isAdmin, supportsV2)
+    val visible = tabsStore.visibleTabs(isAdmin, supportsV2, manager::canAccess)
     val canReadVariables = manager.currentUser?.hasPermission(Permission.Variables.READ) == true
-    val available = AdaptiveNavigation.availableTabs(isAdmin, supportsV2, canReadVariables)
+    val available = AdaptiveNavigation.availableTabs(isAdmin, supportsV2, canReadVariables, manager::canAccess)
 
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     val popToRootSignals = remember { mutableStateMapOf<String, Int>() }
@@ -219,6 +219,7 @@ fun MainTabView() {
             visibleTabs = visible,
             isAdmin = isAdmin,
             supportsV2 = supportsV2,
+            canAccess = manager::canAccess,
         )
     }
 
@@ -228,6 +229,7 @@ fun MainTabView() {
         visibleTabs = visible,
         isAdmin = isAdmin,
         supportsV2 = supportsV2,
+        canAccess = manager::canAccess,
     )
     if (selected != null && currentSelected != normalizedSelection) {
         selected = normalizedSelection
@@ -277,6 +279,7 @@ fun MainTabView() {
 
     fun selectOrPopToRoot(tabId: String) {
         val selectedTab = AppTab.byId(tabId)
+        if (selectedTab != null && !manager.canAccess(selectedTab)) return
         if (tabId == AppTab.Dashboard.id &&
             (latestNormalizedSelection != AppTab.Dashboard.id || dashboardOpenTarget != null)
         ) {
@@ -318,17 +321,21 @@ fun MainTabView() {
                 TabContent(
                     normalizedSelection,
                     popToRootSignal = popToRootSignal,
-                    onSelectTab = { selected = it },
+                    onSelectTab = ::selectOrPopToRoot,
                     dashboardOpenTarget = dashboardOpenTarget,
                     onOpenContainer = { id ->
+                        if (!manager.canAccess(AppTab.Containers)) return@TabContent
                         externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.Container(id = id)
                     },
                     onOpenProject = { id ->
+                        if (!manager.canAccess(AppTab.Projects)) return@TabContent
                         externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.Project(id = id)
+                        selected = AppTab.Dashboard.id
                     },
                     onOpenVolume = { name ->
+                        if (!manager.canAccess(AppTab.Volumes)) return@TabContent
                         externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.Volume(id = name)
                     },
@@ -349,14 +356,17 @@ fun MainTabView() {
                         imagesInitialDestination = ImagesInitialDestination.List
                     },
                     onOpenImageVulnerabilities = { id, name ->
+                        if (!manager.canAccess(AppTab.Images)) return@TabContent
                         externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.ImageVulnerabilities(id = id, name = name)
                     },
                     onOpenImageUpdates = {
+                        if (!manager.canAccess(AppTab.Updates)) return@TabContent
                         externalRouteBackTabId = null
                         dashboardOpenTarget = DashboardOpenTarget.ImageUpdates
                     },
                     onOpenApiKeys = {
+                        if (!manager.canAccess(AppTab.ApiKeys)) return@TabContent
                         dashboardOpenTarget = null
                         externalRouteBackTabId = null
                         selected = AppTab.ApiKeys.id
@@ -440,6 +450,7 @@ private fun TabContent(
                     ContainersScreen(
                         dashboardContainerId = target.id,
                         onDashboardBack = onDashboardBack,
+                        onOpenProject = onOpenProject,
                     )
                 }
                 is DashboardOpenTarget.Project -> key(target) {
@@ -490,6 +501,7 @@ private fun TabContent(
                 initialContainerId = containerRouteResourceId,
                 initialRequestId = containerRouteRequestId,
                 onInitialDetailHandled = onContainerRouteHandled,
+                onOpenProject = onOpenProject,
                 nav = requireNotNull(nav),
             )
         }
@@ -529,7 +541,7 @@ private fun TabContent(
         AppTab.ApiKeys.id -> ApiKeysScreen()
         AppTab.Notifications.id -> NotificationSettingsScreen(onOpenProvider = {})
         AppTab.Webhooks.id -> WebhooksScreen()
-        AppTab.SystemSettings.id -> SystemSettingsScreen(onOpenCategory = {}, onUpgrade = {})
+        AppTab.SystemSettings.id -> SystemSettingsScreen(onOpenCategory = { _, _, _ -> }, onUpgrade = { _, _ -> })
         AppTab.Authentication.id -> AuthenticationSettingsScreen()
         AppTab.Builds.id -> BuildSettingsScreen()
         AppTab.Roles.id -> RolesScreen(onOpenRole = {}, onCreateRole = {})

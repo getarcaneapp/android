@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
@@ -76,6 +77,8 @@ import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.StatusRunning
 import app.getarcane.android.ui.theme.StatusUnknown
 import app.getarcane.sdk.models.container.ContainerSummary
+import app.getarcane.sdk.models.role.Permission
+import app.getarcane.sdk.models.user.hasPermission
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.builtins.ListSerializer
@@ -89,7 +92,7 @@ private val ContainerStateFilter.label: String
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContainerListScreen(onOpen: (String) -> Unit) {
+fun ContainerListScreen(onOpen: (String) -> Unit, onCreate: (() -> Unit)? = null) {
     val manager = LocalArcaneManager.current
     val pinned = LocalPinnedStore.current
     val client = manager.client
@@ -173,6 +176,9 @@ fun ContainerListScreen(onOpen: (String) -> Unit) {
             TopAppBar(
                 title = { Text("Containers") },
                 actions = {
+                    if (onCreate != null) {
+                        IconButton(onClick = onCreate) { Icon(Icons.Filled.Add, "Create container") }
+                    }
                     Box {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "Options") }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -284,6 +290,10 @@ private fun ContainerRow(
     val manager = LocalArcaneManager.current
     val envId = manager.activeEnvironmentId
     val scope = rememberCoroutineScope()
+    val user = manager.currentUser
+    val canStart = !manager.offlineReadSessionActive && user?.hasPermission(Permission.Containers.START, envId.rawValue) == true
+    val canStop = !manager.offlineReadSessionActive && user?.hasPermission(Permission.Containers.STOP, envId.rawValue) == true
+    val canRestart = !manager.offlineReadSessionActive && user?.hasPermission(Permission.Containers.RESTART, envId.rawValue) == true
     var menu by remember { mutableStateOf(false) }
 
     fun act(block: suspend () -> Unit) {
@@ -333,10 +343,13 @@ private fun ContainerRow(
                 onClick = { menu = false; onTogglePin() },
                 leadingIcon = { Icon(Icons.Filled.PushPin, null) },
             )
-            if (container.isRunning) {
+            if (container.isRunning && canStop) {
                 DropdownMenuItem(text = { Text("Stop") }, onClick = { menu = false; act { manager.client!!.containers.stop(envId = envId, id = container.id) } }, leadingIcon = { Icon(Icons.Filled.Stop, null) })
+            }
+            if (container.isRunning && canRestart) {
                 DropdownMenuItem(text = { Text("Restart") }, onClick = { menu = false; act { manager.client!!.containers.restart(envId = envId, id = container.id) } }, leadingIcon = { Icon(Icons.Filled.Refresh, null) })
-            } else {
+            }
+            if (!container.isRunning && canStart) {
                 DropdownMenuItem(text = { Text("Start") }, onClick = { menu = false; act { manager.client!!.containers.start(envId = envId, id = container.id) } }, leadingIcon = { Icon(Icons.Filled.PlayArrow, null) })
             }
         }
