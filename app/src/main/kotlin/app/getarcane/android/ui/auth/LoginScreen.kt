@@ -94,9 +94,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.R
 import app.getarcane.android.core.ArcaneClientManager
+import app.getarcane.android.core.LoginActionVisibility
+import app.getarcane.android.core.AuthenticationMethodState
 import app.getarcane.android.core.AuthStatus
 import app.getarcane.android.core.LocalArcaneManager
-import app.getarcane.android.core.PasskeyLoginState
+import app.getarcane.android.core.loginActionVisibility
 import app.getarcane.android.ui.components.ErrorBanner
 import app.getarcane.android.ui.components.ClearSensitiveStateOnStop
 import app.getarcane.android.ui.components.ProtectSensitiveWindow
@@ -128,7 +130,11 @@ fun LoginScreen() {
 
     // When OIDC is available the password form is hidden behind a disclosure so the provider button
     // is the primary action; the user can still reveal local sign-in (admin fallback).
-    val shouldShowPassword = !manager.isOidcAvailable || showPasswordForm
+    val actionVisibility = loginActionVisibility(
+        availability = manager.authenticationMethodAvailability(),
+        showPasswordForm = showPasswordForm,
+    )
+    val shouldShowPassword = actionVisibility.showPassword
 
     // Re-fetch OIDC status whenever we enter login (or the server changes) so the provider button
     // shows correctly. Keyed on auth status + server URL; the manager no-ops in setup mode.
@@ -203,6 +209,7 @@ fun LoginScreen() {
 
                 if (manager.pendingMfa == null) Actions(
                     manager = manager,
+                    actionVisibility = actionVisibility,
                     isSetup = isSetup,
                     brand = brand,
                     connectEnabled = url.isNotBlank(),
@@ -377,6 +384,7 @@ private fun CredentialsFields(
 @Composable
 private fun Actions(
     manager: ArcaneClientManager,
+    actionVisibility: LoginActionVisibility,
     isSetup: Boolean,
     brand: Color,
     connectEnabled: Boolean,
@@ -400,7 +408,7 @@ private fun Actions(
                 onClick = onConnect,
             )
         } else {
-            if (manager.passkeyLoginState == PasskeyLoginState.AVAILABLE) {
+            if (actionVisibility.showPasskey) {
                 PrimaryButton(
                     text = stringResource(R.string.auth_sign_in_passkey_action),
                     icon = Icons.Filled.VpnKey,
@@ -409,7 +417,7 @@ private fun Actions(
                     onClick = onPasskeySignIn,
                 )
             }
-            if (manager.isOidcAvailable && !showPasswordForm) {
+            if (actionVisibility.showOidc) {
                 PrimaryButton(
                     text = stringResource(
                         R.string.auth_continue_provider_action,
@@ -422,7 +430,7 @@ private fun Actions(
                     onClick = onOidcSignIn,
                 )
             }
-            if (manager.isOidcAvailable) {
+            if (actionVisibility.showOidcDisclosure) {
                 OutlinedButton(
                     onClick = { onTogglePasswordForm(!showPasswordForm) },
                     enabled = !manager.isLoading,
@@ -480,15 +488,21 @@ private fun MfaChallengeContent(manager: ArcaneClientManager) {
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
-        PrimaryButton(
-            text = stringResource(R.string.auth_mfa_continue_passkey_action),
-            icon = Icons.Filled.VpnKey,
-            enabled = manager.passkeyBridgeState == PasskeyLoginState.AVAILABLE && !manager.isLoading,
-            loading = manager.isLoading && recoveryCode.isEmpty(),
-            onClick = { manager.completeMfaWithPasskey(context) },
-        )
-        if (manager.passkeyBridgeState != PasskeyLoginState.AVAILABLE) {
-            Text(
+        when (manager.passkeyBridgeState) {
+            AuthenticationMethodState.AVAILABLE -> PrimaryButton(
+                text = stringResource(R.string.auth_mfa_continue_passkey_action),
+                icon = Icons.Filled.VpnKey,
+                enabled = !manager.isLoading,
+                loading = manager.isLoading && recoveryCode.isEmpty(),
+                onClick = { manager.completeMfaWithPasskey(context) },
+            )
+            AuthenticationMethodState.LOADING -> Text(
+                stringResource(R.string.auth_checking_passkey_support),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            AuthenticationMethodState.UNAVAILABLE, AuthenticationMethodState.ERROR -> Text(
                 stringResource(R.string.auth_mfa_passkey_unavailable),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

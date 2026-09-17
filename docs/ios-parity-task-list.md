@@ -720,6 +720,30 @@ The standard checks are:
   complete a ceremony, so no credential was fabricated and that provider-dependent boundary is
   recorded separately from the deterministic Credential Manager coverage.
 
+  **Authentication-method availability hardening (2026-09-17):** Revalidation compared Android
+  `5d07cd0d3ba2925647687dafdc7b47e548ae2180`, iOS
+  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+  `b29695d547b78389ed7230b35cd133f7046b4b52`, and Arcane
+  `5ac6d89756f80d22cf4f057865497cb9a8cf061d`. The approved Android correctness deviation hides the
+  passkey action unless both server login availability and the version-2 browser bridge support it;
+  current iOS still presents Passkey without that server-side availability check. Arcane 2.11.1
+  (`46e71e3da78bf3eb2eaba7bf5e54bd99de293322`) provides the public typed availability result, while
+  the 2.12.0 tag (`3089c2ec4a56da5ca934c37778e6aeb2f539862d`) omits that route and current Arcane source has
+  reintroduced it. Android therefore treats only SDK `ArcaneError.NotFound` as the bridge-manifest
+  compatibility fallback; `available:false` and every other error hide login without disabling the
+  authenticated bridge used to enroll a first passkey. OIDC requires the explicit enabled setting
+  and complete environment-managed configuration, and its probe cannot alter passkey or password
+  availability. The public read-only 2.11.1 target returned a valid version-2 manifest and
+  `available:false`; no mutation was made. On API 30 AVD `arcane_test_api30`, that target exposed
+  password login only, including after force-stop/reopen. An isolated exact v2.12.0 image exposed
+  its configured OIDC provider plus the password fallback and no Passkey action; notably, the
+  published image returned `available:false` even though the pinned tag source omits that route, so
+  the typed 404 compatibility branch remains covered deterministically rather than claimed as live
+  image evidence. Switching from that OIDC-enabled target to the OIDC-disabled Arcane 2.10.2 target
+  cleared both optional actions, password login succeeded, and authenticated force-stop/reopen plus
+  back/reopen restored Dashboard without a login/content flash. The Android baseline passed 392
+  tests in 67 suites plus debug assembly, and lint reported no new issues.
+
 - [x] **PAR-111 — Add scoped global-variable management**
 
 - **Status:** Complete

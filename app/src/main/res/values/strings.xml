@@ -32,6 +32,7 @@
     <string name="auth_mfa_instructions">Use a registered passkey or one of your recovery codes.</string>
     <string name="auth_mfa_continue_passkey_action">Continue with passkey</string>
     <string name="auth_mfa_passkey_unavailable">Passkey verification is unavailable for this server connection. Use a recovery code.</string>
+    <string name="auth_checking_passkey_support">Checking passkey support…</string>
     <string name="auth_recovery_code_label">Recovery code</string>
     <string name="auth_use_recovery_code_action">Use recovery code</string>
     <string name="auth_back_to_sign_in_action">Back to sign in</string>
