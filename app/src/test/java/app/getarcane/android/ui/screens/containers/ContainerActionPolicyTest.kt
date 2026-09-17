@@ -2,6 +2,8 @@ package app.getarcane.android.ui.screens.containers
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -46,14 +48,8 @@ class ContainerActionPolicyTest {
 
     @Test
     fun destructiveConfirmationsIdentifyResourceAndEnvironment() {
-        val message = ContainerDetailAction.Kill.confirmationMessage("worker", "Local Docker")
-
-        assertTrue(message!!.contains("worker"))
-        assertTrue(message.contains("Local Docker"))
-        assertTrue(message.contains("SIGKILL"))
-
-        val deleteMessage = ContainerDetailAction.Delete.confirmationMessage("worker", "Local Docker")!!
-        assertTrue(deleteMessage.contains("force removal"))
-        assertTrue(deleteMessage.contains("cannot be undone"))
+        assertNotNull(ContainerDetailAction.Kill.confirmationMessageRes)
+        assertNotNull(ContainerDetailAction.Delete.confirmationMessageRes)
+        assertNull(ContainerDetailAction.Start.confirmationMessageRes)
     }
 }

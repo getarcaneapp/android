@@ -1,5 +1,6 @@
 package app.getarcane.android.ui.screens
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -43,9 +44,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.R
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.LocalPinnedStore
 import app.getarcane.android.core.LocalOperationStore
@@ -68,6 +74,7 @@ import app.getarcane.android.ui.theme.ArcaneRed
 import app.getarcane.android.ui.theme.ArcaneTeal
 import app.getarcane.android.ui.theme.StatusRunning
 import app.getarcane.android.ui.theme.StatusUnknown
+import app.getarcane.android.ui.theme.accessibleOnSurface
 import app.getarcane.sdk.models.container.ContainerSummary
 import app.getarcane.sdk.models.project.ProjectDetails
 import app.getarcane.sdk.models.volume.Volume as SdkVolume
@@ -238,6 +245,8 @@ fun DashboardPinnedSection(
                                     is DashboardPinnedItem.Volume -> Unit
                                 }
                                 reloadKey++
+                            } catch (e: CancellationException) {
+                                throw e
                             } catch (e: Throwable) {
                                 onMessage(friendlyErrorMessage(e))
                             } finally {
@@ -279,7 +288,8 @@ private fun DashboardPinnedRow(
                         indication = null,
                         onClick = onOpen,
                         onLongClick = { menu = true },
-                    ),
+                    )
+                    .semantics { role = Role.Button },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -292,7 +302,7 @@ private fun DashboardPinnedRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    ResourceStatusBadge(status = item.status)
+                    ResourceStatusBadge(status = item.localizedStatus())
                 }
                 Icon(
                     Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -301,7 +311,7 @@ private fun DashboardPinnedRow(
                     modifier = Modifier.size(18.dp),
                 )
             }
-            val actionTitle = item.actionTitle
+            val actionTitle = item.actionTitleRes?.let { stringResource(it) }
             if (actionTitle != null) {
                 IconButton(onClick = onAction, enabled = actionsEnabled) {
                     if (busy) {
@@ -310,18 +320,18 @@ private fun DashboardPinnedRow(
                         Icon(
                             if (item.isRunning) Icons.Filled.Stop else Icons.Filled.PlayArrow,
                             contentDescription = actionTitle,
-                            tint = if (item.isRunning) ArcaneRed else ArcaneGreen,
+                            tint = accessibleOnSurface(if (item.isRunning) ArcaneRed else ArcaneGreen),
                         )
                     }
                 }
             }
             IconButton(onClick = { menu = true }) {
-                Icon(Icons.Filled.MoreVert, contentDescription = "Pinned item actions")
+                Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.a11y_pinned_item_actions))
             }
         }
         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
             DropdownMenuItem(
-                text = { Text("Open") },
+                text = { Text(stringResource(R.string.action_open)) },
                 onClick = {
                     menu = false
                     onOpen()
@@ -329,7 +339,7 @@ private fun DashboardPinnedRow(
                 leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null) },
             )
             DropdownMenuItem(
-                text = { Text("Unpin") },
+                text = { Text(stringResource(R.string.action_unpin)) },
                 onClick = {
                     menu = false
                     onUnpin()
@@ -362,41 +372,50 @@ private fun DashboardPinnedIcon(icon: ImageVector, tint: Color, isRunning: Boole
 private sealed interface DashboardPinnedItem {
     val key: String
     val title: String
-    val status: String
     val isRunning: Boolean
     val icon: ImageVector
     val tint: Color
-    val actionTitle: String?
+    @get:StringRes val actionTitleRes: Int?
 
     data class Container(val value: ContainerSummary) : DashboardPinnedItem {
         override val key: String = "container-${value.id}"
         override val title: String = value.displayName
-        override val status: String = if (value.isRunning) "Running" else "Stopped"
         override val isRunning: Boolean = value.isRunning
         override val icon: ImageVector = Icons.Filled.Inventory2
         override val tint: Color = ArcaneOrange
-        override val actionTitle: String = if (isRunning) "Stop Container" else "Start Container"
+        override val actionTitleRes: Int =
+            if (isRunning) R.string.pinned_stop_container else R.string.pinned_start_container
     }
 
     data class Project(val value: ProjectDetails) : DashboardPinnedItem {
         override val key: String = "project-${value.id}"
         override val title: String = value.name
-        override val status: String = value.status
         override val isRunning: Boolean = value.isDashboardRunning
         override val icon: ImageVector = Icons.Filled.Layers
         override val tint: Color = ArcaneBlue
-        override val actionTitle: String = if (isRunning) "Stop Project" else "Deploy Project"
+        override val actionTitleRes: Int =
+            if (isRunning) R.string.pinned_stop_project else R.string.pinned_deploy_project
     }
 
     data class Volume(val value: SdkVolume) : DashboardPinnedItem {
         override val key: String = "volume-${value.id}"
         override val title: String = value.name
-        override val status: String = if (value.inUse) "In use" else "Unused"
         override val isRunning: Boolean = value.inUse
         override val icon: ImageVector = Icons.Filled.Storage
         override val tint: Color = ArcaneTeal
-        override val actionTitle: String? = null
+        override val actionTitleRes: Int? = null
     }
+}
+
+@Composable
+private fun DashboardPinnedItem.localizedStatus(): String = when (this) {
+    is DashboardPinnedItem.Container -> stringResource(
+        if (value.isRunning) R.string.status_running else R.string.status_stopped,
+    )
+    is DashboardPinnedItem.Project -> value.status
+    is DashboardPinnedItem.Volume -> stringResource(
+        if (value.inUse) R.string.status_in_use else R.string.status_unused,
+    )
 }
 
 private val ProjectDetails.isDashboardRunning: Boolean

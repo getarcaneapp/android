@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.core.content.edit
 import app.getarcane.sdk.EnvironmentId
 
 /** Per-(kind, environment) pinned resource IDs. Port of iOS `PinnedItemsStore` (UserDefaults-backed). */
@@ -29,7 +30,7 @@ class PinnedItemsStore(context: Context) {
         val key = key(kind, envId)
         val current = (prefs.getStringSet(key, emptySet()) ?: emptySet()).toMutableSet()
         if (!current.add(id)) current.remove(id)
-        prefs.edit().putStringSet(key, current).apply()
+        prefs.edit { putStringSet(key, current) }
         version++
     }
 
@@ -37,7 +38,7 @@ class PinnedItemsStore(context: Context) {
         val key = key(kind, envId)
         val current = (prefs.getStringSet(key, emptySet()) ?: emptySet()).toMutableSet()
         if (current.remove(id)) {
-            prefs.edit().putStringSet(key, current).apply()
+            prefs.edit { putStringSet(key, current) }
             version++
         }
     }

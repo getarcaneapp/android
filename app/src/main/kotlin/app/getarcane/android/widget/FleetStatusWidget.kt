@@ -2,7 +2,6 @@ package app.getarcane.android.widget
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.DpSize
@@ -32,6 +31,7 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.core.net.toUri
 import app.getarcane.android.BuildConfig
 import app.getarcane.android.MainActivity
 import app.getarcane.android.core.StatusSnapshotStore
@@ -96,7 +96,7 @@ private fun FleetStatusContent(context: Context, model: FleetWidgetModel) {
     val size = LocalSize.current
     val action = model.routeUri?.let { uri ->
         actionStartActivity(
-            Intent(Intent.ACTION_VIEW, Uri.parse(uri), context, MainActivity::class.java),
+            Intent(Intent.ACTION_VIEW, uri.toUri(), context, MainActivity::class.java),
         )
     }
     val modifier = GlanceModifier

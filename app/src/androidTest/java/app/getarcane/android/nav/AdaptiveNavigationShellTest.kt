@@ -12,8 +12,8 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.longClick
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import app.getarcane.android.ui.theme.ArcaneTheme
 import org.junit.Rule
@@ -47,12 +47,12 @@ class AdaptiveNavigationShellTest {
         }
 
         composeRule
-            .onNodeWithContentDescription("Volumes", useUnmergedTree = true)
+            .onNodeWithText("Volumes")
             .performTouchInput { click() }
         composeRule.onNodeWithTag("result").assertTextEquals("volumes")
 
         composeRule
-            .onNodeWithContentDescription("Dashboard", useUnmergedTree = true)
+            .onNodeWithText("Dashboard")
             .performTouchInput { click() }
         composeRule.onNodeWithTag("result").assertTextEquals("dashboard")
     }
@@ -85,7 +85,7 @@ class AdaptiveNavigationShellTest {
         }
 
         composeRule
-            .onNodeWithContentDescription("Dashboard", useUnmergedTree = true)
+            .onNodeWithText("Dashboard")
             .performTouchInput { longClick() }
         composeRule.onNodeWithTag("result").assertTextEquals("volumes:dashboard")
     }

@@ -405,7 +405,8 @@ private fun parseFrame(payload: ContainerStatsPayload, previous: StatsFrame?, no
     )
 }
 
-private fun percentString(value: Double?): String = value?.let { String.format("%.1f%%", it) } ?: "—"
+private fun percentString(value: Double?): String =
+    value?.let { String.format(java.util.Locale.getDefault(), "%.1f%%", it) } ?: "—"
 
 private fun rateString(bytesPerSec: Double?): String {
     if (bytesPerSec == null || !bytesPerSec.isFinite()) return "—"

@@ -1,5 +1,6 @@
 > [!IMPORTANT]
-> This project is still under development and is not intended to be used on devices yet. 
+> Arcane Mobile is a public alpha. Use it with disposable or well-backed-up environments while the
+> beta release matrix is being completed; it can perform destructive Docker operations.
 
 <div align="center">
 
@@ -22,11 +23,15 @@ Arcane Mobile is the official Android companion for [Arcane](https://github.com/
 For setup instructions, configuration details, and development guides, visit the **[official documentation site](https://getarcane.app/docs)**.
 
 For continuation context from the currently running Android app, see [`docs/current-app-state.md`](docs/current-app-state.md).
+Release support, promotion gates, and known limitations are documented in
+[`docs/release-readiness.md`](docs/release-readiness.md). Testing/security gates and the accessibility/
+localization foundation are documented in [`docs/testing-and-quality-gates.md`](docs/testing-and-quality-gates.md)
+and [`docs/accessibility-and-localization.md`](docs/accessibility-and-localization.md).
 
 ## Requirements
 
 - Android 7.0 (API 24) or later
-- An Arcane server reachable over HTTPS
+- Arcane 2.10.2 or later, reachable over HTTPS (newer features remain capability-gated)
 
 ## Building
 
@@ -49,7 +54,12 @@ Run the same checks used by CI with:
 
 ```sh
 ./gradlew :app:testDebugUnitTest :app:assembleDebug
+./gradlew :app:lintDebug
 ```
+
+The API 30 instrumentation lane runs with `./gradlew :app:connectedDebugAndroidTest`. Destructive or
+streaming live-server checks are a separately reported disposable-server lane; see the testing guide
+before supplying test credentials.
 
 Release APK signing is optional for local builds. To sign a release APK, provide:
 
@@ -72,7 +82,9 @@ before cutting a signed release tag:
 - `ARCANE_RELEASE_KEY_ALIAS`
 - `ARCANE_RELEASE_KEY_PASSWORD`
 
-Fastlane/F-Droid metadata lives under `fastlane/metadata/android/en-US/`.
+Fastlane metadata lives under `fastlane/metadata/android/en-US/`. F-Droid preparation and its current
+dependency-eligibility blockers are documented in [`docs/fdroid-release-preparation.md`](docs/fdroid-release-preparation.md);
+the project has not been submitted to F-Droid.
 
 ### Android Studio run configuration
 

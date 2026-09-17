@@ -25,9 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.R
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.sdk.ServerCapabilities
 import app.getarcane.sdk.models.user.isGlobalAdmin
@@ -63,15 +65,21 @@ fun TabSwapSheet(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Replace ${current.title}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                TextButton(onClick = onReset, enabled = tabsStore.pinned != AppTab.defaults) { Text("Reset") }
+                Text(
+                    stringResource(R.string.nav_replace_tab_title, stringResource(current.titleRes)),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                TextButton(onClick = onReset, enabled = tabsStore.pinned != AppTab.defaults) {
+                    Text(stringResource(R.string.nav_reset_action))
+                }
             }
             TabSection.entries.forEach { section ->
                 val tabs = eligible(section)
                 if (tabs.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            section.title.uppercase(),
+                            stringResource(section.titleRes),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 4.dp),
@@ -107,7 +115,7 @@ private fun TabTile(tab: AppTab, modifier: Modifier = Modifier, onClick: () -> U
             Icon(tab.icon, null, tint = Color.White, modifier = Modifier.size(22.dp))
         }
         Text(
-            tab.tabBarTitle,
+            stringResource(tab.tabBarTitleRes),
             style = MaterialTheme.typography.labelSmall,
             textAlign = TextAlign.Center,
             maxLines = 2,

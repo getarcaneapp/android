@@ -16,10 +16,16 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.R
 
 /** Animated circular progress ring with a centered value + label below. Port of iOS `StatRing`. */
 @Composable
@@ -31,8 +37,17 @@ fun StatRing(
     size: Dp = 62.dp,
     lineWidth: Dp = 7.dp,
 ) {
-    val animated by animateFloatAsState(value.coerceIn(0f, 1f), label = "ring")
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val boundedValue = value.coerceIn(0f, 1f)
+    val animated by animateFloatAsState(boundedValue, label = "ring")
+    val accessibilityValue = stringResource(R.string.a11y_stat_value, label, valueText)
+    Column(
+        modifier = Modifier.semantics(mergeDescendants = true) {
+            contentDescription = accessibilityValue
+            progressBarRangeInfo = ProgressBarRangeInfo(boundedValue, 0f..1f)
+        },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         Box(Modifier.size(size), contentAlignment = Alignment.Center) {
             Canvas(Modifier.size(size)) {
                 val stroke = lineWidth.toPx()

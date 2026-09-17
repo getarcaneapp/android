@@ -54,12 +54,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.R
 import app.getarcane.android.core.ReadResource
 import app.getarcane.android.core.Loadable
 import app.getarcane.android.core.ProjectDeployPreferenceScope
@@ -347,20 +349,23 @@ internal fun ProjectDetailScreen(
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete $title?") },
+            title = { Text(stringResource(R.string.confirm_project_delete_title, title)) },
             text = {
-                Text(
-                    "Remove $title from ${manager.activeEnvironmentName}, or also remove its files from disk. " +
-                        "This action cannot be undone.",
-                )
+                Text(stringResource(R.string.confirm_project_delete_message, title, manager.activeEnvironmentName))
             },
             confirmButton = {
                 Column {
-                    TextButton(onClick = { runDelete(removeFiles = false) }) { Text("Delete") }
-                    TextButton(onClick = { runDelete(removeFiles = true) }) { Text("Delete and Remove Files") }
+                    TextButton(onClick = { runDelete(removeFiles = false) }) {
+                        Text(stringResource(R.string.action_delete))
+                    }
+                    TextButton(onClick = { runDelete(removeFiles = true) }) {
+                        Text(stringResource(R.string.action_delete_files))
+                    }
                 }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text(stringResource(R.string.action_cancel)) }
+            },
         )
     }
 

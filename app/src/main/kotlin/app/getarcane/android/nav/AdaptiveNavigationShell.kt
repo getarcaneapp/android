@@ -45,8 +45,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.R
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val SETTINGS_ID = MainTabSelection.SETTINGS_ID
@@ -79,8 +83,8 @@ internal fun AdaptiveNavigationShell(
                             )
                         }
                         CompactNavigationItem(
-                            icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                            label = "Settings",
+                            icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                            label = stringResource(R.string.nav_settings),
                             selected = selectedTabId == SETTINGS_ID,
                             onClick = { onSelect(SETTINGS_ID) },
                         )
@@ -95,21 +99,21 @@ internal fun AdaptiveNavigationShell(
                         NavigationRailItem(
                             selected = selectedTabId == tab.id,
                             onClick = { onSelect(tab.id) },
-                            icon = { Icon(tab.icon, contentDescription = tab.title) },
-                            label = { Text(tab.tabBarTitle, maxLines = 1) },
+                            icon = { Icon(tab.icon, contentDescription = null) },
+                            label = { Text(stringResource(tab.tabBarTitleRes), maxLines = 1) },
                         )
                     }
                     NavigationRailItem(
                         selected = AppTab.byId(selectedTabId)?.let { it !in pinnedTabs } == true,
                         onClick = { showMore = true },
-                        icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More destinations") },
-                        label = { Text("More") },
+                        icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = null) },
+                        label = { Text(stringResource(R.string.nav_more)) },
                     )
                     NavigationRailItem(
                         selected = selectedTabId == SETTINGS_ID,
                         onClick = { onSelect(SETTINGS_ID) },
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
+                        icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                        label = { Text(stringResource(R.string.nav_settings)) },
                     )
                 }
                 Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -121,9 +125,11 @@ internal fun AdaptiveNavigationShell(
                 drawerContent = {
                     PermanentDrawerSheet(Modifier.width(300.dp)) {
                         Text(
-                            text = "Arcane",
+                            text = stringResource(R.string.brand_name),
                             style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+                            modifier = Modifier
+                                .padding(horizontal = 20.dp, vertical = 18.dp)
+                                .semantics { heading() },
                         )
                         LazyColumn(
                             modifier = Modifier.weight(1f),
@@ -134,15 +140,17 @@ internal fun AdaptiveNavigationShell(
                                 if (sectionTabs.isNotEmpty()) {
                                     item(key = "section-${section.name}") {
                                         Text(
-                                            text = section.title,
+                                            text = stringResource(section.titleRes),
                                             style = MaterialTheme.typography.labelLarge,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(start = 28.dp, top = 14.dp, bottom = 4.dp),
+                                            modifier = Modifier
+                                                .padding(start = 28.dp, top = 14.dp, bottom = 4.dp)
+                                                .semantics { heading() },
                                         )
                                     }
                                     items(sectionTabs, key = { it.id }) { tab ->
                                         NavigationDrawerItem(
-                                            label = { Text(tab.title, maxLines = 1) },
+                                            label = { Text(stringResource(tab.titleRes), maxLines = 1) },
                                             selected = selectedTabId == tab.id,
                                             onClick = { onSelect(tab.id) },
                                             icon = { Icon(tab.icon, contentDescription = null) },
@@ -154,7 +162,7 @@ internal fun AdaptiveNavigationShell(
                         }
                         HorizontalDivider()
                         NavigationDrawerItem(
-                            label = { Text("Settings") },
+                            label = { Text(stringResource(R.string.nav_settings)) },
                             selected = selectedTabId == SETTINGS_ID,
                             onClick = { onSelect(SETTINGS_ID) },
                             icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
@@ -171,9 +179,11 @@ internal fun AdaptiveNavigationShell(
     if (showMore) {
         ModalBottomSheet(onDismissRequest = { showMore = false }) {
             Text(
-                text = "All destinations",
+                text = stringResource(R.string.nav_all_destinations),
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .padding(horizontal = 24.dp, vertical = 8.dp)
+                    .semantics { heading() },
             )
             LazyColumn(Modifier.fillMaxHeight(0.75f)) {
                 TabSection.entries.forEach { section ->
@@ -181,15 +191,17 @@ internal fun AdaptiveNavigationShell(
                     if (sectionTabs.isNotEmpty()) {
                         item(key = "more-section-${section.name}") {
                             Text(
-                                text = section.title,
+                                text = stringResource(section.titleRes),
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 24.dp, top = 18.dp, bottom = 6.dp),
+                                modifier = Modifier
+                                    .padding(start = 24.dp, top = 18.dp, bottom = 6.dp)
+                                    .semantics { heading() },
                             )
                         }
                         items(sectionTabs, key = { "more-${it.id}" }) { tab ->
                             NavigationDrawerItem(
-                                label = { Text(tab.title) },
+                                label = { Text(stringResource(tab.titleRes)) },
                                 selected = selectedTabId == tab.id,
                                 onClick = {
                                     showMore = false
@@ -234,11 +246,13 @@ private fun RowScope.CompactNavigationItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val tabBarTitle = stringResource(tab.tabBarTitleRes)
+    val customizeLabel = stringResource(R.string.nav_customize_tab_action, tabBarTitle)
     NavigationBarItem(
         modifier = Modifier
             .observeLongPress(onLongClick)
             .semantics {
-                onLongClick(label = "Customize ${tab.tabBarTitle} tab") {
+                onLongClick(label = customizeLabel) {
                     onLongClick()
                     true
                 }
@@ -248,10 +262,10 @@ private fun RowScope.CompactNavigationItem(
         icon = {
             Icon(
                 tab.icon,
-                contentDescription = tab.title,
+                contentDescription = null,
             )
         },
-        label = { Text(tab.tabBarTitle, maxLines = 1) },
+        label = { Text(tabBarTitle, maxLines = 1, overflow = TextOverflow.Ellipsis) },
     )
 }
 
@@ -266,7 +280,7 @@ private fun RowScope.CompactNavigationItem(
         selected = selected,
         onClick = onClick,
         icon = icon,
-        label = { Text(label, maxLines = 1) },
+        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
     )
 }
 

@@ -1,0 +1,2 @@
+Improves Android parity, resilient offline state, durable operations, adaptive navigation, widgets,
+network topology, accessibility foundations, localization readiness, and release quality gates.

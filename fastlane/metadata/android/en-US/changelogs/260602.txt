@@ -1,1 +1,1 @@
-Initial Android beta release.
+Initial Android alpha release.

@@ -17,7 +17,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.R
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcaneRed
 
@@ -38,6 +44,10 @@ fun ErrorBanner(
             .clip(RoundedCornerShape(12.dp))
             .background(tint.copy(alpha = 0.12f))
             .border(1.dp, tint.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+            .semantics {
+                liveRegion = LiveRegionMode.Polite
+                if (severity == BannerSeverity.Error) error(message)
+            }
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -50,7 +60,7 @@ fun ErrorBanner(
             modifier = Modifier.weight(1f),
         )
         if (onRetry != null) {
-            TextButton(onClick = onRetry) { Text("Retry") }
+            TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
         }
     }
 }

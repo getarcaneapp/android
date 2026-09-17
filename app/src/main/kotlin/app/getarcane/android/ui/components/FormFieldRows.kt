@@ -81,7 +81,7 @@ fun FormTextField(
             keyboardOptions = KeyboardOptions(
                 keyboardType = keyboardType,
                 capitalization = if (autoCapitalize) KeyboardCapitalization.Sentences else KeyboardCapitalization.None,
-                autoCorrect = autoCorrect,
+                autoCorrectEnabled = autoCorrect,
             ),
             modifier = Modifier.fillMaxWidth(),
         )

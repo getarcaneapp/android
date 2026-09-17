@@ -1,5 +1,6 @@
 package app.getarcane.android.ui.screens
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -45,9 +46,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.getarcane.android.R
 import app.getarcane.android.core.DashboardActionItem
 import app.getarcane.android.core.DashboardActionItemKind
 import app.getarcane.android.core.DashboardActionItemSeverity
@@ -62,6 +70,7 @@ import app.getarcane.android.ui.theme.ArcaneGreen
 import app.getarcane.android.ui.theme.ArcaneOrange
 import app.getarcane.android.ui.theme.ArcanePurple
 import app.getarcane.android.ui.theme.ArcaneTeal
+import app.getarcane.android.ui.theme.accessibleOnSurface
 import app.getarcane.sdk.EnvironmentId
 import app.getarcane.sdk.models.base.intValue
 import app.getarcane.sdk.models.system.DockerInfo
@@ -69,12 +78,12 @@ import app.getarcane.sdk.models.version.VersionInfo
 import java.util.Locale
 import kotlin.math.roundToInt
 
-enum class EnvironmentCardAction(val label: String) {
-    UseEnvironment("Use Environment"),
-    ViewSystemDetails("View System Details"),
-    Sync("Sync"),
-    UpgradeArcane("Upgrade Arcane"),
-    SystemPrune("System Prune"),
+enum class EnvironmentCardAction(@get:StringRes val labelRes: Int) {
+    UseEnvironment(R.string.environment_action_use),
+    ViewSystemDetails(R.string.environment_action_view_details),
+    Sync(R.string.environment_action_sync),
+    UpgradeArcane(R.string.environment_action_upgrade),
+    SystemPrune(R.string.action_system_prune),
 }
 
 fun environmentCardActions(canPrune: Boolean): List<EnvironmentCardAction> =
@@ -87,6 +96,30 @@ fun environmentCardActions(canPrune: Boolean): List<EnvironmentCardAction> =
         }
     }
 
+internal fun visibleEnvironmentCardActions(
+    actions: List<EnvironmentCardAction>,
+    isActive: Boolean,
+    canUpgrade: Boolean,
+): List<EnvironmentCardAction> =
+    actions.filterNot {
+        it == EnvironmentCardAction.UpgradeArcane ||
+            (it == EnvironmentCardAction.UseEnvironment && isActive)
+    } + listOfNotNull(EnvironmentCardAction.UpgradeArcane.takeIf { canUpgrade })
+
+internal fun isEnvironmentCardActionEnabled(
+    action: EnvironmentCardAction,
+    environmentStatus: String?,
+    syncing: Boolean,
+): Boolean = when (action) {
+    EnvironmentCardAction.Sync -> !syncing
+    EnvironmentCardAction.UpgradeArcane,
+    EnvironmentCardAction.SystemPrune,
+    -> environmentStatus.equals("online", ignoreCase = true)
+    EnvironmentCardAction.UseEnvironment,
+    EnvironmentCardAction.ViewSystemDetails,
+    -> true
+}
+
 /** Per-environment dashboard card with live CPU/Mem/Disk rings. Port of iOS `EnvironmentDashboardCard`. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -97,6 +130,7 @@ fun EnvironmentDashboardCard(
     statsSeries: DashboardStatsSeries?,
     versionInfo: VersionInfo? = null,
     refreshToken: Int = 0,
+    syncing: Boolean = false,
     onSelect: () -> Unit,
     actions: List<EnvironmentCardAction> = environmentCardActions(canPrune = false),
     onAction: (EnvironmentCardAction) -> Unit = {},
@@ -107,6 +141,7 @@ fun EnvironmentDashboardCard(
     val currentUser = manager.currentUser
     val envId = EnvironmentId(env.id)
     val isActive = manager.activeEnvironmentId.rawValue == env.id
+    val activeStateDescription = stringResource(R.string.state_active)
 
     var dockerInfo by remember(env.id) { mutableStateOf<DockerInfo?>(null) }
     var upgradeAvailability by remember(env.id, session) {
@@ -133,15 +168,15 @@ fun EnvironmentDashboardCard(
         if (manager.isCurrent(captured)) upgradeAvailability = availability
     }
 
-    val visibleActions = remember(actions, upgradeAvailability) {
-        actions.filterNot { it == EnvironmentCardAction.UpgradeArcane } +
-            listOfNotNull(EnvironmentCardAction.UpgradeArcane.takeIf { upgradeAvailability.canUpgrade })
+    val visibleActions = remember(actions, upgradeAvailability, isActive) {
+        visibleEnvironmentCardActions(actions, isActive, upgradeAvailability.canUpgrade)
     }
 
     val stats = statsSeries?.latest
     val cpuPct = stats?.cpuUsage
     val memPct = stats?.let { if (it.memoryTotal > 0) it.memoryUsage.toDouble() / it.memoryTotal * 100.0 else null }
     val diskPct = diskPercent(stats)
+    val diskTint = accessibleOnSurface(ArcaneTeal)
 
     Card(
         modifier = Modifier
@@ -149,7 +184,12 @@ fun EnvironmentDashboardCard(
             .combinedClickable(
                 onClick = onSelect,
                 onLongClick = { showMenu = true },
-            ),
+            )
+            .semantics {
+                role = Role.Button
+                selected = isActive
+                if (isActive) stateDescription = activeStateDescription
+            },
         shape = RoundedCornerShape(20.dp),
         border = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null,
         colors = CardDefaults.cardColors(),
@@ -171,12 +211,16 @@ fun EnvironmentDashboardCard(
                         Text(env.name ?: env.id, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     dockerInfo?.serverVersion?.let {
-                        Text("Docker $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            stringResource(R.string.environment_docker_version, it),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 Box {
                     IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Filled.MoreVert, contentDescription = "Environment actions")
+                        Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.a11y_environment_actions))
                     }
                     DropdownMenu(
                         expanded = showMenu,
@@ -184,8 +228,9 @@ fun EnvironmentDashboardCard(
                     ) {
                         visibleActions.forEach { action ->
                             DropdownMenuItem(
-                                text = { Text(action.label) },
+                                text = { Text(stringResource(action.labelRes)) },
                                 leadingIcon = { Icon(action.icon, contentDescription = null) },
+                                enabled = isEnvironmentCardActionEnabled(action, env.status, syncing),
                                 onClick = {
                                     showMenu = false
                                     onAction(action)
@@ -198,14 +243,14 @@ fun EnvironmentDashboardCard(
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SparklineMetric(
-                    title = "CPU",
+                    title = stringResource(R.string.metric_cpu),
                     value = pctShort(cpuPct),
                     series = statsSeries?.cpu.orEmpty(),
                     tint = ArcaneBlue,
                     modifier = Modifier.weight(1f),
                 )
                 SparklineMetric(
-                    title = "Memory",
+                    title = stringResource(R.string.metric_memory),
                     value = pctShort(memPct),
                     series = statsSeries?.memory.orEmpty(),
                     tint = ArcanePurple,
@@ -215,13 +260,17 @@ fun EnvironmentDashboardCard(
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Disk", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(pctShort(diskPct), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = ArcaneTeal)
+                    Text(
+                        stringResource(R.string.metric_disk),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(pctShort(diskPct), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = diskTint)
                 }
                 LinearProgressIndicator(
                     progress = { ((diskPct ?: 0.0) / 100.0).coerceIn(0.0, 1.0).toFloat() },
                     modifier = Modifier.fillMaxWidth(),
-                    color = ArcaneTeal,
+                    color = diskTint,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
                 statsSeries?.error?.let {

@@ -70,6 +70,7 @@ captures/
 *.hprof
 lint-results*
 lint-baseline.xml
+!app/lint-baseline.xml
 
 # ----------------------------
 # Test & coverage artefacts

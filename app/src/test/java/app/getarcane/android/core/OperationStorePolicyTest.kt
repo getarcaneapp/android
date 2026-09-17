@@ -1,8 +1,9 @@
 package app.getarcane.android.core
 
+import app.getarcane.android.R
+import app.getarcane.sdk.errors.ArcaneError
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
-import app.getarcane.sdk.errors.ArcaneError
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -80,7 +81,7 @@ class OperationStorePolicyTest {
     }
 
     @Test
-    fun `notification text is closed vocabulary and omits targets errors and server URLs`() {
+    fun `notification title is a closed resource mapping independent of sensitive record fields`() {
         val sensitive = record().copy(
             kind = OperationKind.IMAGE_PULL,
             state = OperationState.FAILURE,
@@ -88,11 +89,11 @@ class OperationStorePolicyTest {
             detailMessage = "https://server.example token=secret",
             presentationCode = OperationPresentationCode.COMPLETED_WITH_ISSUES,
         )
-        val projected = sensitive.kind.notificationTitle() + " " + sensitive.notificationStateText()
-        assertEquals("Image pull Completed with issues", projected)
-        assertFalse(projected.contains("private.registry"))
-        assertFalse(projected.contains("server.example"))
-        assertFalse(projected.contains("secret"))
+        assertEquals(R.string.operation_notification_image_pull, sensitive.kind.notificationTitleRes())
+        assertEquals(
+            sensitive.kind.notificationTitleRes(),
+            sensitive.copy(targetName = "other", detailMessage = "other").kind.notificationTitleRes(),
+        )
     }
 
     @Test

@@ -72,11 +72,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
+import app.getarcane.android.R
 import app.getarcane.android.core.LocalOperationStore
 import app.getarcane.android.core.OperationStartResult
 import app.getarcane.android.core.ReadResource
@@ -87,6 +89,7 @@ import app.getarcane.android.core.formatBytes
 import app.getarcane.android.core.supportsContainerReliabilityActions
 import app.getarcane.android.ui.components.CachedAsyncImage
 import app.getarcane.android.ui.components.ErrorBanner
+import app.getarcane.android.ui.components.DestructiveConfirmationDialog
 import app.getarcane.android.ui.components.StatusBadge
 import app.getarcane.android.ui.theme.ArcaneBlue
 import app.getarcane.android.ui.theme.ArcaneGreen
@@ -223,7 +226,9 @@ fun ContainerDetailScreen(
                     else -> return@launch
                 }
                 manager.invalidateReadCache(envId, ReadResource.CONTAINERS)
-                Toast.makeText(context, action.successMessage, Toast.LENGTH_SHORT).show()
+                action.successMessageRes?.let { messageRes ->
+                    Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT).show()
+                }
                 if (action == ContainerDetailAction.Delete) onBack() else refreshKey++
             } catch (e: CancellationException) {
                 throw e
@@ -238,7 +243,7 @@ fun ContainerDetailScreen(
 
     fun request(action: ContainerDetailAction) {
         if (action !in availableActions) return
-        if (action.confirmationMessage(title, manager.activeEnvironmentName) != null) {
+        if (action.confirmationMessageRes != null) {
             pendingAction = action
         } else {
             perform(action)
@@ -336,17 +341,20 @@ fun ContainerDetailScreen(
     }
 
     pendingAction?.let { action ->
-        AlertDialog(
-            onDismissRequest = { pendingAction = null },
-            title = { Text("${action.title} Container?") },
-            text = { Text(requireNotNull(action.confirmationMessage(title, manager.activeEnvironmentName))) },
-            confirmButton = {
-                TextButton(onClick = {
-                    pendingAction = null
-                    perform(action)
-                }) { Text(action.title, color = if (action in setOf(ContainerDetailAction.Kill, ContainerDetailAction.Delete)) ArcaneRed else MaterialTheme.colorScheme.primary) }
+        DestructiveConfirmationDialog(
+            title = stringResource(R.string.confirm_container_action_title, stringResource(action.titleRes)),
+            message = stringResource(
+                requireNotNull(action.confirmationMessageRes),
+                title,
+                manager.activeEnvironmentName,
+            ),
+            confirmLabel = stringResource(action.titleRes),
+            destructive = action in setOf(ContainerDetailAction.Kill, ContainerDetailAction.Delete),
+            onConfirm = {
+                pendingAction = null
+                perform(action)
             },
-            dismissButton = { TextButton(onClick = { pendingAction = null }) { Text("Cancel") } },
+            onDismiss = { pendingAction = null },
         )
     }
 
@@ -507,7 +515,7 @@ private fun ActionToolbar(
             )
             toolbarActions.filter { it.first in availableActions }.forEach { (action, presentation) ->
                 CircleActionButton(
-                    action.title,
+                    stringResource(action.titleRes),
                     presentation.first,
                     presentation.second,
                     busy,

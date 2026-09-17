@@ -559,10 +559,8 @@ class OperationStore internal constructor(
         while (true) {
             appendFleetResults(operationId, job)
             if (job.isTerminal) {
-                val failed = job.results.orEmpty().count {
-                    it.status == EnvironmentUpdateResultStatus.FAILED ||
-                        it.status == EnvironmentUpdateResultStatus.SKIPPED_OFFLINE
-                }
+                val summary = fleetUpdateSummary(job)
+                val failed = summary.failed + summary.offline
                 if (job.status == EnvironmentUpdateJobStatus.COMPLETED && failed == 0) {
                     finish(operationId, OperationState.SUCCESS, OperationPresentationCode.COMPLETE)
                 } else {

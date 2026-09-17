@@ -1,6 +1,7 @@
 package app.getarcane.android
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.WindowCompat
+import androidx.core.graphics.toColorInt
 import app.getarcane.android.core.AppearancePreferences
 import app.getarcane.android.core.AppThemeMode
 import app.getarcane.android.core.LocalAppearancePreferences
@@ -47,6 +49,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
         enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Preserve the app surface behind gesture and three-button navigation in both themes.
+            window.isNavigationBarContrastEnforced = false
+        }
         setContent {
             val context = LocalContext.current
             val manager = remember { arcaneManager }
@@ -60,7 +66,7 @@ class MainActivity : ComponentActivity() {
             val themeMode by appearancePreferences.themeMode.collectAsState()
             val darkTheme = themeMode.resolvesToDark(isSystemInDarkTheme())
             val accent = accentHex
-                ?.let { hex -> runCatching { Color(android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")) }.getOrNull() }
+                ?.let { hex -> runCatching { Color((if (hex.startsWith("#")) hex else "#$hex").toColorInt()) }.getOrNull() }
                 ?: ArcaneBlue
             SideEffect {
                 WindowCompat.getInsetsController(window, window.decorView).apply {

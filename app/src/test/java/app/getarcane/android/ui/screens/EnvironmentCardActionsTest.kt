@@ -37,7 +37,7 @@ class EnvironmentCardActionsTest {
             actions,
         )
         assertFalse(actions.contains(EnvironmentCardAction.SystemPrune))
-        assertFalse(actions.map { it.label }.contains("Upgrade Arcane"))
+        assertFalse(actions.contains(EnvironmentCardAction.UpgradeArcane))
     }
 
     @Test
@@ -54,6 +54,32 @@ class EnvironmentCardActionsTest {
             actions,
         )
         assertTrue(actions.contains(EnvironmentCardAction.SystemPrune))
-        assertFalse(actions.map { it.label }.contains("Upgrade Arcane"))
+        assertFalse(actions.contains(EnvironmentCardAction.UpgradeArcane))
+    }
+
+    @Test
+    fun activeCardHidesUseActionAndUpgradeRequiresPositiveAvailability() {
+        val actions = environmentCardActions(canPrune = true)
+
+        val active = visibleEnvironmentCardActions(actions, isActive = true, canUpgrade = false)
+        assertFalse(active.contains(EnvironmentCardAction.UseEnvironment))
+        assertFalse(active.contains(EnvironmentCardAction.UpgradeArcane))
+
+        val remote = visibleEnvironmentCardActions(actions, isActive = false, canUpgrade = true)
+        assertTrue(remote.contains(EnvironmentCardAction.UseEnvironment))
+        assertTrue(remote.contains(EnvironmentCardAction.UpgradeArcane))
+        assertEquals(EnvironmentCardAction.SystemPrune, remote[remote.lastIndex - 1])
+        assertEquals(EnvironmentCardAction.UpgradeArcane, remote.last())
+    }
+
+    @Test
+    fun offlineCardsKeepRecoveryAndReadActionsButDisableMutations() {
+        assertTrue(isEnvironmentCardActionEnabled(EnvironmentCardAction.UseEnvironment, "offline", syncing = false))
+        assertTrue(isEnvironmentCardActionEnabled(EnvironmentCardAction.ViewSystemDetails, "offline", syncing = false))
+        assertTrue(isEnvironmentCardActionEnabled(EnvironmentCardAction.Sync, "offline", syncing = false))
+        assertFalse(isEnvironmentCardActionEnabled(EnvironmentCardAction.Sync, "offline", syncing = true))
+        assertFalse(isEnvironmentCardActionEnabled(EnvironmentCardAction.UpgradeArcane, "offline", syncing = false))
+        assertFalse(isEnvironmentCardActionEnabled(EnvironmentCardAction.SystemPrune, "offline", syncing = false))
+        assertTrue(isEnvironmentCardActionEnabled(EnvironmentCardAction.SystemPrune, "online", syncing = false))
     }
 }

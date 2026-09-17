@@ -17,16 +17,4 @@ class DashboardActivityBadgeTest {
         assertEquals("9+", failedActivityBadgeText(42))
     }
 
-    @Test
-    fun activityCenterButtonDescriptionIncludesFailedCountOnlyWhenPresent() {
-        assertEquals("Activity Center", activityCenterButtonContentDescription(0))
-        assertEquals(
-            "Activity Center, 1 failed activity needs attention",
-            activityCenterButtonContentDescription(1),
-        )
-        assertEquals(
-            "Activity Center, 3 failed activities need attention",
-            activityCenterButtonContentDescription(3),
-        )
-    }
 }
