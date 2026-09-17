@@ -38,7 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
-import app.getarcane.android.core.PasskeyLoginState
+import app.getarcane.android.core.AuthenticationMethodState
 import app.getarcane.android.core.PasskeySecurityOwner
 import app.getarcane.android.core.PasskeySecurityResult
 import app.getarcane.android.ui.components.ClearSensitiveStateOnStop
@@ -83,7 +83,7 @@ fun PasskeySecurityScreen(onBack: () -> Unit) {
     var recoveryCodes by remember(session) { mutableStateOf<List<String>>(emptyList()) }
     val validGrant = validStepUpGrant(stepUpGrant, Clock.System.now())
     val anyBusy = busy || manager.passkeyBrowserInProgress
-    val bridgeAvailable = manager.passkeyBridgeState == PasskeyLoginState.AVAILABLE
+    val bridgeAvailable = manager.passkeyBridgeState == AuthenticationMethodState.AVAILABLE
 
     fun invalidateSensitiveOperations() {
         operationGeneration.invalidate()
@@ -252,17 +252,17 @@ fun PasskeySecurityScreen(onBack: () -> Unit) {
 
             SettingsSectionHeader("Passkeys")
             when (manager.passkeyBridgeState) {
-                PasskeyLoginState.LOADING -> Text(
+                AuthenticationMethodState.LOADING -> Text(
                     "Checking passkey support…",
                     Modifier.padding(horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                PasskeyLoginState.UNAVAILABLE, PasskeyLoginState.ERROR -> Text(
+                AuthenticationMethodState.UNAVAILABLE, AuthenticationMethodState.ERROR -> Text(
                     "Passkey ceremonies are unavailable for this server connection. Password recovery remains available.",
                     Modifier.padding(horizontal = 16.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                PasskeyLoginState.AVAILABLE -> Unit
+                AuthenticationMethodState.AVAILABLE -> Unit
             }
             if (passkeys.isEmpty()) {
                 Text("No passkeys enrolled", Modifier.padding(horizontal = 16.dp))

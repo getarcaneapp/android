@@ -34,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -43,7 +44,6 @@ import okhttp3.CookieJar
 import okhttp3.HttpUrl
 
 enum class AuthStatus { SETUP, AUTHENTICATING, LOGIN, AUTHENTICATED }
-enum class PasskeyLoginState { LOADING, AVAILABLE, UNAVAILABLE, ERROR }
 
 internal sealed interface PasskeySecurityResult {
     data class Registration(val passkey: PasskeySummary) : PasskeySecurityResult
@@ -126,9 +126,11 @@ class ArcaneClientManager(context: Context) {
     var supportsContainerReliabilityActions by mutableStateOf(false); private set
     var isLoading by mutableStateOf(false); private set
     var errorMessage by mutableStateOf<String?>(null); private set
-    var oidc by mutableStateOf<OidcStatusInfo?>(null); private set
-    var passkeyLoginState by mutableStateOf(PasskeyLoginState.LOADING); private set
-    var passkeyBridgeState by mutableStateOf(PasskeyLoginState.LOADING); private set
+    private var authenticationMethods by mutableStateOf(AuthenticationMethodAvailability())
+    val oidc: OidcStatusInfo? get() = authenticationMethods.oidcStatus
+    val oidcLoginState: AuthenticationMethodState get() = authenticationMethods.oidcState
+    val passkeyLoginState: AuthenticationMethodState get() = authenticationMethods.passkeyLoginState
+    val passkeyBridgeState: AuthenticationMethodState get() = authenticationMethods.passkeyBridgeState
     var pendingMfa by mutableStateOf<MFAChallenge?>(null); private set
     var passkeyBrowserInProgress by mutableStateOf(false); private set
     internal var passkeySecurityEvent by mutableStateOf<PasskeySecurityEvent?>(null); private set
@@ -160,8 +162,9 @@ class ArcaneClientManager(context: Context) {
         const val PASSKEY_REDIRECT_HOST = "passkey-callback"
     }
 
-    val isOidcAvailable: Boolean get() =
-        oidc?.let { it.envConfigured || it.envForced || it.providerName?.isNotBlank() == true } ?: false
+    val isOidcAvailable: Boolean get() = oidcLoginState == AuthenticationMethodState.AVAILABLE
+    internal fun authenticationMethodAvailability(): AuthenticationMethodAvailability =
+        authenticationMethods
     val isDemoActive: Boolean get() = demoEndsAt != null
     val serverSessionIdentity: String get() =
         ServerIdentities.from(serverUrl)?.canonicalOrigin.orEmpty()
@@ -526,10 +529,8 @@ class ArcaneClientManager(context: Context) {
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
         supportsContainerReliabilityActions = false
-        oidc = null
         pendingMfa = null
-        passkeyLoginState = PasskeyLoginState.LOADING
-        passkeyBridgeState = PasskeyLoginState.LOADING
+        authenticationMethods = authenticationMethods.beginAll()
         cookieJar.clear()
         serverUrl = nextIdentity.normalizedUrl
         client = makeClient(nextIdentity.normalizedUrl)
@@ -822,6 +823,8 @@ class ArcaneClientManager(context: Context) {
     fun logout() {
         val c = client ?: return
         val generation = clientGeneration
+        // Invalidate optional-method results synchronously; remote logout can be slow or fail.
+        authenticationMethods = authenticationMethods.beginAll()
         scope.launch {
             operationStore?.onSessionEnding()
             endResilientSession()
@@ -842,10 +845,7 @@ class ArcaneClientManager(context: Context) {
             supportsPost26MobileFeatures = false
             supportsProjectWorkspaceContract = false
             supportsContainerReliabilityActions = false
-            oidc = null
             pendingMfa = null
-            passkeyLoginState = PasskeyLoginState.LOADING
-            passkeyBridgeState = PasskeyLoginState.LOADING
             refreshLoginMethods()
         }
     }
@@ -916,10 +916,8 @@ class ArcaneClientManager(context: Context) {
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
         supportsContainerReliabilityActions = false
-        oidc = null
         pendingMfa = null
-        passkeyLoginState = PasskeyLoginState.LOADING
-        passkeyBridgeState = PasskeyLoginState.LOADING
+        authenticationMethods = authenticationMethods.beginAll()
         isLoading = false
         isStartingDemo = false
         demoEndsAt = null
@@ -986,6 +984,7 @@ class ArcaneClientManager(context: Context) {
                 serverUrl = identity.normalizedUrl
                 prefs.setServerUrl(identity.normalizedUrl)
                 resetEnvironment()
+                authenticationMethods = authenticationMethods.beginAll()
                 client?.close()
                 // The demo router uses the session-id cookie to route API calls to the provisioned
                 // instance; iOS gets this via shared cookie storage, so inject it on every request.
@@ -1052,7 +1051,8 @@ class ArcaneClientManager(context: Context) {
         supportsPost26MobileFeatures = false
         supportsProjectWorkspaceContract = false
         supportsContainerReliabilityActions = false
-        oidc = null
+        pendingMfa = null
+        authenticationMethods = authenticationMethods.beginAll()
         demoEndsAt = null
         serverUrl = ""
         client = null
@@ -1110,76 +1110,44 @@ class ArcaneClientManager(context: Context) {
         val containerReliabilityActions: Boolean = false,
     )
 
-    private suspend fun refreshOidc() {
-        val c = client ?: return
-        val generation = clientGeneration
-        val settings = try {
-            c.settings.getPublicSettings()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Throwable) {
-            null
-        }
-        val status = try {
-            c.auth.oidcStatus()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Throwable) {
-            null
-        }
-        if (!isCurrentClient(generation, c)) return
-        if (settings == null) {
-            oidc = status
-            return
-        }
-
-        val public = settings.associate { it.key to it.value }
-        val oidcEnabled = public["oidcEnabled"]?.equals("true", ignoreCase = true) == true
-        val providerName = public["oidcProviderName"]
-        val providerLogoUrl = public["oidcProviderLogoUrl"]
-        val mergeAccounts = public["oidcMergeAccounts"]?.equals("true", ignoreCase = true) == true
-
-        if (!isCurrentClient(generation, c)) return
-        oidc = OidcStatusInfo(
-            envConfigured = status?.envConfigured ?: oidcEnabled,
-            envForced = status?.envForced ?: false,
-            mergeAccounts = status?.mergeAccounts ?: mergeAccounts,
-            providerName = status?.providerName ?: providerName,
-            providerLogoUrl = status?.providerLogoUrl ?: providerLogoUrl,
-        )
-    }
-
-    private suspend fun refreshPasskeyAvailability() {
-        val c = client ?: return
-        val generation = clientGeneration
-        if (isCurrentClient(generation, c)) {
-            passkeyLoginState = PasskeyLoginState.LOADING
-            passkeyBridgeState = PasskeyLoginState.LOADING
-        }
-        val bridgeState = try {
-            if (browserBridge(c).isBridgeAvailable()) {
-                PasskeyLoginState.AVAILABLE
-            } else {
-                PasskeyLoginState.UNAVAILABLE
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Throwable) {
-            PasskeyLoginState.ERROR
-        }
-        if (!isCurrentClient(generation, c)) return
-        passkeyBridgeState = bridgeState
-        // Current iOS and Arcane gate mobile sign-in on the versioned same-origin bridge manifest.
-        // The older public availability endpoint is absent on current Arcane and cannot be a
-        // prerequisite, though the SDK keeps it for legacy callers.
-        passkeyLoginState = bridgeState
-    }
-
     private suspend fun refreshLoginMethods() {
-        // These checks are intentionally isolated: a legacy/failed passkey endpoint must not hide
-        // an otherwise usable OIDC provider, and vice versa.
-        refreshOidc()
-        refreshPasskeyAvailability()
+        val c = client ?: return
+        val clientGeneration = clientGeneration
+        if (!isCurrentClient(clientGeneration, c)) return
+        authenticationMethods = authenticationMethods.beginAll()
+        val oidcProbeGeneration = authenticationMethods.oidcProbeGeneration
+        val passkeyProbeGeneration = authenticationMethods.passkeyProbeGeneration
+
+        // These probes publish independently. A failure in either optional method cannot hide the
+        // other method or the password fallback.
+        coroutineScope {
+            launch {
+                val result = probeOidcAvailability(
+                    loadPublicSettings = {
+                        c.settings.getPublicSettings().associate { it.key to it.value }
+                    },
+                    loadStatus = { c.auth.oidcStatus() },
+                )
+                if (isCurrentClient(clientGeneration, c)) {
+                    authenticationMethods = authenticationMethods.applyOidc(
+                        oidcProbeGeneration,
+                        result,
+                    )
+                }
+            }
+            launch {
+                val result = probePasskeyAvailability(
+                    loadLegacyAvailability = { c.passkeys.loginAvailability().available },
+                    loadBridgeAvailability = { browserBridge(c).isBridgeAvailable() },
+                )
+                if (isCurrentClient(clientGeneration, c)) {
+                    authenticationMethods = authenticationMethods.applyPasskey(
+                        passkeyProbeGeneration,
+                        result,
+                    )
+                }
+            }
+        }
     }
 
     private fun isExpectedOidcCallback(uri: Uri): Boolean {
@@ -1238,7 +1206,21 @@ class ArcaneClientManager(context: Context) {
 
     fun refreshPasskeySupport() {
         if (authStatus == AuthStatus.SETUP || serverUrl.isBlank() || client == null) return
-        scope.launch { refreshPasskeyAvailability() }
+        val c = client ?: return
+        val clientGeneration = clientGeneration
+        authenticationMethods = authenticationMethods.beginPasskeyBridgeProbe()
+        val probeGeneration = authenticationMethods.passkeyProbeGeneration
+        scope.launch {
+            val bridgeState = probePasskeyBridgeAvailability {
+                browserBridge(c).isBridgeAvailable()
+            }
+            if (isCurrentClient(clientGeneration, c)) {
+                authenticationMethods = authenticationMethods.applyPasskeyBridge(
+                    probeGeneration,
+                    bridgeState,
+                )
+            }
+        }
     }
 
 }

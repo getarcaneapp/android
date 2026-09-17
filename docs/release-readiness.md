@@ -110,6 +110,49 @@ or committed. Eventual Play/other store accounts, signing custody, staged rollou
 listing, and reviewer responses remain maintainer responsibilities and are not delegated to an
 automated test or PR author.
 
+## Authentication-method availability follow-up (2026-09-17)
+
+This focused correction compared Android `5d07cd0d3ba2925647687dafdc7b47e548ae2180`, iOS
+`8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
+`b29695d547b78389ed7230b35cd133f7046b4b52`, and Arcane current source
+`5ac6d89756f80d22cf4f057865497cb9a8cf061d`. The existing SDK contract is sufficient; no SDK source
+change is required.
+
+- **Compatibility decision:** Android intentionally differs from current iOS, which still exposes an
+  unconditional Passkey login action. Android requires the validated version-2 mobile bridge plus
+  Arcane 2.11.1's typed `available:true` response. The v2.12.0 tag omits that route, so typed SDK
+  `ArcaneError.NotFound` falls back to the manifest; every other endpoint failure hides Passkey.
+  Current Arcane source has reintroduced the route, and remains compatible with the typed probe.
+  Bridge support is retained separately for authenticated Passkeys & MFA management and first-passkey
+  enrollment. OIDC requires explicit server enablement and complete environment-managed
+  configuration; failed optional probes never hide password login or each other.
+- **Automated lane:** `:app:testDebugUnitTest :app:assembleDebug` passed 392 tests in 67 suites with
+  zero failures, errors, or skips. `:app:lintDebug` passed with no new findings; the checked-in
+  baseline filters 45 existing errors and one hint. Deterministic tests cover both legacy boolean
+  results, bridge absence, the 2.12 404 fallback, non-404 failure, cancellation, OIDC isolation,
+  server changes, loading visibility, and password fallback.
+- **Server evidence:** Read-only probes against the public Arcane 2.11.1 target returned a valid
+  version-2 bridge manifest and `available:false`; the server was not mutated. The existing isolated
+  local target at `https://127.0.0.1:43553` independently returned the same manifest and false result
+  on Arcane 2.10.2. A temporary exact `ghcr.io/getarcaneapp/arcane:v2.12.0` image was also exercised.
+  Contrary to the pinned tag source, that published image still served the availability endpoint and
+  returned `available:false`; therefore the SDK-typed 404 branch is deterministic compatibility
+  coverage, not a claimed live v2.12 image result. Source inspection pins Arcane 2.11.1 to
+  `46e71e3da78bf3eb2eaba7bf5e54bd99de293322` and v2.12.0 to
+  `3089c2ec4a56da5ca934c37778e6aeb2f539862d`.
+- **Device lane:** API 30 AVD `arcane_test_api30`
+  (`Android/sdk_phone_x86_64/generic_x86_64:11/RSR1.210722.013.A2/10067904:userdebug/test-keys`)
+  ran through the disposable LXD/KVM harness. The public 2.11.1 target showed password login only,
+  with neither Passkey nor OIDC before or after force-stop/reopen. The isolated v2.12.0 target showed
+  `Continue with Disposable OIDC` only after its checks, retained `Sign in with username and
+  password`, and hid Passkey for its false availability result. Switching to the OIDC-disabled
+  Arcane 2.10.2 target immediately removed the provider disclosure and Passkey action; password
+  login succeeded. Force-stop/reopen restored Dashboard, and back followed by reopen returned to
+  Dashboard without exposing login or stale optional actions. Deterministic tests additionally hold
+  optional actions hidden for the complete loading state, including probes faster than UIAutomator
+  can capture. The temporary v2.12 container, emulator copy, local port proxy, certificate trust
+  overlay, and LXD mounts were removed after validation.
+
 ## PAR-401–406 validation record (2026-09-16)
 
 The batch compared Android `90b67366638c21c30b2c748347a57bd8f184d491`, iOS
