@@ -18,11 +18,13 @@ operator's responsibility.
   commit and validates both the matching sibling composite build and the public remote fallback. An
   F-Droid recipe must materialize the exact SDK commit as a sibling `srclib`; a moving `main` branch is
   never a release pin.
-- The current preparation comparison pins are Android
-  `90b67366638c21c30b2c748347a57bd8f184d491`, iOS
-  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-kotlin
-  `b29695d547b78389ed7230b35cd133f7046b4b52`, and Arcane current source
-  `194e7ae87f0803bc2b85ed3a9a107fd432993ac4` (`v2.12.0-5-g194e7ae8`).
+- The current handoff comparison pins are Android `origin/main`
+  `b775eb982d0e9df387ce0226020c31a9e90acd2d`, iOS
+  `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`, libarcane-swift
+  `9d1c931f664158a20f0a8295ddf957afb2ee3390`, libarcane-kotlin `origin/main`
+  `5546f35ba5dcc3ca0b378ddd1101a1d97f690c03` (merge of PR #12, feature head
+  `614e5da9eaa808ed9401a72c5e7171709736234c`), and Arcane current source
+  `f5d6f37dba1c9cab72271d6e9d183cbe1f7fd79e`.
 
 ## Candidate checklist
 
@@ -200,10 +202,61 @@ sufficient; no SDK source change or SDK PR was required.
   screenshot is retained. F-Droid remains blocked by the SDK license and proprietary credentials
   dependency documented in `fdroid-release-preparation.md`.
 
+## Close-parity handoff record (2026-09-17)
+
+This batch deliberately closes a **core companion-app** scope rather than claiming complete iOS or
+Arcane administration-console parity.
+
+- Authentication login actions remain hidden until independent local/OIDC/passkey checks finish.
+  Explicit `authLocalEnabled=false` hides credentials; missing older-server fields retain password
+  compatibility. Passkey requires a validated bridge plus server availability, with only typed 404
+  falling back to the bridge. This is an intentional truthfulness deviation from current iOS.
+- The current permission manifest supplies presets and access surfaces through libarcane-kotlin.
+  Android gates navigation, Settings rows, nested/restored/external routes, shortcuts, dashboard
+  callbacks, and relevant mutations. Missing old-server surfaces use the prior permission/admin
+  fallback; transient manifest failures retain the last snapshot or fail closed, and unknown future
+  surface semantics do not grant access.
+- System Settings match current Arcane keys and string wire types, exclude pull policy `build`, apply
+  field conditions/ranges, tolerate missing/new fields, and target an environment without changing
+  global selection.
+- Standalone containers support create, supported configuration edit/recreate, commit to image, and
+  Compose generation followed by project creation/open on Arcane 2.10 or newer. Every workflow keeps its environment ID,
+  permission/surface/version gate, cancellation owner, and disruption confirmation. Rename is not
+  exposed because current Arcane has no route.
+
+The disposable Arcane 2.10.2/API 30 lane verified password enabled/disabled, OIDC disabled, passkey
+false, probe loading/restoration, administrator and restricted roles, permission loss across process
+recreation, stale deep-link rejection, and the dashboard-card reachability guard. Direct typed API
+coverage verified System Settings read/write/restore and container create, recreate, commit, Compose
+generation, project creation, validation/authorization failure, and cleanup. It does **not** claim an
+enabled OIDC provider, completed WebAuthn ceremony, live current-Arcane instance, multi-environment
+permission transition, or the complete UI cancellation/failure matrix; those remain candidate
+evidence and must not be marked green from source/unit tests alone.
+
+### Maintenance guide
+
+- Treat current iOS source as mobile outcome authority and Arcane handlers/types as wire authority;
+  web presentation is supporting contract evidence. Record all compared revisions.
+- Keep `ArcaneClientManager` as the only app client/auth/environment owner. Put REST, DTO, auth,
+  WebSocket, and NDJSON work in libarcane-kotlin first; never add app-local API duplicates.
+- For SDK changes run `./gradlew :arcane-core:test :arcane-android:assembleRelease`, then point
+  Android at the pushed SDK revision and run `./gradlew :app:testDebugUnitTest :app:assembleDebug`,
+  `./gradlew :app:lintDebug`, and `git diff --check`. Validate once from a clean checkout without a
+  sibling SDK.
+- Use only disposable servers/data for mutations, record old/current server versions separately,
+  label emulator/device versus API-only evidence, and clean only resources created by the task.
+- Commit, feature-branch push, PR creation, merge, tagging, signing, and release publication remain
+  separate authorization boundaries. This handoff authorizes no merge or release.
+
 ## Known limitations and exclusions
 
-- Multi-server profiles (PAR-502), an Android AI assistant (PAR-503), and speculative Swarm workflow
-  work (PAR-504) are intentionally deferred and are not beta promises.
+- PAR-502 now distinguishes iOS-style saved profile switching from simultaneous cross-server
+  aggregation; both remain deferred under
+  [#65](https://github.com/getarcaneapp/android/issues/65). Optional product/native expansion is
+  [#62](https://github.com/getarcaneapp/android/issues/62), advanced volume/image work is
+  [#63](https://github.com/getarcaneapp/android/issues/63), and backups/S3/federated/API-key breadth
+  is [#64](https://github.com/getarcaneapp/android/issues/64). An Android AI assistant (PAR-503) and
+  speculative Swarm workflow (PAR-504) are not beta promises.
 - The app supports one configured Arcane server identity at a time, with multiple environments owned
   by that server. Older servers expose explicit unsupported states for newer capabilities.
 - Localization is incremental; the first resource-backed slice is authentication, navigation,
