@@ -194,6 +194,34 @@ class MainTabSelectionTest {
     }
 
     @Test
+    fun fallsBackWhenSelectedTabSurfaceIsNoLongerReachable() {
+        assertEquals(
+            AppTab.Dashboard.id,
+            MainTabSelection.normalize(
+                selectedTabId = AppTab.Images.id,
+                visibleTabs = defaultVisibleTabs,
+                isAdmin = false,
+                supportsV2 = true,
+                canAccess = { it != AppTab.Images },
+            ),
+        )
+    }
+
+    @Test
+    fun manifestPolicyOverridesLegacyAdminFlag() {
+        assertEquals(
+            AppTab.Users.id,
+            MainTabSelection.normalize(
+                selectedTabId = AppTab.Users.id,
+                visibleTabs = defaultVisibleTabs,
+                isAdmin = false,
+                supportsV2 = true,
+                canAccess = { it == AppTab.Users },
+            ),
+        )
+    }
+
+    @Test
     fun keepsHiddenAdminTabWhenUserIsAllowed() {
         assertEquals(
             AppTab.Users.id,

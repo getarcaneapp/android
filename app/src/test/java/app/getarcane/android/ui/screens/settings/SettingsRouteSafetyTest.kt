@@ -99,8 +99,8 @@ class SettingsRouteSafetyTest {
     @Test
     fun onlyEnvironmentBoundDetailsResetWhenEnvironmentChanges() {
         assertTrue(isEnvironmentScopedSettingsDetail(SettingsRoutes.NOTIFICATION_PROVIDER))
-        assertTrue(isEnvironmentScopedSettingsDetail(SettingsRoutes.SYSTEM_CATEGORY))
-        assertTrue(isEnvironmentScopedSettingsDetail(SettingsRoutes.UPGRADE))
+        assertFalse(isEnvironmentScopedSettingsDetail(SettingsRoutes.SYSTEM_CATEGORY))
+        assertFalse(isEnvironmentScopedSettingsDetail(SettingsRoutes.UPGRADE))
         assertFalse(isEnvironmentScopedSettingsDetail(SettingsRoutes.USER_DETAIL))
         assertFalse(isEnvironmentScopedSettingsDetail(SettingsRoutes.ROLE_DETAIL))
         assertFalse(isEnvironmentScopedSettingsDetail(AppTab.Notifications.id))

@@ -12,14 +12,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowCircleUp
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,196 +36,262 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import app.getarcane.android.core.LocalArcaneManager
 import app.getarcane.android.core.friendlyErrorMessage
+import app.getarcane.android.core.loadCompleteEnvironments
+import app.getarcane.android.ui.screens.settings.LabeledPicker
 import app.getarcane.android.ui.screens.settings.SettingsSectionFooter
 import app.getarcane.android.ui.screens.settings.SettingsSectionHeader
+import kotlinx.coroutines.CancellationException
+import app.getarcane.sdk.EnvironmentId
+import app.getarcane.sdk.models.environment.Environment
 
-/** Field types in a settings category. Mirrors iOS `SettingFieldType`. */
 sealed interface SettingFieldType {
     data object Text : SettingFieldType
     data object Number : SettingFieldType
     data object Boolean : SettingFieldType
     data object Password : SettingFieldType
+    data object Cron : SettingFieldType
+    data object TextArea : SettingFieldType
     data class Select(val options: List<String>) : SettingFieldType
 }
 
-/** A single setting field definition. Mirrors iOS `SettingFieldDef`. */
-data class SettingFieldDef(val key: String, val label: String, val type: SettingFieldType)
+data class SettingFieldCondition(val key: String, val value: String)
 
-/** A settings category. Mirrors iOS `SettingsCategoryDef`. */
+data class SettingFieldDef(
+    val key: String,
+    val label: String,
+    val type: SettingFieldType,
+    val description: String? = null,
+    val minValue: Int? = null,
+    val maxValue: Int? = null,
+    val visibleWhen: SettingFieldCondition? = null,
+)
+
+data class SettingsSectionDef(val id: String, val title: String, val fields: List<SettingFieldDef>)
+
 data class SettingsCategoryDef(
     val id: String,
     val title: String,
     val icon: ImageVector,
     val summary: String,
-    val fields: List<SettingFieldDef>,
-)
+    val sections: List<SettingsSectionDef>,
+) {
+    val fields: List<SettingFieldDef> get() = sections.flatMap(SettingsSectionDef::fields)
+}
 
-/** Categories + fields, ported 1:1 from iOS `systemSettingsCategories`. */
+private fun field(key: String, label: String, type: SettingFieldType, min: Int? = null, max: Int? = null) =
+    SettingFieldDef(key, label, type, minValue = min, maxValue = max)
+
 val systemSettingsCategories: List<SettingsCategoryDef> = listOf(
     SettingsCategoryDef(
-        "general", "General", Icons.Filled.Settings, "Server URL, gravatar, default shell",
+        "storage-limits", "Storage & Limits", Icons.Filled.Storage,
+        "Directories, storage paths, sync, and upload limits",
         listOf(
-            SettingFieldDef("baseServerUrl", "Base Server URL", SettingFieldType.Text),
-            SettingFieldDef("diskUsagePath", "Disk Usage Path", SettingFieldType.Text),
-            SettingFieldDef("enableGravatar", "Enable Gravatar", SettingFieldType.Boolean),
-            SettingFieldDef("defaultShell", "Default Shell", SettingFieldType.Text),
-            SettingFieldDef("autoInjectEnv", "Auto-Inject .env", SettingFieldType.Boolean),
-            SettingFieldDef("defaultDeployPullPolicy", "Default Pull Policy", SettingFieldType.Select(listOf("always", "missing", "never", "build"))),
+            SettingsSectionDef("directories", "Directories & Storage Paths", listOf(
+                field("projectsDirectory", "Projects Directory", SettingFieldType.Text),
+                field("templatesDirectory", "Templates Directory", SettingFieldType.Text),
+                field("swarmStackSourcesDirectory", "Swarm Stack Sources", SettingFieldType.Text),
+                field("diskUsagePath", "Disk Usage Path", SettingFieldType.Text),
+                field("followProjectSymlinks", "Follow Project Symlinks", SettingFieldType.Boolean),
+            )),
+            SettingsSectionDef("limits", "Sync & Upload Limits", listOf(
+                field("maxImageUploadSize", "Max Image Upload (MB)", SettingFieldType.Number),
+                field("gitSyncMaxFiles", "Git Sync Max Files", SettingFieldType.Number),
+                field("gitSyncMaxTotalSizeMb", "Git Sync Total Size (MB)", SettingFieldType.Number),
+                field("gitSyncMaxBinarySizeMb", "Git Sync Binary Size (MB)", SettingFieldType.Number),
+            )),
         ),
     ),
     SettingsCategoryDef(
-        "docker", "Docker Daemon", Icons.Filled.Inventory2, "Docker host and project directories",
+        "docker", "Docker Settings", Icons.Filled.Inventory2,
+        "Shell, deployment defaults, and resource pruning",
         listOf(
-            SettingFieldDef("dockerHost", "Docker Host", SettingFieldType.Text),
-            SettingFieldDef("projectsDirectory", "Projects Directory", SettingFieldType.Text),
-            SettingFieldDef("swarmStackSourcesDirectory", "Swarm Stack Sources", SettingFieldType.Text),
-            SettingFieldDef("followProjectSymlinks", "Follow Project Symlinks", SettingFieldType.Boolean),
-            SettingFieldDef("dockerPruneMode", "Prune Mode", SettingFieldType.Select(listOf("all", "dangling"))),
+            SettingsSectionDef("configuration", "Configuration", listOf(
+                field("baseServerUrl", "Base Server URL", SettingFieldType.Text),
+                field("defaultShell", "Default Shell", SettingFieldType.Text),
+                field("defaultDeployPullPolicy", "Default Pull Policy", SettingFieldType.Select(listOf("missing", "always", "never"))),
+                field("autoInjectEnv", "Auto-Inject .env", SettingFieldType.Boolean),
+            )),
+            SettingsSectionDef("prune", "Prune Options", listOf(
+                field("pruneContainerMode", "Prune Containers", SettingFieldType.Select(listOf("none", "stopped", "olderThan"))),
+                SettingFieldDef("pruneContainerUntil", "Container Age Filter", SettingFieldType.Text, visibleWhen = SettingFieldCondition("pruneContainerMode", "olderThan")),
+                field("pruneImageMode", "Prune Images", SettingFieldType.Select(listOf("none", "dangling", "all", "olderThan"))),
+                SettingFieldDef("pruneImageUntil", "Image Age Filter", SettingFieldType.Text, visibleWhen = SettingFieldCondition("pruneImageMode", "olderThan")),
+                field("pruneVolumeMode", "Prune Volumes", SettingFieldType.Select(listOf("none", "anonymous", "all"))),
+                field("pruneNetworkMode", "Prune Networks", SettingFieldType.Select(listOf("none", "unused", "olderThan"))),
+                SettingFieldDef("pruneNetworkUntil", "Network Age Filter", SettingFieldType.Text, visibleWhen = SettingFieldCondition("pruneNetworkMode", "olderThan")),
+                field("pruneBuildCacheMode", "Prune Build Cache", SettingFieldType.Select(listOf("none", "unused", "all", "olderThan"))),
+                SettingFieldDef("pruneBuildCacheUntil", "Build Cache Age Filter", SettingFieldType.Text, visibleWhen = SettingFieldCondition("pruneBuildCacheMode", "olderThan")),
+            )),
         ),
     ),
     SettingsCategoryDef(
-        "auto-update", "Auto-Update", Icons.Filled.Sync, "Automatic image updates and polling",
+        "security", "Security", Icons.Filled.Security, "Trivy vulnerability scanner configuration",
+        listOf(SettingsSectionDef("vulnerability", "Vulnerability Scanning", listOf(
+            field("trivyImage", "Trivy Image", SettingFieldType.Text),
+            SettingFieldDef("trivyNetwork", "Trivy Network", SettingFieldType.Text, description = "Empty inherits Arcane's network; built-in and custom Docker networks are accepted."),
+            field("trivySecurityOpts", "Security Options", SettingFieldType.TextArea),
+            field("trivyPrivileged", "Privileged Mode", SettingFieldType.Boolean),
+            field("trivyResourceLimitsEnabled", "Resource Limits", SettingFieldType.Boolean),
+            field("trivyCpuLimit", "CPU Limit", SettingFieldType.Text),
+            field("trivyMemoryLimitMb", "Memory Limit (MB)", SettingFieldType.Number),
+            field("trivyConcurrentScanContainers", "Concurrent Scans", SettingFieldType.Number, min = 1),
+            field("trivyPreserveCacheOnVolumePrune", "Preserve Cache", SettingFieldType.Boolean),
+            field("trivyConfig", "Trivy Config (YAML)", SettingFieldType.TextArea),
+            field("trivyIgnore", ".trivyignore", SettingFieldType.TextArea),
+        ))),
+    ),
+    SettingsCategoryDef(
+        "automations", "Automations", Icons.Filled.Schedule,
+        "Updates, monitoring, maintenance, and scheduled scans",
         listOf(
-            SettingFieldDef("autoUpdate", "Enabled", SettingFieldType.Boolean),
-            SettingFieldDef("autoUpdateExcludedContainers", "Excluded Containers", SettingFieldType.Text),
-            SettingFieldDef("pollingEnabled", "Polling Enabled", SettingFieldType.Boolean),
+            SettingsSectionDef("updates", "Updates", listOf(
+                field("pollingEnabled", "Image Polling", SettingFieldType.Boolean),
+                field("pollingInterval", "Polling Interval", SettingFieldType.Cron),
+                field("autoUpdate", "Auto-Update", SettingFieldType.Boolean),
+                field("autoUpdateInterval", "Update Interval", SettingFieldType.Cron),
+                field("autoUpdateExcludedContainers", "Excluded Containers", SettingFieldType.TextArea),
+            )),
+            SettingsSectionDef("monitoring", "Monitoring", listOf(
+                field("autoHealEnabled", "Auto-Heal", SettingFieldType.Boolean),
+                field("autoHealInterval", "Check Interval", SettingFieldType.Cron),
+                field("autoHealMaxRestarts", "Max Restarts", SettingFieldType.Number),
+                field("autoHealRestartWindow", "Restart Window (min)", SettingFieldType.Number),
+                field("autoHealExcludedContainers", "Excluded Containers", SettingFieldType.TextArea),
+            )),
+            SettingsSectionDef("maintenance", "Maintenance", listOf(
+                field("scheduledPruneEnabled", "Scheduled Pruning", SettingFieldType.Boolean),
+                field("scheduledPruneInterval", "Prune Interval", SettingFieldType.Cron),
+                field("environmentHealthInterval", "Environment Health Check", SettingFieldType.Cron),
+                field("dockerClientRefreshInterval", "Docker Client Refresh", SettingFieldType.Cron),
+                field("eventCleanupInterval", "Event Cleanup", SettingFieldType.Cron),
+                field("expiredSessionsCleanupInterval", "Expired Sessions Cleanup", SettingFieldType.Cron),
+            )),
+            SettingsSectionDef("security", "Security", listOf(
+                field("vulnerabilityScanEnabled", "Vulnerability Scanning", SettingFieldType.Boolean),
+                field("vulnerabilityScanInterval", "Scan Interval", SettingFieldType.Cron),
+            )),
         ),
     ),
     SettingsCategoryDef(
-        "auto-heal", "Auto-Heal", Icons.Filled.Favorite, "Restart unhealthy containers automatically",
-        listOf(
-            SettingFieldDef("autoHealEnabled", "Enabled", SettingFieldType.Boolean),
-            SettingFieldDef("autoHealMaxRestarts", "Max Restarts", SettingFieldType.Number),
-            SettingFieldDef("autoHealRestartWindow", "Restart Window (min)", SettingFieldType.Number),
-            SettingFieldDef("autoHealExcludedContainers", "Excluded Containers", SettingFieldType.Text),
-        ),
+        "activity", "Activity", Icons.Filled.History, "Activity Center history retention",
+        listOf(SettingsSectionDef("history", "Activity History", listOf(
+            field("activityHistoryRetentionDays", "Retention (days)", SettingFieldType.Number, 0, 3650),
+            field("activityHistoryMaxEntries", "Max Entries", SettingFieldType.Number, 0, 100000),
+        ))),
     ),
     SettingsCategoryDef(
-        "prune", "Scheduled Pruning", Icons.Filled.Delete, "Automatically clean up unused resources",
+        "timeouts", "Timeouts", Icons.Filled.Schedule, "Docker, Git, and network operation timeouts",
         listOf(
-            SettingFieldDef("scheduledPruneEnabled", "Enabled", SettingFieldType.Boolean),
-            SettingFieldDef("scheduledPruneContainers", "Prune Containers", SettingFieldType.Boolean),
-            SettingFieldDef("scheduledPruneImages", "Prune Images", SettingFieldType.Boolean),
-            SettingFieldDef("scheduledPruneVolumes", "Prune Volumes", SettingFieldType.Boolean),
-            SettingFieldDef("scheduledPruneNetworks", "Prune Networks", SettingFieldType.Boolean),
-            SettingFieldDef("scheduledPruneBuildCache", "Prune Build Cache", SettingFieldType.Boolean),
-            SettingFieldDef("pruneContainerMode", "Container Mode", SettingFieldType.Select(listOf("none", "stopped", "olderThan"))),
-            SettingFieldDef("pruneContainerUntil", "Container Until", SettingFieldType.Text),
-            SettingFieldDef("pruneImageMode", "Image Mode", SettingFieldType.Select(listOf("none", "dangling", "all", "olderThan"))),
-            SettingFieldDef("pruneImageUntil", "Image Until", SettingFieldType.Text),
-            SettingFieldDef("pruneVolumeMode", "Volume Mode", SettingFieldType.Select(listOf("none", "anonymous", "all"))),
-            SettingFieldDef("pruneNetworkMode", "Network Mode", SettingFieldType.Select(listOf("none", "unused", "olderThan"))),
-            SettingFieldDef("pruneNetworkUntil", "Network Until", SettingFieldType.Text),
-            SettingFieldDef("pruneBuildCacheMode", "Build Cache Mode", SettingFieldType.Select(listOf("none", "unused", "all", "olderThan"))),
-            SettingFieldDef("pruneBuildCacheUntil", "Build Cache Until", SettingFieldType.Text),
-        ),
-    ),
-    SettingsCategoryDef(
-        "vulnerability", "Vulnerability Scanning", Icons.Filled.Security, "Trivy scanner configuration",
-        listOf(
-            SettingFieldDef("vulnerabilityScanEnabled", "Enabled", SettingFieldType.Boolean),
-            SettingFieldDef("trivyImage", "Trivy Image", SettingFieldType.Text),
-            SettingFieldDef("trivyNetwork", "Network", SettingFieldType.Text),
-            SettingFieldDef("trivySecurityOpts", "Security Options", SettingFieldType.Text),
-            SettingFieldDef("trivyPrivileged", "Privileged Mode", SettingFieldType.Boolean),
-            SettingFieldDef("trivyResourceLimitsEnabled", "Resource Limits", SettingFieldType.Boolean),
-            SettingFieldDef("trivyCpuLimit", "CPU Limit", SettingFieldType.Text),
-            SettingFieldDef("trivyMemoryLimitMb", "Memory Limit (MB)", SettingFieldType.Number),
-            SettingFieldDef("trivyConcurrentScanContainers", "Concurrent Scans", SettingFieldType.Number),
-            SettingFieldDef("trivyPreserveCacheOnVolumePrune", "Preserve Cache", SettingFieldType.Boolean),
-        ),
-    ),
-    SettingsCategoryDef(
-        "timeouts", "Timeouts", Icons.Filled.Schedule, "Operation timeouts in seconds",
-        listOf(
-            SettingFieldDef("dockerApiTimeout", "Docker API (s)", SettingFieldType.Number),
-            SettingFieldDef("dockerImagePullTimeout", "Image Pull (s)", SettingFieldType.Number),
-            SettingFieldDef("trivyScanTimeout", "Trivy Scan (s)", SettingFieldType.Number),
-            SettingFieldDef("gitOperationTimeout", "Git Operation (s)", SettingFieldType.Number),
-            SettingFieldDef("httpClientTimeout", "HTTP Client (s)", SettingFieldType.Number),
-            SettingFieldDef("registryTimeout", "Registry (s)", SettingFieldType.Number),
-            SettingFieldDef("proxyRequestTimeout", "Proxy Request (s)", SettingFieldType.Number),
-            SettingFieldDef("buildTimeout", "Build (s)", SettingFieldType.Number),
-        ),
-    ),
-    SettingsCategoryDef(
-        "git-sync", "Git Sync Limits", Icons.Filled.Sync, "Repository sync size and file limits",
-        listOf(
-            SettingFieldDef("gitSyncMaxFiles", "Max Files", SettingFieldType.Number),
-            SettingFieldDef("gitSyncMaxTotalSizeMb", "Max Total Size (MB)", SettingFieldType.Number),
-            SettingFieldDef("gitSyncMaxBinarySizeMb", "Max Binary Size (MB)", SettingFieldType.Number),
-        ),
-    ),
-    SettingsCategoryDef(
-        "misc", "Miscellaneous", Icons.Filled.MoreHoriz, "Additional settings",
-        listOf(
-            SettingFieldDef("maxImageUploadSize", "Max Image Upload (MB)", SettingFieldType.Number),
+            SettingsSectionDef("docker", "Docker Operations", listOf(
+                field("dockerApiTimeout", "Docker API (s)", SettingFieldType.Number, 1, 3600),
+                field("dockerImagePullTimeout", "Image Pull (s)", SettingFieldType.Number, 30, 7200),
+                field("trivyScanTimeout", "Trivy Scan (s)", SettingFieldType.Number, 60, 14400),
+            )),
+            SettingsSectionDef("git", "Git Operations", listOf(
+                field("gitOperationTimeout", "Git Operation (s)", SettingFieldType.Number, 30, 3600),
+            )),
+            SettingsSectionDef("network", "Network Operations", listOf(
+                field("httpClientTimeout", "HTTP Client (s)", SettingFieldType.Number, 5, 300),
+                field("registryTimeout", "Registry (s)", SettingFieldType.Number, 5, 300),
+                field("proxyRequestTimeout", "Proxy Request (s)", SettingFieldType.Number, 10, 600),
+            )),
         ),
     ),
 )
 
-/** System settings hub: category list + Maintenance (Upgrade) for admins. Port of iOS `SystemSettingsView`. */
+private data class SettingsTarget(val id: EnvironmentId, val name: String)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SystemSettingsScreen(onOpenCategory: (categoryId: String) -> Unit, onUpgrade: () -> Unit) {
+fun SystemSettingsScreen(
+    onOpenCategory: (categoryId: String, environmentId: EnvironmentId, environmentName: String) -> Unit,
+    onUpgrade: (environmentId: EnvironmentId, environmentName: String) -> Unit,
+) {
     val manager = LocalArcaneManager.current
     val session = manager.authenticatedClientScope()
-    val user = manager.currentUser
-    val environmentId = manager.activeEnvironmentId
-    var upgradeAvailability by remember(session, environmentId.rawValue) {
+    var target by remember(manager.serverSessionIdentity, manager.currentUser?.id) {
+        mutableStateOf(SettingsTarget(manager.activeEnvironmentId, manager.activeEnvironmentName))
+    }
+    var targets by remember { mutableStateOf(listOf(target)) }
+    var targetsLoading by remember { mutableStateOf(false) }
+    var upgradeAvailability by remember(session, target.id.rawValue) {
         mutableStateOf<UpgradeAvailability>(UpgradeAvailability.Loading)
     }
 
-    LaunchedEffect(session, user, environmentId.rawValue) {
+    LaunchedEffect(session) {
         val captured = session ?: return@LaunchedEffect
-        val capturedUser = user ?: return@LaunchedEffect
-        upgradeAvailability = UpgradeAvailability.Loading
-        val resolved = resolveUpgradeAvailability(
-            user = capturedUser,
-            environmentId = environmentId.rawValue,
-            loadVersion = { captured.client.version.environmentVersion(environmentId) },
-            checkUpgrade = { captured.client.system.checkUpgrade(environmentId) },
-            errorMessage = ::friendlyErrorMessage,
-        )
-        if (manager.isCurrent(captured)) upgradeAvailability = resolved
+        targetsLoading = true
+        try {
+            val environments = loadCompleteEnvironments { captured.client.environments.list(it) }
+            if (manager.isCurrent(captured)) {
+                targets = environments.map(Environment::toSettingsTarget).ifEmpty { listOf(target) }
+                targets.firstOrNull { it.id == target.id }?.let { target = it }
+            }
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (_: Throwable) {
+            if (targets.none { it.id == target.id }) targets = listOf(target) + targets
+        } finally {
+            targetsLoading = false
+        }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("System Settings") }) }) { padding ->
+    LaunchedEffect(session, target.id.rawValue) {
+        val captured = session ?: return@LaunchedEffect
+        val user = manager.currentUser ?: return@LaunchedEffect
+        upgradeAvailability = resolveUpgradeAvailability(
+            user = user,
+            environmentId = target.id.rawValue,
+            loadVersion = { captured.client.version.environmentVersion(target.id) },
+            checkUpgrade = { captured.client.system.checkUpgrade(target.id) },
+            errorMessage = ::friendlyErrorMessage,
+        )
+    }
+
+    Scaffold(topBar = { TopAppBar(title = { Text("Environment Settings") }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-            items(systemSettingsCategories, key = { it.id }) { category ->
-                CategoryRow(category, onClick = { onOpenCategory(category.id) })
+            item(key = "target") {
+                LabeledPicker(
+                    label = "Settings Environment",
+                    selected = target,
+                    options = targets,
+                    optionLabel = SettingsTarget::name,
+                    onSelect = { target = it },
+                    enabled = !targetsLoading && targets.size > 1,
+                )
+                SettingsSectionFooter("This selects which environment to edit without changing the environment used elsewhere in the app.")
             }
-            item(key = "settings-footer") {
-                SettingsSectionFooter("Settings apply to the active environment: ${manager.activeEnvironmentName}")
+            item(key = "configuration-header") { SettingsSectionHeader("Configuration") }
+            items(systemSettingsCategories.take(4), key = { it.id }) { category ->
+                CategoryRow(category) { onOpenCategory(category.id, target.id, target.name) }
             }
-            item(key = "maint-header") { SettingsSectionHeader("Maintenance") }
-            if (upgradeAvailability.canUpgrade) {
-                item(key = "upgrade") {
-                    CategoryRowRaw(
-                        icon = Icons.Filled.ArrowCircleUp,
-                        title = "Upgrade Arcane",
-                        summary = "Update to the latest Arcane release",
-                        onClick = onUpgrade,
-                    )
-                }
-            } else {
-                item(key = "upgrade-status") {
-                    CategoryRowRaw(
-                        icon = Icons.Filled.ArrowCircleUp,
-                        title = "Upgrade status",
-                        summary = upgradeAvailability.summary(),
-                        onClick = null,
-                    )
+            item(key = "services-header") { SettingsSectionHeader("Services") }
+            items(systemSettingsCategories.drop(4), key = { it.id }) { category ->
+                CategoryRow(category) { onOpenCategory(category.id, target.id, target.name) }
+            }
+            item(key = "maintenance-header") { SettingsSectionHeader("Maintenance") }
+            item(key = "upgrade") {
+                CategoryRowRaw(
+                    icon = Icons.Filled.ArrowCircleUp,
+                    title = if (upgradeAvailability.canUpgrade) "Upgrade Arcane" else "Upgrade status",
+                    summary = if (upgradeAvailability.canUpgrade) "Update ${target.name} to the latest Arcane release" else upgradeAvailability.summary(),
+                    onClick = if (upgradeAvailability.canUpgrade) ({ onUpgrade(target.id, target.name) }) else null,
+                )
+            }
+            if (targetsLoading) item(key = "target-loading") {
+                Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.Center) {
+                    CircularProgressIndicator()
                 }
             }
         }
     }
 }
 
+private fun Environment.toSettingsTarget(): SettingsTarget = SettingsTarget(EnvironmentId(id), name ?: id)
+
 @Composable
-private fun CategoryRow(category: SettingsCategoryDef, onClick: () -> Unit) {
+private fun CategoryRow(category: SettingsCategoryDef, onClick: () -> Unit) =
     CategoryRowRaw(category.icon, category.title, category.summary, onClick)
-}
 
 @Composable
 private fun CategoryRowRaw(icon: ImageVector, title: String, summary: String, onClick: (() -> Unit)?) {
@@ -238,10 +302,10 @@ private fun CategoryRowRaw(icon: ImageVector, title: String, summary: String, on
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.width(28.dp))
+        Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.width(28.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

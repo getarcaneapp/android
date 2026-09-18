@@ -18,6 +18,10 @@
 
 Arcane Mobile is the official Android companion for [Arcane](https://github.com/getarcaneapp/arcane). It connects to any Arcane manager or agent and lets you browse and operate your Docker environments — containers, images, volumes, networks, and Compose projects — from your phone.
 
+The parity target is the core mobile companion outcome, not every Arcane web administration feature.
+Optional expansion and advanced administration remain explicitly tracked in issues
+[#62](https://github.com/getarcaneapp/android/issues/62)–[#65](https://github.com/getarcaneapp/android/issues/65).
+
 ## Documentation
 
 For setup instructions, configuration details, and development guides, visit the **[official documentation site](https://getarcane.app/docs)**.

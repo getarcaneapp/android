@@ -45,4 +45,16 @@ class AdaptiveNavigationTest {
         assertFalse(AdaptiveNavigation.usesSettingsHost(AppTab.Containers))
         assertFalse(AdaptiveNavigation.usesSettingsHost(AppTab.Networks))
     }
+
+    @Test
+    fun serverPolicyCanReachFormerlyAdminOnlyDestination() {
+        val available = AdaptiveNavigation.availableTabs(
+            isAdmin = false,
+            supportsV2 = true,
+            canReadVariables = false,
+            canAccess = { it == AppTab.Users },
+        )
+
+        assertEquals(listOf(AppTab.Users), available)
+    }
 }

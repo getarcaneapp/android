@@ -37,13 +37,17 @@ class NavTabsStore(context: Context) {
     }
 
     /** The [SLOTS] tabs to show, filtered by current availability and padded with defaults. */
-    fun visibleTabs(isAdmin: Boolean, supportsV2: Boolean): List<AppTab> {
+    fun visibleTabs(
+        isAdmin: Boolean,
+        supportsV2: Boolean,
+        canAccess: ((AppTab) -> Boolean)? = null,
+    ): List<AppTab> {
         val normalized = normalizedPinnedBottomTabs(pinned)
         if (normalized != pinned) {
             pinned = normalized
             persist(normalized)
         }
-        return visibleBottomTabs(normalized, isAdmin, supportsV2)
+        return visibleBottomTabs(normalized, isAdmin, supportsV2, canAccess)
     }
 
     fun swap(slot: Int, replacement: AppTab) {
@@ -126,13 +130,19 @@ internal fun visibleBottomTabs(
     pinned: List<AppTab>,
     isAdmin: Boolean,
     supportsV2: Boolean,
+    canAccess: ((AppTab) -> Boolean)? = null,
 ): List<AppTab> {
-    fun allowed(tab: AppTab) = tab.isAvailableForBottomBar(isAdmin, supportsV2)
+    fun allowed(tab: AppTab) = canAccess?.invoke(tab) ?: tab.isAvailableForBottomBar(isAdmin, supportsV2)
     val result = pinned
         .filter(::allowed)
         .toMutableList()
 
     for (fallback in AppTab.defaults) {
+        if (result.size >= NavTabsStore.SLOTS) break
+        if (fallback !in result && allowed(fallback)) result.add(fallback)
+    }
+
+    for (fallback in AppTab.entries) {
         if (result.size >= NavTabsStore.SLOTS) break
         if (fallback !in result && allowed(fallback)) result.add(fallback)
     }

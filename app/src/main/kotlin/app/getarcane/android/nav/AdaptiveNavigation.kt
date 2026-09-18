@@ -21,12 +21,14 @@ internal object AdaptiveNavigation {
         isAdmin: Boolean,
         supportsV2: Boolean,
         canReadVariables: Boolean,
-    ): List<AppTab> =
-        AppTab.entries.filter { tab ->
+        canAccess: ((AppTab) -> Boolean)? = null,
+    ): List<AppTab> = AppTab.entries.filter { tab ->
+        canAccess?.invoke(tab) ?: (
             (!tab.requiresAdmin || isAdmin) &&
                 (!tab.requiresV2 || supportsV2) &&
                 (tab != AppTab.Variables || canReadVariables)
-        }
+            )
+    }
 
     /** Non-pinnable destinations retain the complete nested flows already owned by Settings. */
     fun usesSettingsHost(tab: AppTab): Boolean = !tab.canPinToBottomBar

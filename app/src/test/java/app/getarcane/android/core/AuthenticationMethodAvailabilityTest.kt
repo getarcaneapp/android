@@ -14,6 +14,22 @@ import org.junit.Test
 
 class AuthenticationMethodAvailabilityTest {
     @Test
+    fun `local auth follows explicit setting and preserves older-server default`() = runBlocking {
+        assertEquals(
+            AuthenticationMethodState.UNAVAILABLE,
+            probeLocalAuthAvailability { mapOf("authLocalEnabled" to "false") },
+        )
+        assertEquals(
+            AuthenticationMethodState.AVAILABLE,
+            probeLocalAuthAvailability { mapOf("oidcEnabled" to "false") },
+        )
+        assertEquals(
+            AuthenticationMethodState.ERROR,
+            probeLocalAuthAvailability { throw ArcaneError.Transport("offline") },
+        )
+    }
+
+    @Test
     fun `bridge available and legacy availability true shows passkey`() = runBlocking {
         val result = probePasskeyAvailability(
             loadLegacyAvailability = { true },
@@ -102,6 +118,10 @@ class AuthenticationMethodAvailabilityTest {
         )
 
         var availability = AuthenticationMethodAvailability().beginAll()
+        availability = availability.applyLocal(
+            availability.localProbeGeneration,
+            AuthenticationMethodState.AVAILABLE,
+        )
         availability = availability.applyPasskey(
             availability.passkeyProbeGeneration,
             PasskeyAvailabilityResult(
@@ -136,6 +156,10 @@ class AuthenticationMethodAvailabilityTest {
             loadStatus = { error("must not run") },
         )
         var availability = AuthenticationMethodAvailability().beginAll()
+        availability = availability.applyLocal(
+            availability.localProbeGeneration,
+            AuthenticationMethodState.AVAILABLE,
+        )
         availability = availability.applyPasskey(
             availability.passkeyProbeGeneration,
             PasskeyAvailabilityResult(
@@ -158,6 +182,10 @@ class AuthenticationMethodAvailabilityTest {
         var availability = AuthenticationMethodAvailability().beginAll()
         val oldOidcGeneration = availability.oidcProbeGeneration
         val oldPasskeyGeneration = availability.passkeyProbeGeneration
+        availability = availability.applyLocal(
+            availability.localProbeGeneration,
+            AuthenticationMethodState.AVAILABLE,
+        )
         availability = availability.applyOidc(
             oldOidcGeneration,
             OidcAvailabilityResult(AuthenticationMethodState.AVAILABLE, oidcStatus()),
@@ -184,6 +212,7 @@ class AuthenticationMethodAvailabilityTest {
         )
 
         assertEquals(AuthenticationMethodState.LOADING, availability.oidcState)
+        assertEquals(AuthenticationMethodState.LOADING, availability.localState)
         assertEquals(AuthenticationMethodState.LOADING, availability.passkeyLoginState)
         assertEquals(AuthenticationMethodState.LOADING, availability.passkeyBridgeState)
         assertNull(availability.oidcStatus)
@@ -199,15 +228,27 @@ class AuthenticationMethodAvailabilityTest {
         assertFalse(visibility.showPasskey)
         assertFalse(visibility.showOidc)
         assertFalse(visibility.showOidcDisclosure)
-        assertTrue(visibility.showPassword)
+        assertFalse(visibility.showPassword)
+        assertTrue(visibility.checking)
     }
 
     @Test
     fun `OIDC availability preserves password fallback disclosure`() {
         var availability = AuthenticationMethodAvailability().beginAll()
+        availability = availability.applyLocal(
+            availability.localProbeGeneration,
+            AuthenticationMethodState.AVAILABLE,
+        )
         availability = availability.applyOidc(
             availability.oidcProbeGeneration,
             OidcAvailabilityResult(AuthenticationMethodState.AVAILABLE, oidcStatus()),
+        )
+        availability = availability.applyPasskey(
+            availability.passkeyProbeGeneration,
+            PasskeyAvailabilityResult(
+                AuthenticationMethodState.UNAVAILABLE,
+                AuthenticationMethodState.UNAVAILABLE,
+            ),
         )
 
         val providerPrimary = loginActionVisibility(availability, showPasswordForm = false)
@@ -219,6 +260,44 @@ class AuthenticationMethodAvailabilityTest {
         assertFalse(passwordFallback.showOidc)
         assertTrue(passwordFallback.showPassword)
         assertTrue(passwordFallback.showOidcDisclosure)
+    }
+
+    @Test
+    fun `disabled local auth never exposes password or OIDC fallback disclosure`() {
+        var availability = AuthenticationMethodAvailability().beginAll()
+        availability = availability.applyLocal(
+            availability.localProbeGeneration,
+            AuthenticationMethodState.UNAVAILABLE,
+        )
+        availability = availability.applyOidc(
+            availability.oidcProbeGeneration,
+            OidcAvailabilityResult(AuthenticationMethodState.AVAILABLE, oidcStatus()),
+        )
+        availability = availability.applyPasskey(
+            availability.passkeyProbeGeneration,
+            PasskeyAvailabilityResult(
+                AuthenticationMethodState.UNAVAILABLE,
+                AuthenticationMethodState.AVAILABLE,
+            ),
+        )
+
+        val visibility = loginActionVisibility(availability, showPasswordForm = true)
+        assertTrue(visibility.showOidc)
+        assertFalse(visibility.showOidcDisclosure)
+        assertFalse(visibility.showPassword)
+    }
+
+    @Test
+    fun `terminal unavailable states show configuration message`() {
+        val availability = AuthenticationMethodAvailability(
+            localState = AuthenticationMethodState.UNAVAILABLE,
+            oidcState = AuthenticationMethodState.UNAVAILABLE,
+            passkeyLoginState = AuthenticationMethodState.ERROR,
+            passkeyBridgeState = AuthenticationMethodState.ERROR,
+        )
+        val visibility = loginActionVisibility(availability, showPasswordForm = false)
+        assertTrue(visibility.noMethodsAvailable)
+        assertFalse(visibility.checking)
     }
 
     private fun oidcStatus(

@@ -417,6 +417,22 @@ private fun Actions(
                     onClick = onPasskeySignIn,
                 )
             }
+            if (actionVisibility.checking) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        stringResource(R.string.auth_checking_sign_in_methods),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else if (actionVisibility.noMethodsAvailable) {
+                InfoBanner(stringResource(R.string.auth_no_sign_in_methods))
+            }
             if (actionVisibility.showOidc) {
                 PrimaryButton(
                     text = stringResource(
@@ -705,7 +721,7 @@ private fun Modifier.autofill(
 }
 
 @Composable
-private fun InfoBanner(message: String, onDismiss: () -> Unit) {
+private fun InfoBanner(message: String, onDismiss: (() -> Unit)? = null) {
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
@@ -718,13 +734,15 @@ private fun InfoBanner(message: String, onDismiss: () -> Unit) {
         ) {
             Icon(Icons.Filled.Info, null, tint = MaterialTheme.colorScheme.primary)
             Text(message, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    Icons.Filled.Close,
-                    stringResource(R.string.a11y_dismiss),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp),
-                )
+            if (onDismiss != null) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        Icons.Filled.Close,
+                        stringResource(R.string.a11y_dismiss),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
             }
         }
     }

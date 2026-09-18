@@ -204,6 +204,10 @@ suspend fun resolveAuthenticatedRoute(
     }
 
     val environmentId = route.environmentId ?: manager.activeEnvironmentId.rawValue
+    val accessSurfaceId = route.destination.accessSurfaceId
+    if (accessSurfaceId != null && !manager.canAccessSurface(accessSurfaceId, environmentId)) {
+        return AuthenticatedRouteResolution.Rejected("You no longer have permission to open this destination.")
+    }
     val permission = route.destination.requiredPermission
     if (permission != null && user.permissionsByEnv != null && !user.hasPermission(permission, environmentId)) {
         return AuthenticatedRouteResolution.Rejected("You no longer have permission to open this destination.")
@@ -272,6 +276,22 @@ private val RouteDestination.requiredPermission: String?
         RouteDestination.ENVIRONMENT -> Permission.Environments.READ
         RouteDestination.ACTIVITIES -> "activities:list"
         RouteDestination.ACTIVITY -> "activities:read"
+        RouteDestination.OPERATIONS,
+        RouteDestination.OPERATION,
+        -> null
+    }
+
+private val RouteDestination.accessSurfaceId: String?
+    get() = when (this) {
+        RouteDestination.DASHBOARD -> "route.dashboard"
+        RouteDestination.CONTAINERS -> "route.containers"
+        RouteDestination.CONTAINER -> "route.containers.detail"
+        RouteDestination.PROJECTS -> "route.projects"
+        RouteDestination.PROJECT -> "route.projects.detail"
+        RouteDestination.ENVIRONMENT -> "route.environments.detail"
+        RouteDestination.ACTIVITIES,
+        RouteDestination.ACTIVITY,
+        -> "route.activities"
         RouteDestination.OPERATIONS,
         RouteDestination.OPERATION,
         -> null

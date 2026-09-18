@@ -1,6 +1,6 @@
 # Android iOS-parity task list
 
-Last updated: 2026-09-11
+Last updated: 2026-09-17
 
 This is the working backlog for bringing Arcane Android to product-outcome parity with iOS. It
 turns the findings in [the pinned gap analysis](ios-android-gap-analysis.md) into issue-sized work;
@@ -11,12 +11,13 @@ this canonical backlog through local validation and a review-ready pull request.
 
 The source comparison is pinned to:
 
-- iOS `6088fcc0ef04dc906ce74e9129dffa96894a6da5`
-- libarcane-swift `facc40e20e32b7d6600b004fd744a214bbd2a166`
-- Android `75fde394f61ee8838f201f25b42a3e83af146513` (Image Insights branch base)
-- libarcane-kotlin `275e7a533bd5f68063d3e275012041d0f846e251` (Image History PR #9)
-- Arcane `5df09ed475c4bac4ab6f54e1b9bdde1ac1c55105` (live compatibility target:
-  2.10.2 tag `670ee2b34ea7b0fb2917643229b6ce9070ee9742`)
+- iOS `8d13fdb5cd61a62b1d666e9e982a2670d86086c3`
+- libarcane-swift `9d1c931f664158a20f0a8295ddf957afb2ee3390`
+- Android `b775eb982d0e9df387ce0226020c31a9e90acd2d` (`origin/main` handoff base)
+- libarcane-kotlin `5546f35ba5dcc3ca0b378ddd1101a1d97f690c03` (`origin/main` merge of handoff
+  SDK PR #12; feature head `614e5da9eaa808ed9401a72c5e7171709736234c`)
+- Arcane `f5d6f37dba1c9cab72271d6e9d183cbe1f7fd79e` (current contract source; live older-server
+  compatibility target: 2.10.2)
 
 Revalidate conclusions against current source before starting an item. Record the Android, Kotlin
 SDK, and Arcane server revisions in the resulting issue or pull request.
@@ -29,12 +30,44 @@ removed the Arcane Assistant.
 
 ## Recommended starting queue
 
-The P0 correctness foundation through **PAR-101** and PAR-501's multi-environment validation are
-complete. Continue with the remaining P1 workflow slices.
+The bounded **close parity and maintenance handoff** batch is the final active parity batch. It
+targets truthful login choices, server-described reachability, contract-correct System Settings,
+and useful standalone-container mutations. It does not target complete administration-console
+parity. Further product expansion belongs to issues #62–#65.
 
-The Projects Workspace, Accounts and Administration, Container and Activity Reliability, and Image
-Insights batches are complete; the last is on its review branches. Continue with the remaining
-Ready items according to priority and dependencies.
+### Close parity and maintenance handoff
+
+- [x] Authentication methods are independent, loading-safe, server truthful, and preserve the
+  missing-field/404 compatibility cases. Android intentionally hides unusable Passkey login even
+  though current iOS exposes it unconditionally.
+- [x] Kotlin models current permission presets/access surfaces and evaluates only known surface
+  semantics; Android gates navigation, Settings rows, restored/deep-linked/shortcut routes,
+  dashboard callbacks, and relevant create/edit actions.
+- [x] System Settings use current keys/types/options/conditions/ranges, preserve partial-update
+  behavior, and choose a target environment without changing the global active environment.
+- [x] Supported standalone-container create, edit/recreate, commit, and Compose-to-project workflows
+  use typed SDK contracts. Container rename remains absent because current Arcane has no route.
+- [x] SDK unit/release assembly and Android unit/debug assembly/lint gates are required before
+  publication; clean remote-SDK resolution uses merged SDK revision
+  `5546f35ba5dcc3ca0b378ddd1101a1d97f690c03`.
+- [ ] Release-candidate runtime completion remains separate: an enabled disposable OIDC provider,
+  a provider-completed WebAuthn ceremony, current-Arcane live instance, multi-environment access
+  changes, and full UI cancellation/failure exercises were not completed in this handoff lane.
+
+API 30 plus disposable Arcane 2.10.2 verified local auth enabled/disabled, OIDC disabled, passkey
+availability false, hidden actions while probes settle, admin/restricted roles, permission loss plus
+process recreation, stale deep-link rejection, and the dashboard-card reachability regression found
+during testing. Server/API validation covered a System Settings read/write/restore round trip and
+container create, edit/recreate, commit, Compose generation, project creation, validation failure,
+authorization failure, and cleanup. The compatibility 404 and unknown/old manifest paths remain
+deterministic-test evidence rather than mislabeled live evidence.
+
+Deferred scope is intentionally consolidated rather than split back into parity microtasks:
+
+- [#62](https://github.com/getarcaneapp/android/issues/62) — optional Android-native/product expansion;
+- [#63](https://github.com/getarcaneapp/android/issues/63) — advanced volume and image workflows;
+- [#64](https://github.com/getarcaneapp/android/issues/64) — backups, S3, federated, and API-key administration;
+- [#65](https://github.com/getarcaneapp/android/issues/65) — saved server profiles and diagnostics.
 
 ## Status legend
 
@@ -66,7 +99,9 @@ resilience/native continuity, and **P3** maturity or optional expansion. Depende
 
 ## Definition of parity and done
 
-Parity means Android provides the same useful outcome as iOS through Android-native conventions.
+For this handoff, parity means Android provides the same useful **core companion-app** outcome as iOS
+through Android-native conventions. It does not mean reproducing the complete Arcane web
+administration console or every optional iOS integration.
 It does not mean copying Apple APIs or presentation. Examples include an ongoing notification
 instead of a Live Activity, Glance instead of WidgetKit, and Android shortcuts/deep links instead
 of App Intents.
@@ -1490,13 +1525,15 @@ The standard checks are:
 - **Status:** Deferred
 - **Priority:** P3
 - **Dependencies:** PAR-002, PAR-202, PAR-301, PAR-305
-- **Scope:** Specify profiles only after single-server credential, cache, operation, and route scoping
-  are correct.
+- **Scope:** Current iOS now provides saved server profiles and explicit switching, so saved-profile
+  switching is an iOS outcome Android does not yet implement. Specify it only after single-server
+  credential, cache, operation, and route scoping remain correct. Simultaneous cross-server fleet
+  aggregation is a separate product problem and remains deferred. Track both boundaries in issue #65.
 - **Acceptance criteria:**
   - [ ] The design covers credentials, cookies, caches, snapshots, operations, routes, active selection,
     deletion, migration, and concurrent server behavior.
   - [ ] Switching cannot leak data or actions between servers/users.
-  - [ ] Product scope distinguishes saved profiles from simultaneous fleet aggregation.
+  - [ ] Product scope implements saved-profile switching without implying simultaneous fleet aggregation.
   - [ ] Implementation is split into reviewable persistence, client ownership, and UI tasks.
 
 - [ ] **PAR-503 — Evaluate an Android AI assistant**
